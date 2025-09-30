@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-import model_init as mi
+from . import model_init as mi
 
 
     

@@ -1,10 +1,7 @@
-import jax
-import jax.numpy as jnp
+from generative_models.SA_ActiveInference.RedBlueButton.B import apply_B   # your functional B
 import numpy as np
-from jax.nn import log_softmax
-from generative_models.SA_ActiveInference.RedBlueButton.B import apply_B
-
-# --- keep your existing imports / code above ---
+import jax.numpy as jnp
+import jax
 
 def get_expected_state(qs_current, action, env_params):
     """
@@ -137,7 +134,18 @@ def get_expected_obs(q_state, A_funcs, decode_table, width, height):
     return {modality: expected_for_modality(A_func) for modality, A_func in A_funcs.items()}
 
 
-# ---------- Utilities ----------
+
+
+
+
+#----
+import numpy as np
+import jax.numpy as jnp
+from jax.nn import log_softmax
+
+# ------------------------------
+# Utilities
+# ------------------------------
 def log_softmax_np(x, axis=None, keepdims=False):
     x = np.asarray(x)
     return np.log(np.exp(x - np.max(x, axis=axis, keepdims=True)) /
@@ -172,97 +180,29 @@ def calc_expected_utility(qo_pi, lnC):
 
     return expected_util
 
-# ---------- NEW: dict marginals -> joint q(s) ----------
-def joint_from_marginals(qs_dict, decode_table):
+# ------------------------------
+# Surprise / Info gain
+# ------------------------------
+def calc_surprise(A_funcs, qs_t, decode_table, width, height):
     """
-    qs_dict: dict of factor marginals
-      - "agent_pos": (Wh,)
-      - "red_door_pos": (Wh,)
-      - "blue_door_pos": (Wh,)
-      - "red_door_state": (2,)
-      - "blue_door_state": (2,)
-      - "goal_context": (2,)
-    decode_table: (S, 6) int indices -> (s_agent, s_rpos, s_bpos, s_rstate, s_bstate, s_goal)
-
-    returns: q_state (S,)
-    """
-    factors_order = [
-        "agent_pos",
-        "red_door_pos",
-        "blue_door_pos",
-        "red_door_state",
-        "blue_door_state",
-        "goal_context",
-    ]
-    
-    # Convert all arrays to JAX arrays to avoid mixing JAX and NumPy
-    qs_jax = {}
-    for key, arr in qs_dict.items():
-        qs_jax[key] = jnp.array(arr, dtype=jnp.float32)
-    
-    # Use JAX-compatible operations
-    def prob_for_index(idx_row):
-        # idx_row is shape (6,), factor indices for this joint state
-        p = 1.0
-        p *= qs_jax["agent_pos"][idx_row[0]]
-        p *= qs_jax["red_door_pos"][idx_row[1]]
-        p *= qs_jax["blue_door_pos"][idx_row[2]]
-        p *= qs_jax["red_door_state"][idx_row[3]]
-        p *= qs_jax["blue_door_state"][idx_row[4]]
-        p *= qs_jax["goal_context"][idx_row[5]]
-        return p
-
-    q_state = jax.vmap(prob_for_index)(decode_table)
-    # normalize defensively
-    q_state = q_state / jnp.maximum(jnp.sum(q_state), 1e-16)
-    return q_state
-
-# ---------- (unchanged) ----------
-def get_expected_obs(q_state, A_funcs, decode_table, width, height):
-    """
-    q_state: (S,) belief over joint states
-    A_funcs: dict of modality -> function(state_tuple, width, height) -> obs_dist
-    decode_table: (S, num_factors) int array
-    """
-    def expected_for_modality(A_func):
-        def obs_for_idx(idx, prob):
-            state_tuple = decode_table[idx]
-            return prob * A_func(state_tuple, width, height)
-        obs = jax.vmap(obs_for_idx)(jnp.arange(q_state.shape[0]), q_state)
-        return jnp.sum(obs, axis=0)
-
-    return {modality: expected_for_modality(A_func) for modality, A_func in A_funcs.items()}
-
-# ---------- tweak: calc_surprise expects joint now ----------
-def calc_surprise(A_funcs, q_state, decode_table, width, height):
-    """
-    Negative expected log-likelihood under A (sum over modalities).
-    q_state: (S,)
+    Negative expected log-likelihood under A.
     """
     surprise = 0.0
     for modality, A_func in A_funcs.items():
-        qo = get_expected_obs(q_state, {modality: A_func}, decode_table, width, height)[modality]
+        qo = get_expected_obs(qs_t, {modality: A_func}, decode_table, width, height)[modality]
         surprise += -float(np.sum(qo * np.log(qo + 1e-16)))
     return surprise
 
 def calc_states_info_gain(A_funcs, qs_pi, decode_table, width, height):
-    total = 0.0
-    for qs_t in qs_pi:
-        # Handle both dict marginals and joint state arrays
-        if isinstance(qs_t, dict):
-            # convert dict marginals -> joint
-            q_state = joint_from_marginals(qs_t, decode_table)
-        else:
-            # already a joint state array
-            q_state = qs_t
-        total += calc_surprise(A_funcs, q_state, decode_table, width, height)
-    return total
+    return sum(calc_surprise(A_funcs, qs_t, decode_table, width, height) for qs_t in qs_pi)
 
-# ---------- precompute lnC ONCE; use joint for qo ----------
+# ------------------------------
+# Posterior over policies
+# ------------------------------
 def vanilla_fpi_update_posterior_policies(
     qs,
     A_funcs,
-    B,                 # not used directly; you call apply_B in get_expected_states
+    B,
     C_funcs,
     policies,
     decode_table,
@@ -275,89 +215,30 @@ def vanilla_fpi_update_posterior_policies(
     num_policies = len(policies)
     G = np.zeros(num_policies)
 
-    # prior over policies (log-space)
     if E is None:
         lnE = log_softmax_np(np.ones(num_policies) / num_policies)
     else:
         lnE = log_softmax_np(E)
 
-    # PRECOMPUTE lnC once (was inside loop)
-    lnC = precompute_lnC(C_funcs) if use_utility else None
-
     for policy_idx, policy in enumerate(policies):
-        # Predict factor marginals over time
+        # Predict states
         qs_pi = get_expected_states(qs, policy, env_params)
-
-        # Expected observations over time: convert each qs_t -> q_state first
-        qo_pi = []
-        for qs_t in qs_pi:
-            q_state = joint_from_marginals(qs_t, decode_table)
-            qo_t = get_expected_obs(q_state, A_funcs, decode_table,
-                                    env_params["width"], env_params["height"])
-            qo_pi.append(qo_t)
+        # Predict observations
+        qo_pi = [get_expected_obs(qs_t, A_funcs, decode_table,
+                                  env_params["width"], env_params["height"])
+                 for qs_t in qs_pi]
 
         if use_utility:
+            lnC = precompute_lnC(C_funcs)
             G[policy_idx] += calc_expected_utility(qo_pi, lnC)
 
         if use_states_info_gain:
             G[policy_idx] += calc_states_info_gain(A_funcs, qs_pi,
                                                    decode_table,
-                                                   env_params["width"],
-                                                   env_params["height"])
+                                                   env_params["width"], env_params["height"])
 
-    # Softmax over G (with lnE)
-    logits = G * gamma + lnE
-    logits -= np.max(logits)  # stabilize
-    q_pi = np.exp(logits)
+    q_pi = np.exp(G * gamma + lnE)
     q_pi /= np.sum(q_pi)
     return q_pi, G
 
-# ---------- Action Selection Functions ----------
-def sample_action(q_pi, policies, action_selection="deterministic", alpha=16.0, actions=None):
-    """
-    Sample action from policy posterior (marginal sampling).
-    
-    Args:
-        q_pi: policy posterior probabilities
-        policies: list of policies
-        action_selection: "deterministic" or "stochastic"
-        alpha: precision parameter for action selection
-        actions: list of available actions
-    
-    Returns:
-        selected action (int)
-    """
-    if action_selection == "deterministic":
-        # Find most likely policy and return its first action
-        best_policy_idx = np.argmax(q_pi)
-        return policies[best_policy_idx][0]
-    elif action_selection == "stochastic":
-        # Sample from policy posterior and return first action
-        policy_idx = np.random.choice(len(policies), p=q_pi)
-        return policies[policy_idx][0]
-    else:
-        raise ValueError(f"Unknown action selection mode: {action_selection}")
 
-def sample_policy(q_pi, policies, action_selection="deterministic", alpha=16.0):
-    """
-    Sample policy from policy posterior (full policy sampling).
-    
-    Args:
-        q_pi: policy posterior probabilities
-        policies: list of policies
-        action_selection: "deterministic" or "stochastic"
-        alpha: precision parameter for policy selection
-    
-    Returns:
-        selected action (int) - first action of selected policy
-    """
-    if action_selection == "deterministic":
-        # Find most likely policy and return its first action
-        best_policy_idx = np.argmax(q_pi)
-        return policies[best_policy_idx][0]
-    elif action_selection == "stochastic":
-        # Sample from policy posterior and return first action
-        policy_idx = np.random.choice(len(policies), p=q_pi)
-        return policies[policy_idx][0]
-    else:
-        raise ValueError(f"Unknown action selection mode: {action_selection}")

@@ -1,6 +1,25 @@
 import jax.numpy as jnp
 import numpy as np
-import model_init as mi
+from . import model_init
+state_state_dependencies = model_init.state_state_dependencies
+
+
+
+
+# --------------------------------
+# Dependencies
+# --------------------------------
+# state_state_dependencies = {
+#     "agent_pos": ["agent_pos"],
+
+#     "red_button_pos": ["red_button_pos"],
+#     "blue_button_pos": ["blue_button_pos"],
+
+#     "red_button_state": ["agent_pos", "red_button_pos", "red_button_state"],
+#     "blue_button_state": ["agent_pos", "blue_button_pos", "blue_button_state"],
+
+#     "goal_context": ["goal_context"],
+# }
 
 
 
@@ -10,84 +29,140 @@ import model_init as mi
 def normalize(p):
     return p / jnp.maximum(jnp.sum(p), 1e-8)
 
-def grid_to_pos(width, height):
-    """Return a list of (x,y) positions in row-major order."""
-    return [(x, y) for y in range(height) for x in range(width)]
 
-def prob_adjacent(q_agent_pos, q_door_pos, width, height):
-    """Probability agent is adjacent to door (works for width × height grid)."""
-    S = width * height
-    total_prob = 0.0
-    for i in range(S):
-        x1, y1 = i % width, i // width
-        for j in range(S):
-            x2, y2 = j % width, j // width
-            is_adj = (abs(x1 - x2) + abs(y1 - y2) == 1)
-            total_prob += jnp.where(is_adj, q_agent_pos[i] * q_door_pos[j], 0.0)
-    return total_prob
+# --------------------------------
+# Factor updates
+# --------------------------------
+def B_agent_pos(parents, action, width, height, noise):
+    q = parents["agent_pos"]              # shape [S]
+    S = q.shape[0]
+    new_q = jnp.zeros_like(q)
 
-def update_agent_pos(q_pos, action, width, height, noise=0.05):
-    """Move agent on a width×height grid."""
-    S = q_pos.shape[0]
-    new_pos = jnp.zeros_like(q_pos)
-    for i in range(S):
-        prob = q_pos[i]
+    def next_idx(i):
         x, y = i % width, i // width
-        if action == 0:    # UP
+        if action == 0:      # up
             y = max(0, y - 1)
-        elif action == 1:  # DOWN
+        elif action == 1:    # down
             y = min(height - 1, y + 1)
-        elif action == 2:  # LEFT
+        elif action == 2:    # left
             x = max(0, x - 1)
-        elif action == 3:  # RIGHT
+        elif action == 3:    # right
             x = min(width - 1, x + 1)
-        # 4=OPEN, 5=NOOP: no move
-        target_idx = y * width + x
-        new_pos = new_pos.at[target_idx].add(prob * (1.0 - noise))
-    new_pos += noise / S
-    return normalize(new_pos)
+        # 4=open, 5=noop: stay
+        return y * width + x
 
-def update_door_state(q_state, q_agent_pos, q_door_pos, action,
-                      width, height, open_success=0.8, dep_open_prob=None):
-    """Update door state based on adjacency and action. Optionally depend on another door being open."""
-    if action != 4:  # OPEN
-        return q_state
-    p_adj = prob_adjacent(q_agent_pos, q_door_pos, width, height)
-    p_open = open_success * p_adj
-    if dep_open_prob is not None:
-        p_open *= dep_open_prob
-    closed, opened = q_state
-    new_closed = closed * (1.0 - p_open)
-    new_open = opened + closed * p_open
-    return normalize(jnp.array([new_closed, new_open]))
+    for cur in range(S):
+        p_cur = q[cur]
+        nxt = next_idx(cur) if action in (0, 1, 2, 3) else cur
+        new_q = new_q.at[nxt].add(p_cur * (1.0 - noise))
+
+        if S > 1:
+            noise_share = p_cur * noise / (S - 1)
+            new_q = new_q + noise_share
+            new_q = new_q.at[nxt].add(-noise_share)
+
+    return normalize(new_q)
 
 
-# -------------------------------------------------
-# Functional B update
-# -------------------------------------------------
-def apply_B(qs, action, width, height):
-    new_pos = update_agent_pos(qs["agent_pos"], action, width, height)
+def B_static_with_noise(parents, self_key, noise):
+    q = parents[self_key]
+    S = q.shape[0]
+    if S <= 1:
+        return q
+    new = jnp.zeros_like(q)
+    for s in range(S):
+        stay = q[s] * (1.0 - noise)
+        leak = q[s] * noise / (S - 1)
+        new = new.at[s].add(stay)
+        new = new + leak
+        new = new.at[s].add(-leak)
+    return normalize(new)
 
-    new_red_door_pos = qs["red_door_pos"]  # static
-    new_blue_door_pos = qs["blue_door_pos"]  # static
 
-    new_red_state = update_door_state(
-        qs["red_door_state"], qs["agent_pos"], qs["red_door_pos"], action,
-        width, height
-    )
-    new_blue_state = update_door_state(
-        qs["blue_door_state"], qs["agent_pos"], qs["blue_door_pos"], action,
-        width, height, dep_open_prob=qs["red_door_state"][1]  # blue depends on red
-    )
-
-    new_goal = qs["goal_context"]
-
-    return {
-        "agent_pos": new_pos,
-        "red_door_pos": new_red_door_pos,
-        "blue_door_pos": new_blue_door_pos,
-        "red_door_state": new_red_state,
-        "blue_door_state": new_blue_state,
-        "goal_context": new_goal,
+def B_red_button_state(parents, action, noise):
+    """
+    parents = {
+      "agent_pos": prob over grid,
+      "red_button_pos": prob over grid,
+      "red_button_state": [p(not_pressed), p(pressed)]
     }
+    """
+    q_state = parents["red_button_state"]
+    q_agent = parents["agent_pos"]
+    q_button = parents["red_button_pos"]
+
+    # Non-OPEN actions: button state stays exactly the same (deterministic)
+    if action in (0, 1, 2, 3, 5):
+        return q_state
+
+    # OPEN action: check if agent is at button position
+    # Compute P(agent_pos == red_button_pos)
+    p_at_button = jnp.sum(q_agent * q_button)
+    
+    q0, q1 = q_state[0], q_state[1]
+    
+    # If at button and not pressed → pressed (80% success, 20% fail)
+    # If at button and pressed → stays pressed (100%)
+    # If not at button → stays exactly the same (deterministic)
+    next0 = q0 * (p_at_button * 0.2 + (1.0 - p_at_button) * 1.0)
+    next1 = q0 * p_at_button * 0.8 + q1 * 1.0
+    
+    return normalize(jnp.array([next0, next1]))
+
+
+def B_blue_button_state(parents, action, noise):
+    """
+    parents = {
+      "agent_pos": prob over grid,
+      "blue_button_pos": prob over grid,
+      "blue_button_state": [p(not_pressed), p(pressed)]
+    }
+    """
+    q_state = parents["blue_button_state"]
+    q_agent = parents["agent_pos"]
+    q_button = parents["blue_button_pos"]
+
+    # Non-OPEN actions: button state stays exactly the same (deterministic)
+    if action in (0, 1, 2, 3, 5):
+        return q_state
+
+    # OPEN action: check if agent is at button position
+    # Compute P(agent_pos == blue_button_pos)
+    p_at_button = jnp.sum(q_agent * q_button)
+    
+    q0, q1 = q_state[0], q_state[1]
+    
+    # If at button and not pressed → pressed (80% success, 20% fail)
+    # If at button and pressed → stays pressed (100%)
+    # If not at button → stays exactly the same (deterministic)
+    next0 = q0 * (p_at_button * 0.2 + (1.0 - p_at_button) * 1.0)
+    next1 = q0 * p_at_button * 0.8 + q1 * 1.0
+    
+    return normalize(jnp.array([next0, next1]))
+
+
+# --------------------------------
+# apply_B
+# --------------------------------
+def B_fn(qs, action, width, height, B_NOISE_LEVEL=0.05):
+    new_qs = {}
+
+    for factor, deps in state_state_dependencies.items():
+        parents = {k: qs[k] for k in deps}
+
+        if factor == "agent_pos":
+            new_qs[factor] = B_agent_pos(parents, action, width, height, B_NOISE_LEVEL)
+
+        elif factor in ("red_button_pos", "blue_button_pos"):
+            new_qs[factor] = B_static_with_noise(parents, factor, B_NOISE_LEVEL)
+
+        elif factor == "red_button_state":
+            new_qs[factor] = B_red_button_state(parents, action, B_NOISE_LEVEL)
+
+        elif factor == "blue_button_state":
+            new_qs[factor] = B_blue_button_state(parents, action, B_NOISE_LEVEL)
+
+    return new_qs
+
+
 
