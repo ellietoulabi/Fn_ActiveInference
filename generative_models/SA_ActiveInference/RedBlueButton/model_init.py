@@ -25,13 +25,13 @@ states = {
 }
 
 observations = {
-    "agent_pos": list(range(S)),
-    "on_red_button": ["FALSE", "TRUE"],
-    "on_blue_button": ["FALSE", "TRUE"],
-    "red_button_state": ["not_pressed", "pressed"],
-    "blue_button_state": ["not_pressed", "pressed"],
-    "game_result": ["neutral", "win", "lose"],
-    "button_just_pressed": ["TRUE", "FALSE"],
+    "agent_pos": list(range(S)),  # 0..S-1 positions
+    "on_red_button": ["FALSE", "TRUE"],  # index 0=FALSE, 1=TRUE
+    "on_blue_button": ["FALSE", "TRUE"],  # index 0=FALSE, 1=TRUE
+    "red_button_state": ["not_pressed", "pressed"],  # index 0=not_pressed, 1=pressed
+    "blue_button_state": ["not_pressed", "pressed"],  # index 0=not_pressed, 1=pressed
+    "game_result": ["neutral", "win", "lose"],  # index 0=neutral, 1=win, 2=lose
+    "button_just_pressed": ["FALSE", "TRUE"],  # index 0=FALSE, 1=TRUE (consistent with other binary obs)
 }
 
 observation_state_dependencies = {
