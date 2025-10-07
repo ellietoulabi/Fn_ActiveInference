@@ -138,12 +138,10 @@ def D_fn(config=None):
     config : dict, optional
         Configuration dict with keys:
         - agent_start_pos: int (default: 0)
-        - red_button_pos: int (default: 2)
-        - blue_button_pos: int (default: 6)
-        - red_button_pressed: bool (default: False)
-        - blue_button_pressed: bool (default: False)
+        - button_pos_uncertainty: bool (default: True)
+        - button_state_uncertainty: bool (default: False)
         If None, uses default configuration:
-          Agent at 0, red at 2, blue at 6, both not pressed
+          Agent at 0, button positions uncertain (uniform), button states certain (not pressed)
     
     Returns
     -------
@@ -153,27 +151,24 @@ def D_fn(config=None):
     
     Examples
     --------
-    >>> # Default configuration
+    >>> # Default configuration (uncertain button positions, certain states)
     >>> D = D_fn()
     >>> 
     >>> # Custom configuration
-    >>> D = D_fn({'agent_start_pos': 4, 'red_button_pos': 0})
+    >>> D = D_fn({'agent_start_pos': 4, 'button_pos_uncertainty': False})
     """
     if config is None:
-        # Default configuration: 3x3 grid, agent at 0, red at 2, blue at 6, both not pressed
-        return build_D(
+        # Default configuration: agent at 0, button positions uncertain (uniform), 
+        # button states certain (not pressed)
+        return build_D_uncertain(
             agent_start_pos=0,
-            red_button_pos=2,
-            blue_button_pos=6,
-            red_button_pressed=False,
-            blue_button_pressed=False
+            button_pos_uncertainty=True,
+            button_state_uncertainty=False
         )
     else:
         # Build custom D from config
-        return build_D(
+        return build_D_uncertain(
             agent_start_pos=config.get('agent_start_pos', 0),
-            red_button_pos=config.get('red_button_pos', 2),
-            blue_button_pos=config.get('blue_button_pos', 6),
-            red_button_pressed=config.get('red_button_pressed', False),
-            blue_button_pressed=config.get('blue_button_pressed', False)
+            button_pos_uncertainty=config.get('button_pos_uncertainty', True),
+            button_state_uncertainty=config.get('button_state_uncertainty', False)
         )

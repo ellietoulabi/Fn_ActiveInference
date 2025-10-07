@@ -1,42 +1,66 @@
-import jax
-import jax.numpy as jnp
+"""
+Policy evaluation and action selection for Active Inference with functional generative model.
+
+This module implements:
+- Expected state computation using B_fn
+- Expected observation prediction using A_fn
+- Expected Free Energy (EFE) calculation
+- Policy posterior inference
+- Action selection
+"""
+
 import numpy as np
-from jax.nn import log_softmax
-from generative_models.SA_ActiveInference.RedBlueButton.B import apply_B
+from . import maths
+from . import utils
 
-# --- keep your existing imports / code above ---
 
-def get_expected_state(qs_current, action, env_params):
+# =============================================================================
+# Expected State Prediction (using B_fn)
+# =============================================================================
+
+def get_expected_state(B_fn, qs_current, action, env_params):
     """
-    Compute expected next state distribution given current beliefs and an action,
-    using functional B.
+    Compute expected next state distribution given current beliefs and action.
+    
+    Uses functional B to propagate beliefs forward one step.
 
     Args:
-        qs_current : dict of belief distributions over state factors
-                     (keys: "agent_pos", "red_door_pos", "blue_door_pos",
-                            "red_door_state", "blue_door_state", "goal_context")
-        action     : int, action index
-        env_params : dict with environment dimensions & params
-                     (width, height, open_success, noise, etc.)
+        B_fn: functional transition model (qs, action) → next_qs
+        qs_current: dict of current belief distributions per factor
+        action: int, action to take
+        env_params: dict with environment parameters (width, height, etc.)
 
     Returns:
-        qs_next : dict of updated belief distributions
+        qs_next: dict of predicted next state beliefs
+    
+    Examples:
+        >>> qs = {'agent_pos': np.array([1.0, 0, 0, ...]), ...}
+        >>> action = 1  # DOWN
+        >>> qs_next = get_expected_state(B_fn, qs, action, env_params)
     """
-    width, height = env_params["width"], env_params["height"]
-    return apply_B(qs_current, action, width, height)
+    # B_fn directly handles belief propagation
+    return B_fn(qs_current, action, **env_params)
 
 
-def get_expected_states(qs_current, policy, env_params):
+def get_expected_states(B_fn, qs_current, policy, env_params):
     """
     Roll out expected states under a sequence of actions (policy).
 
     Args:
-        qs_current : dict of current beliefs
-        policy     : list/array of actions
-        env_params : dict with environment params
+        B_fn: functional transition model
+        qs_current: dict of current beliefs
+        policy: list of actions [a_0, a_1, ..., a_T]
+        env_params: dict with environment parameters
 
     Returns:
-        qs_pred : list of dicts, one per timestep
+        qs_pred: list of dicts, one per timestep
+            qs_pred[t] is the predicted belief at step t+1
+    
+    Examples:
+        >>> policy = [1, 3, 4]  # DOWN, RIGHT, OPEN
+        >>> qs_pred = get_expected_states(B_fn, qs, policy, env_params)
+        >>> len(qs_pred)
+        3
     """
     if np.isscalar(policy):
         policy = [int(policy)]
@@ -44,320 +68,517 @@ def get_expected_states(qs_current, policy, env_params):
     qs_pred = []
     qs_t = qs_current
 
-    for a in policy:
-        qs_next = apply_B(qs_t, int(a), env_params["width"], env_params["height"])
+    for action in policy:
+        qs_next = B_fn(qs_t, int(action), **env_params)
         qs_pred.append(qs_next)
         qs_t = qs_next
 
     return qs_pred
 
 
-# def get_expected_obs(qs_pi, A_funcs):
-#     """
-#     Compute expected observation distributions under a policy using functional A.
+# =============================================================================
+# Expected Observation Prediction (using A_fn)
+# =============================================================================
 
-#     Args:
-#         qs_pi   : list of beliefs over time; each item is a dict of factor marginals
-#                   e.g. qs_pi[t] = {
-#                         "agent_pos": ...,
-#                         "red_button_pos": ...,
-#                         "blue_button_pos": ...,
-#                         "red_button_state": ...,
-#                         "blue_button_state": ...,
-#                         "goal_context": ...
-#                   }
-#         A_funcs : dict (or list) of modality -> callable
-#                   Each callable takes qs_t (dict of factor marginals) and returns
-#                   a probability vector over that modality's outcomes.
-
-#     Returns:
-#         qo_pi : list of dicts, one per timestep.
-#                 qo_pi[t][modality] is a 1D array: p(o_m | qs_t)
-#     """
-#     qo_pi = []
-#     # If A_funcs is a list, give synthetic names
-#     if isinstance(A_funcs, (list, tuple)):
-#         modalities = list(range(len(A_funcs)))
-#         get_A = lambda k: A_funcs[k]
-#     else:
-#         modalities = list(A_funcs.keys())
-#         get_A = lambda k: A_funcs[k]
-
-#     for qs_t in qs_pi:
-#         qo_t = {}
-#         for modality in modalities:
-#             A_m = get_A(modality)
-#             # Functional A: directly map belief over states -> obs distribution
-#             qo_t[modality] = A_m(qs_t)
-#         qo_pi.append(qo_t)
-
-#     return qo_pi
-
-
-def get_state_sizes(width, height):
-    num_agent = width * height
-    num_red = width * height
-    num_blue = width * height
-    num_red_state = 2
-    num_blue_state = 2
-    num_goal = 2
-    return [num_agent, num_red, num_blue, num_red_state, num_blue_state, num_goal]
-
-def build_decode_table(width, height):
-    sizes = get_state_sizes(width, height)
-    S = int(jnp.prod(jnp.array(sizes)))
-
-    decode_table = jnp.zeros((S, len(sizes)), dtype=int)
-
-    # unravel index -> factor tuple
-    for idx in range(S):
-        tmp = idx
-        vals = []
-        for size in reversed(sizes):
-            vals.append(tmp % size)
-            tmp //= size
-        decode_table = decode_table.at[idx].set(jnp.array(list(reversed(vals))))
-    return decode_table  # shape (S, 6)
-
-def get_expected_obs(q_state, A_funcs, decode_table, width, height):
+def get_expected_obs_from_beliefs(A_fn, qs_dict, state_factors, state_sizes):
     """
-    q_state: (S,) belief over joint states
-    A_funcs: dict of modality -> function(state_tuple, width, height) -> obs_dist
-    decode_table: (S, num_factors) int array
-    """
-
-    def expected_for_modality(A_func):
-        def obs_for_idx(idx, prob):
-            state_tuple = decode_table[idx]
-            return prob * A_func(state_tuple, width, height)
-
-        obs = jax.vmap(obs_for_idx)(jnp.arange(q_state.shape[0]), q_state)
-        return jnp.sum(obs, axis=0)
-
-    return {modality: expected_for_modality(A_func) for modality, A_func in A_funcs.items()}
-
-
-# ---------- Utilities ----------
-def log_softmax_np(x, axis=None, keepdims=False):
-    x = np.asarray(x)
-    return np.log(np.exp(x - np.max(x, axis=axis, keepdims=True)) /
-                  np.sum(np.exp(x - np.max(x, axis=axis, keepdims=True)), axis=axis, keepdims=True))
-
-def precompute_lnC(C_funcs):
-    """
-    Turn functional C into log-preferences.
-    C_funcs: dict of modality -> callable returning preference vector
-    """
-    lnC = {}
-    for modality, C_func in C_funcs.items():
-        C_vec = np.array(C_func())  # call preference fn
-        lnC[modality] = log_softmax_np(C_vec)
-    return lnC
-
-def calc_expected_utility(qo_pi, lnC):
-    """
-    qo_pi: list of dicts (time -> modality -> distribution)
-    lnC:   dict modality -> log-preference vector
-    """
-    num_steps = len(qo_pi)
-    expected_util = 0.0
-
-    for modality, lnC_m in lnC.items():
-        if lnC_m.ndim == 1:
-            sum_q = sum(qo_pi[t][modality] for t in range(num_steps))
-            expected_util += float(sum_q @ lnC_m)
-        else:
-            Q_m = np.stack([qo_pi[t][modality] for t in range(num_steps)], axis=1)
-            expected_util += float(np.sum(Q_m * lnC_m))
-
-    return expected_util
-
-# ---------- NEW: dict marginals -> joint q(s) ----------
-def joint_from_marginals(qs_dict, decode_table):
-    """
-    qs_dict: dict of factor marginals
-      - "agent_pos": (Wh,)
-      - "red_door_pos": (Wh,)
-      - "blue_door_pos": (Wh,)
-      - "red_door_state": (2,)
-      - "blue_door_state": (2,)
-      - "goal_context": (2,)
-    decode_table: (S, 6) int indices -> (s_agent, s_rpos, s_bpos, s_rstate, s_bstate, s_goal)
-
-    returns: q_state (S,)
-    """
-    factors_order = [
-        "agent_pos",
-        "red_door_pos",
-        "blue_door_pos",
-        "red_door_state",
-        "blue_door_state",
-        "goal_context",
-    ]
+    Compute expected observation distributions from belief over states.
     
-    # Convert all arrays to JAX arrays to avoid mixing JAX and NumPy
-    qs_jax = {}
-    for key, arr in qs_dict.items():
-        qs_jax[key] = jnp.array(arr, dtype=jnp.float32)
+    Optimized: enumerate unique state configurations once, reuse across modalities.
+    """
+    from generative_models.SA_ActiveInference.RedBlueButton import model_init
+    import itertools
     
-    # Use JAX-compatible operations
-    def prob_for_index(idx_row):
-        # idx_row is shape (6,), factor indices for this joint state
-        p = 1.0
-        p *= qs_jax["agent_pos"][idx_row[0]]
-        p *= qs_jax["red_door_pos"][idx_row[1]]
-        p *= qs_jax["blue_door_pos"][idx_row[2]]
-        p *= qs_jax["red_door_state"][idx_row[3]]
-        p *= qs_jax["blue_door_state"][idx_row[4]]
-        p *= qs_jax["goal_context"][idx_row[5]]
-        return p
+    # Convert JAX arrays to numpy to avoid compilation overhead
+    qs_dict_np = {f: np.array(qs_dict[f]) for f in state_factors}
+    
+    map_indices = {f: int(np.argmax(qs_dict_np[f])) for f in state_factors}
+    SKIP_MODALITIES = {'button_just_pressed'}
+    
+    # Adaptive entropy threshold based on belief concentration
+    max_entropy_observed = max(
+        -np.sum(qs_dict_np[f] * np.log(qs_dict_np[f] + 1e-16))
+        for f in state_factors
+    )
+    ENTROPY_THRESHOLD = min(0.1, max(0.01, max_entropy_observed * 0.1))
+    
+    dynamic_factors = set()
+    for f in state_factors:
+        q_f = qs_dict_np[f]  # Use numpy version
+        entropy = -np.sum(q_f * np.log(q_f + 1e-16))
+        if entropy > ENTROPY_THRESHOLD:
+            dynamic_factors.add(f)
+    
+    # Find deps that are actually dynamic
+    all_deps = set()
+    for modality, deps in model_init.observation_state_dependencies.items():
+        if modality not in SKIP_MODALITIES:
+            for dep in deps:
+                if dep in dynamic_factors:
+                    all_deps.add(dep)
+    
+    # Enumerate combinations of DYNAMIC factors only
+    dep_list = sorted(all_deps)
+    dep_ranges = [range(len(qs_dict_np[dep])) for dep in dep_list]
+    
+    # Precompute likelihoods for all state combinations
+    likelihood_cache = []
+    prob_cache = []
+    
+    for combo in itertools.product(*dep_ranges):
+        # Compute joint prob
+        joint_prob = 1.0
+        state_indices = map_indices.copy()
+        for dep, idx in zip(dep_list, combo):
+            joint_prob *= qs_dict_np[dep][idx]  # Use numpy version
+            state_indices[dep] = int(idx)
+        
+        if joint_prob <= 1e-16:
+            continue
+        
+        # Call A_fn ONCE for this state
+        obs_likelihoods = A_fn(state_indices)
+        likelihood_cache.append(obs_likelihoods)
+        prob_cache.append(joint_prob)
+    
+    # Now marginalize each modality using cached likelihoods
+    qo_dict = {}
+    for modality, deps in model_init.observation_state_dependencies.items():
+        if modality in SKIP_MODALITIES:
+            continue
+        
+        num_obs = len(model_init.observations[modality])
+        qo_m = np.zeros(num_obs)
+        
+        for obs_lik, joint_prob in zip(likelihood_cache, prob_cache):
+            p_o_m = obs_lik[modality]
+            qo_m += joint_prob * p_o_m
+        
+        qo_dict[modality] = maths.normalize(qo_m)
+    
+    # Approximate button_just_pressed
+    if 'button_just_pressed' in model_init.observation_state_dependencies:
+        p_on_red = qo_dict['on_red_button'][1]
+        p_on_blue = qo_dict['on_blue_button'][1]
+        p_just_pressed = min(1.0, p_on_red + p_on_blue)
+        qo_dict['button_just_pressed'] = np.array([1.0 - p_just_pressed, p_just_pressed])
+    
+    return qo_dict
 
-    q_state = jax.vmap(prob_for_index)(decode_table)
-    # normalize defensively
-    q_state = q_state / jnp.maximum(jnp.sum(q_state), 1e-16)
-    return q_state
 
-# ---------- (unchanged) ----------
-def get_expected_obs(q_state, A_funcs, decode_table, width, height):
+def get_expected_obs_sequence(A_fn, qs_pi, state_factors, state_sizes):
     """
-    q_state: (S,) belief over joint states
-    A_funcs: dict of modality -> function(state_tuple, width, height) -> obs_dist
-    decode_table: (S, num_factors) int array
+    Compute expected observations over time under a policy.
+    
+    Args:
+        A_fn: functional observation model
+        qs_pi: list of belief dicts over time
+        state_factors: list of factor names
+        state_sizes: dict of factor sizes
+    
+    Returns:
+        qo_pi: list of dicts, one per timestep
+            qo_pi[t][modality] is predicted observation distribution at step t
     """
-    def expected_for_modality(A_func):
-        def obs_for_idx(idx, prob):
-            state_tuple = decode_table[idx]
-            return prob * A_func(state_tuple, width, height)
-        obs = jax.vmap(obs_for_idx)(jnp.arange(q_state.shape[0]), q_state)
-        return jnp.sum(obs, axis=0)
-
-    return {modality: expected_for_modality(A_func) for modality, A_func in A_funcs.items()}
-
-# ---------- tweak: calc_surprise expects joint now ----------
-def calc_surprise(A_funcs, q_state, decode_table, width, height):
-    """
-    Negative expected log-likelihood under A (sum over modalities).
-    q_state: (S,)
-    """
-    surprise = 0.0
-    for modality, A_func in A_funcs.items():
-        qo = get_expected_obs(q_state, {modality: A_func}, decode_table, width, height)[modality]
-        surprise += -float(np.sum(qo * np.log(qo + 1e-16)))
-    return surprise
-
-def calc_states_info_gain(A_funcs, qs_pi, decode_table, width, height):
-    total = 0.0
+    qo_pi = []
+    
     for qs_t in qs_pi:
-        # Handle both dict marginals and joint state arrays
-        if isinstance(qs_t, dict):
-            # convert dict marginals -> joint
-            q_state = joint_from_marginals(qs_t, decode_table)
-        else:
-            # already a joint state array
-            q_state = qs_t
-        total += calc_surprise(A_funcs, q_state, decode_table, width, height)
-    return total
+        qo_t = get_expected_obs_from_beliefs(A_fn, qs_t, state_factors, state_sizes)
+        qo_pi.append(qo_t)
+    
+    return qo_pi
 
-# ---------- precompute lnC ONCE; use joint for qo ----------
+
+def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_sizes, observation_labels):
+    """
+    UNIFIED: Compute BOTH expected observations AND info gain in ONE pass.
+    
+    This avoids redundant state enumeration by computing both metrics from the
+    same cached A_fn calls.
+    
+    Returns:
+        qo_pi: list of observation predictions per timestep
+        total_info_gain: float, sum of Bayesian surprise over timesteps
+    """
+    from generative_models.SA_ActiveInference.RedBlueButton import model_init
+    import itertools
+    
+    qo_pi = []
+    total_info_gain = 0.0
+    
+    for qs_t in qs_pi:
+        # Convert to numpy once
+        qs_dict_np = {f: np.array(qs_t[f]) for f in state_factors}
+        map_indices = {f: int(np.argmax(qs_dict_np[f])) for f in state_factors}
+        
+        # Find dynamic factors (adaptive entropy threshold)
+        # When beliefs are very concentrated, use lower threshold
+        # When beliefs are uncertain, use higher threshold to reduce computation
+        max_entropy_observed = max(
+            -np.sum(qs_dict_np[f] * np.log(qs_dict_np[f] + 1e-16))
+            for f in state_factors
+        )
+        # Adaptive threshold: 0.01 when concentrated, 0.1 when very uncertain
+        ENTROPY_THRESHOLD = min(0.1, max(0.01, max_entropy_observed * 0.1))
+        
+        dynamic_factors = set()
+        for f in state_factors:
+            q_f = qs_dict_np[f]
+            entropy = -np.sum(q_f * np.log(q_f + 1e-16))
+            if entropy > ENTROPY_THRESHOLD:
+                dynamic_factors.add(f)
+        
+        # Find dynamic deps
+        SKIP_MODALITIES = {'button_just_pressed'}
+        all_deps = set()
+        for modality, deps in model_init.observation_state_dependencies.items():
+            if modality not in SKIP_MODALITIES:
+                for dep in deps:
+                    if dep in dynamic_factors:
+                        all_deps.add(dep)
+        
+        # Enumerate states ONCE, cache A_fn results
+        dep_list = sorted(all_deps)
+        dep_ranges = [range(len(qs_dict_np[dep])) for dep in dep_list]
+        
+        likelihood_cache = []
+        prob_cache = []
+        
+        for combo in itertools.product(*dep_ranges):
+            joint_prob = 1.0
+            state_indices = map_indices.copy()
+            for dep, idx in zip(dep_list, combo):
+                joint_prob *= qs_dict_np[dep][idx]
+                state_indices[dep] = int(idx)
+            
+            if joint_prob <= 1e-16:
+                continue
+            
+            # Call A_fn ONCE per state
+            obs_likelihoods = A_fn(state_indices)
+            likelihood_cache.append(obs_likelihoods)
+            prob_cache.append(joint_prob)
+        
+        # --- EXPECTED OBSERVATIONS ---
+        qo_t = {}
+        for modality, deps in model_init.observation_state_dependencies.items():
+            if modality in SKIP_MODALITIES:
+                continue
+            
+            num_obs = len(model_init.observations[modality])
+            qo_m = np.zeros(num_obs)
+            
+            for obs_lik, joint_prob in zip(likelihood_cache, prob_cache):
+                qo_m += joint_prob * obs_lik[modality]
+            
+            qo_t[modality] = maths.normalize(qo_m)
+        
+        # Approximate button_just_pressed
+        if 'button_just_pressed' in model_init.observation_state_dependencies:
+            p_on_red = qo_t['on_red_button'][1]
+            p_on_blue = qo_t['on_blue_button'][1]
+            p_just_pressed = min(1.0, p_on_red + p_on_blue)
+            qo_t['button_just_pressed'] = np.array([1.0 - p_just_pressed, p_just_pressed])
+        
+        qo_pi.append(qo_t)
+        
+        # --- INFO GAIN (using same cached likelihoods) ---
+        qo_per_modality = {}
+        cond_entropy_per_modality = {}
+        
+        for modality, deps in model_init.observation_state_dependencies.items():
+            if modality in SKIP_MODALITIES:
+                continue
+            
+            num_obs = len(model_init.observations[modality])
+            qo_m = np.zeros(num_obs)
+            cond_entropy_m = 0.0
+            
+            for obs_lik, joint_prob in zip(likelihood_cache, prob_cache):
+                p_o = obs_lik[modality]
+                qo_m += joint_prob * p_o
+                H_o_given_s = -np.sum(p_o * maths.log_stable(p_o))
+                cond_entropy_m += joint_prob * H_o_given_s
+            
+            qo_per_modality[modality] = maths.normalize(qo_m)
+            cond_entropy_per_modality[modality] = cond_entropy_m
+        
+        # Approximate button_just_pressed contribution
+        if 'button_just_pressed' in model_init.observation_state_dependencies:
+            qo_per_modality['button_just_pressed'] = np.array([0.9, 0.1])
+            cond_entropy_per_modality['button_just_pressed'] = 0.01
+        
+        # Compute entropies
+        pred_entropy = 0.0
+        cond_entropy = 0.0
+        for modality in qo_per_modality.keys():
+            qo = qo_per_modality[modality]
+            H_qo = -np.sum(qo * maths.log_stable(qo))
+            pred_entropy += H_qo
+            cond_entropy += cond_entropy_per_modality[modality]
+        
+        total_info_gain += (pred_entropy - cond_entropy)
+    
+    return qo_pi, float(total_info_gain)
+
+
+# =============================================================================
+# Expected Free Energy Components
+# =============================================================================
+
+def calc_expected_utility(qo_pi, C_fn, observation_labels):
+    """
+    Calculate expected utility (preference satisfaction) over time.
+    
+    U = Σ_t Σ_m Σ_o q(o_m^t) * C_m(o)
+    
+    Args:
+        qo_pi: list of observation prediction dicts over time
+        C_fn: functional preference model (obs_indices) → preferences
+        observation_labels: dict mapping modality names to label lists
+    
+    Returns:
+        expected_utility: float, sum of expected preferences
+    
+    Notes:
+        Higher utility = observations align better with preferences
+    """
+    total_utility = 0.0
+    
+    for qo_t in qo_pi:
+        # For each timestep, compute expected utility
+        for modality, qo_m in qo_t.items():
+            # Get number of observations for this modality
+            num_obs = len(observation_labels[modality])
+            
+            # Sum over observations: Σ_o q(o) * C(o)
+            for obs_idx in range(num_obs):
+                # Get preference for this observation
+                obs_indices = {modality: obs_idx}
+                prefs = C_fn(obs_indices)
+                pref_value = prefs.get(modality, 0.0)
+                
+                # Weight by probability of observing it
+                total_utility += qo_m[obs_idx] * pref_value
+    
+    return float(total_utility)
+
+
+def calc_states_info_gain(A_fn, qs_pi, state_factors, state_sizes):
+    """
+    Sum Bayesian surprise over time using full marginalization.
+    """
+    total_info_gain = 0.0
+    for qs_t in qs_pi:
+        G_t = maths.calc_surprise_functional(A_fn, qs_t, state_factors, state_sizes)
+        total_info_gain += G_t
+    return float(total_info_gain)
+
+
+# =============================================================================
+# Policy Posterior Inference
+# =============================================================================
+
 def vanilla_fpi_update_posterior_policies(
     qs,
-    A_funcs,
-    B,                 # not used directly; you call apply_B in get_expected_states
-    C_funcs,
+    A_fn,
+    B_fn,
+    C_fn,
     policies,
-    decode_table,
     env_params,
+    state_factors,
+    state_sizes,
+    observation_labels,
     use_utility=True,
     use_states_info_gain=True,
     E=None,
     gamma=16.0,
 ):
+    """
+    Update posterior over policies by computing Expected Free Energy (EFE).
+    
+    For each policy π:
+        G(π) = -E_π[U] - E_π[G_states]
+             = -(expected utility) - (expected information gain)
+    
+    Then: q(π) ∝ exp(-γ * G(π)) * p(π)
+    
+    Args:
+        qs: dict of current state beliefs
+        A_fn: functional observation model
+        B_fn: functional transition model
+        C_fn: functional preference model
+        policies: list of policies (each policy is list of actions)
+        env_params: dict with environment parameters
+        state_factors: list of state factor names
+        state_sizes: dict mapping factor names to sizes
+        observation_labels: dict mapping modality names to observation labels
+        use_utility: whether to include utility term
+        use_states_info_gain: whether to include info gain term
+        E: prior over policies (if None, uniform)
+        gamma: precision parameter (inverse temperature)
+    
+    Returns:
+        q_pi: array of policy posterior probabilities
+        G: array of expected free energies per policy
+    
+    Notes:
+        - Lower G = better policy (more utility and/or more info gain)
+        - Gamma controls how deterministic policy selection is
+    """
     num_policies = len(policies)
     G = np.zeros(num_policies)
 
-    # prior over policies (log-space)
+    # Prior over policies (log space)
     if E is None:
-        lnE = log_softmax_np(np.ones(num_policies) / num_policies)
+        lnE = np.log(np.ones(num_policies) / num_policies)
     else:
-        lnE = log_softmax_np(E)
+        lnE = maths.log_stable(E)
 
-    # PRECOMPUTE lnC once (was inside loop)
-    lnC = precompute_lnC(C_funcs) if use_utility else None
-
+    # Evaluate each policy
     for policy_idx, policy in enumerate(policies):
-        # Predict factor marginals over time
-        qs_pi = get_expected_states(qs, policy, env_params)
-
-        # Expected observations over time: convert each qs_t -> q_state first
-        qo_pi = []
-        for qs_t in qs_pi:
-            q_state = joint_from_marginals(qs_t, decode_table)
-            qo_t = get_expected_obs(q_state, A_funcs, decode_table,
-                                    env_params["width"], env_params["height"])
-            qo_pi.append(qo_t)
-
-        if use_utility:
-            G[policy_idx] += calc_expected_utility(qo_pi, lnC)
-
-        if use_states_info_gain:
-            G[policy_idx] += calc_states_info_gain(A_funcs, qs_pi,
-                                                   decode_table,
-                                                   env_params["width"],
-                                                   env_params["height"])
-
-    # Softmax over G (with lnE)
-    logits = G * gamma + lnE
-    logits -= np.max(logits)  # stabilize
-    q_pi = np.exp(logits)
-    q_pi /= np.sum(q_pi)
+        # Predict future states under this policy
+        qs_pi = get_expected_states(B_fn, qs, policy, env_params)
+        
+        # UNIFIED: Compute expected obs AND info gain in one pass (30-40% speedup)
+        if use_utility and use_states_info_gain:
+            qo_pi, info_gain = get_expected_obs_and_info_gain_unified(
+                A_fn, qs_pi, state_factors, state_sizes, observation_labels
+            )
+            utility = calc_expected_utility(qo_pi, C_fn, observation_labels)
+            G[policy_idx] -= utility
+            G[policy_idx] -= info_gain
+        elif use_utility:
+            # Only utility needed
+            qo_pi = get_expected_obs_sequence(A_fn, qs_pi, state_factors, state_sizes)
+            utility = calc_expected_utility(qo_pi, C_fn, observation_labels)
+            G[policy_idx] -= utility
+        elif use_states_info_gain:
+            # Only info gain needed (rare case)
+            _, info_gain = get_expected_obs_and_info_gain_unified(
+                A_fn, qs_pi, state_factors, state_sizes, observation_labels
+            )
+            G[policy_idx] -= info_gain  # Subtract info gain (we want to maximize it)
+    
+    # Compute policy posterior: q(π) ∝ exp(-γ * G(π)) * p(π)
+    log_q_pi = -gamma * G + lnE
+    q_pi = maths.softmax(log_q_pi)
+    
     return q_pi, G
 
-# ---------- Action Selection Functions ----------
+
+# =============================================================================
+# Action Selection
+# =============================================================================
+
 def sample_action(q_pi, policies, action_selection="deterministic", alpha=16.0, actions=None):
     """
-    Sample action from policy posterior (marginal sampling).
+    Sample action from policy posterior (marginal over first actions).
+    
+    Wrapper around utils.sample_action for consistency.
     
     Args:
-        q_pi: policy posterior probabilities
+        q_pi: policy posterior
         policies: list of policies
         action_selection: "deterministic" or "stochastic"
-        alpha: precision parameter for action selection
+        alpha: precision parameter
         actions: list of available actions
     
     Returns:
         selected action (int)
     """
-    if action_selection == "deterministic":
-        # Find most likely policy and return its first action
-        best_policy_idx = np.argmax(q_pi)
-        return policies[best_policy_idx][0]
-    elif action_selection == "stochastic":
-        # Sample from policy posterior and return first action
-        policy_idx = np.random.choice(len(policies), p=q_pi)
-        return policies[policy_idx][0]
-    else:
-        raise ValueError(f"Unknown action selection mode: {action_selection}")
+    return utils.sample_action(q_pi, policies, action_selection, alpha, actions)
+
 
 def sample_policy(q_pi, policies, action_selection="deterministic", alpha=16.0):
     """
-    Sample policy from policy posterior (full policy sampling).
+    Sample policy from policy posterior and return first action.
+    
+    Wrapper around utils.sample_policy for consistency.
     
     Args:
-        q_pi: policy posterior probabilities
+        q_pi: policy posterior
         policies: list of policies
         action_selection: "deterministic" or "stochastic"
-        alpha: precision parameter for policy selection
+        alpha: precision parameter
     
     Returns:
-        selected action (int) - first action of selected policy
+        selected action (int)
     """
-    if action_selection == "deterministic":
-        # Find most likely policy and return its first action
-        best_policy_idx = np.argmax(q_pi)
-        return policies[best_policy_idx][0]
-    elif action_selection == "stochastic":
-        # Sample from policy posterior and return first action
-        policy_idx = np.random.choice(len(policies), p=q_pi)
-        return policies[policy_idx][0]
-    else:
-        raise ValueError(f"Unknown action selection mode: {action_selection}")
+    return utils.sample_policy(q_pi, policies, action_selection, alpha)
+
+
+# =============================================================================
+# Debugging/Analysis Utilities
+# =============================================================================
+
+def evaluate_policy_components(
+    policy,
+    qs,
+    A_fn,
+    B_fn,
+    C_fn,
+    env_params,
+    state_factors,
+    state_sizes,
+    observation_labels,
+):
+    """
+    Evaluate individual components of a single policy's EFE.
+    
+    Useful for debugging and understanding agent behavior.
+    
+    Args:
+        policy: single policy (list of actions)
+        qs: current beliefs
+        A_fn, B_fn, C_fn: generative model functions
+        env_params: environment parameters
+        state_factors: list of factor names
+        state_sizes: dict of factor sizes
+        observation_labels: dict of observation labels
+    
+    Returns:
+        components: dict with 'utility', 'info_gain', 'G_total'
+    """
+    # Predict states
+    qs_pi = get_expected_states(B_fn, qs, policy, env_params)
+    
+    # Predict observations
+    qo_pi = get_expected_obs_sequence(A_fn, qs_pi, state_factors, state_sizes)
+    
+    # Compute components
+    utility = calc_expected_utility(qo_pi, C_fn, observation_labels)
+    info_gain = calc_states_info_gain(A_fn, qs_pi, state_factors, state_sizes)
+    
+    G_total = -utility - info_gain
+    
+    return {
+        'utility': float(utility),
+        'info_gain': float(info_gain),
+        'G_total': float(G_total),
+        'predicted_states': qs_pi,
+        'predicted_observations': qo_pi,
+    }
+
+
+def get_top_policies(q_pi, policies, top_k=5):
+    """
+    Get top-k most likely policies.
+    
+    Args:
+        q_pi: policy posterior
+        policies: list of policies
+        top_k: number of top policies to return
+    
+    Returns:
+        top_policies: list of (policy, probability, index) tuples
+    """
+    top_indices = np.argsort(q_pi)[-top_k:][::-1]
+    
+    top_policies = []
+    for idx in top_indices:
+        policy = policies[idx]
+        prob = q_pi[idx]
+        top_policies.append((policy, float(prob), int(idx)))
+    
+    return top_policies

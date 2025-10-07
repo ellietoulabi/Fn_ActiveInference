@@ -253,9 +253,9 @@ A_FUNCTIONS = {
 # A_fn: Main interface (analogous to B_fn)
 # =============================================================================
 
-def A_fn(state_indices, prev_state_indices=None):
+def A_fn(state_indices, prev_state_indices=None, modalities=None):
     """
-    Get observation likelihoods for ALL modalities given specific state configuration.
+    Get observation likelihoods for specified modalities given specific state configuration.
     
     This is the main A function analogous to B_fn for transitions.
     Takes specific state indices and returns observation likelihoods.
@@ -273,6 +273,9 @@ def A_fn(state_indices, prev_state_indices=None):
         }
     prev_state_indices : dict, optional
         Previous state indices (needed for button_just_pressed modality)
+    modalities : list of str, optional
+        List of modality names to compute. If None, compute all modalities.
+        This allows selective computation for efficiency.
     
     Returns
     -------
@@ -282,7 +285,13 @@ def A_fn(state_indices, prev_state_indices=None):
     """
     obs_likelihoods = {}
     
-    for modality in model_init.observation_state_dependencies.keys():
+    # Determine which modalities to compute
+    if modalities is None:
+        modalities_to_compute = model_init.observation_state_dependencies.keys()
+    else:
+        modalities_to_compute = modalities
+    
+    for modality in modalities_to_compute:
         deps = model_init.observation_state_dependencies[modality]
         A_func = A_FUNCTIONS[modality]
         

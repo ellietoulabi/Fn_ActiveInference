@@ -1,206 +1,239 @@
-#!/usr/bin/env python3
 """
-Main script to run Active Inference agent in RedBlueButton environment
+Main script: Active Inference agent interacting with RedBlueButton environment.
+
+Runs one episode showing beliefs, observations, and actions at each step.
 """
 
 import numpy as np
-import jax.numpy as jnp
-from agents.ActiveInference import FunctionalAgent
-from agents.ActiveInference.maths import build_decode_table
-from generative_models.SA_ActiveInference.RedBlueButton.B import apply_B
-from generative_models.SA_ActiveInference.RedBlueButton.A_noisy import A_funcs_noisy
+
+# Import environment
 from environments.RedBlueButton.SingleAgentRedBlueButton import SingleAgentRedBlueButtonEnv
 
+# Import functional generative model
+from generative_models.SA_ActiveInference.RedBlueButton import (
+    A_fn, B_fn, C_fn, D_fn, model_init, env_utils
+)
+
+# Import agent
+from agents.ActiveInference.agent import Agent
+
+
+def print_header():
+    """Print header with grid layout."""
+    print("="*80)
+    print("ACTIVE INFERENCE AGENT - RED BLUE BUTTON TASK")
+    print("="*80)
+    print("\n3×3 Grid Layout:")
+    print("  ┌─────┬─────┬─────┐")
+    print("  │  0  │  1  │  2  │  ← Blue button at 2")
+    print("  ├─────┼─────┼─────┤")
+    print("  │  3  │  4  │  5  │")
+    print("  ├─────┼─────┼─────┤")
+    print("  │  6  │  7  │  8  │  ← Red button at 6")
+    print("  └─────┴─────┴─────┘")
+    print("  ↑")
+    print("  Agent starts here (position 0)")
+    print("\nGoal: Press RED button first, then BLUE button")
+    print("="*80)
+
+
+def print_step_info(step, obs_dict, qs, action, reward, info):
+    """Print detailed step information."""
+    print(f"\n{'='*80}")
+    print(f"STEP {step}")
+    print(f"{'='*80}")
+    
+    # Observations
+    print("\n📊 OBSERVATIONS:")
+    print(f"  Position:             {obs_dict['agent_pos']}")
+    print(f"  On red button:        {['FALSE', 'TRUE'][obs_dict['on_red_button']]}")
+    print(f"  On blue button:       {['FALSE', 'TRUE'][obs_dict['on_blue_button']]}")
+    print(f"  Red button state:     {['not_pressed', 'pressed'][obs_dict['red_button_state']]}")
+    print(f"  Blue button state:    {['not_pressed', 'pressed'][obs_dict['blue_button_state']]}")
+    print(f"  Game result:          {['neutral', 'win', 'lose'][obs_dict['game_result']]}")
+    print(f"  Button just pressed:  {['FALSE', 'TRUE'][obs_dict['button_just_pressed']]}")
+    
+    # Beliefs (show most likely state for each factor)
+    print("\n🧠 AGENT BELIEFS (Most Likely States):")
+    for factor, belief in qs.items():
+        most_likely_idx = np.argmax(belief)
+        confidence = belief[most_likely_idx]
+        
+        # Format based on factor type
+        if factor == 'agent_pos':
+            print(f"  Agent position:       {most_likely_idx} (confidence: {confidence:.3f})")
+        elif factor == 'red_button_pos':
+            print(f"  Red button at:        {most_likely_idx} (confidence: {confidence:.3f})")
+        elif factor == 'blue_button_pos':
+            print(f"  Blue button at:       {most_likely_idx} (confidence: {confidence:.3f})")
+        elif factor == 'red_button_state':
+            state_name = ['not_pressed', 'pressed'][most_likely_idx]
+            print(f"  Red button:           {state_name} (confidence: {confidence:.3f})")
+        elif factor == 'blue_button_state':
+            state_name = ['not_pressed', 'pressed'][most_likely_idx]
+            print(f"  Blue button:          {state_name} (confidence: {confidence:.3f})")
+    
+    # Action
+    action_names = {0: 'UP', 1: 'DOWN', 2: 'LEFT', 3: 'RIGHT', 4: 'OPEN', 5: 'NOOP'}
+    print(f"\n🎯 ACTION SELECTED:     {action} ({action_names[action]})")
+    
+    # Outcome
+    print(f"\n📈 OUTCOME:")
+    print(f"  Reward:               {reward:+.3f}")
+    print(f"  Result:               {info.get('result', 'neutral')}")
+
+
+def print_summary(episode_reward, step_count, outcome):
+    """Print episode summary."""
+    print("\n" + "="*80)
+    print("EPISODE SUMMARY")
+    print("="*80)
+    print(f"  Total steps:          {step_count}")
+    print(f"  Total reward:         {episode_reward:+.3f}")
+    print(f"  Outcome:              {outcome.upper()}")
+    
+    if outcome == 'win':
+        print("\n  🎉 SUCCESS! Agent pressed red then blue!")
+    elif outcome == 'lose':
+        print("\n  ❌ FAILED! Wrong button order or timeout.")
+    else:
+        print("\n  ⏸️  Episode incomplete.")
+    
+    print("="*80)
+
+
 def main():
-    print("=== Active Inference Agent in RedBlueButton Environment ===")
-    print("Running for 50 steps with policy length 1")
-    print("=" * 60)
+    """Run one episode of the agent interacting with environment."""
     
-    # Create environment
-    env = SingleAgentRedBlueButtonEnv(width=3, height=3)
+    # Print header
+    print_header()
     
-    # Create A functions (wrappers for the agent)
-    def A_agent_pos(state_tuple, width, height):
-        S = width * height
-        return A_funcs_noisy["agent_pos"](state_tuple, S)
+    # =========================================================================
+    # 1. Setup Environment
+    # =========================================================================
+    print("\n1. Setting up environment...")
+    env = SingleAgentRedBlueButtonEnv(
+        width=3,
+        height=3,
+        red_button_pos=(0, 2),   # Position 6
+        blue_button_pos=(2, 0),  # Position 2
+        agent_start_pos=(0, 0),  # Position 0
+        max_steps=10
+    )
+    env_obs, _ = env.reset()
+    print("   ✓ Environment ready")
     
-    def A_on_red_button(state_tuple, width, height):
-        S = 2
-        return A_funcs_noisy["on_red_button"](state_tuple, S)
+    # =========================================================================
+    # 2. Setup Agent
+    # =========================================================================
+    print("\n2. Setting up agent...")
     
-    def A_on_blue_button(state_tuple, width, height):
-        S = 2
-        return A_funcs_noisy["on_blue_button"](state_tuple, S)
+    state_factors = list(model_init.states.keys())
+    state_sizes = {factor: len(values) for factor, values in model_init.states.items()}
     
-    def A_red_button_state(state_tuple, width, height):
-        S = 2
-        return A_funcs_noisy["red_button_state"](state_tuple, S)
+    # Get D config from environment to ensure alignment
+    d_config = env_utils.get_D_config_from_env(env)
     
-    def A_blue_button_state(state_tuple, width, height):
-        S = 2
-        return A_funcs_noisy["blue_button_state"](state_tuple, S)
-    
-    def A_game_result(state_tuple, width, height):
-        S = 3
-        return A_funcs_noisy["game_result"](state_tuple, S)
-    
-    A_funcs = {
-        'agent_pos': A_agent_pos,
-        'on_red_button': A_on_red_button,
-        'on_blue_button': A_on_blue_button,
-        'red_button_state': A_red_button_state,
-        'blue_button_state': A_blue_button_state,
-        'game_result': A_game_result
-    }
-    
-    # Create mock C functions that return preference vectors directly
-    def C_agent_pos():
-        # Prefer center positions
-        prefs = np.ones(9) * 0.1
-        prefs[4] = 1.0  # Prefer center
-        return prefs
-    
-    def C_on_red_button():
-        return np.array([0.1, 0.9])  # Prefer being on red button
-    
-    def C_on_blue_button():
-        return np.array([0.1, 0.9])  # Prefer being on blue button
-    
-    def C_red_button_state():
-        return np.array([0.1, 0.9])  # Prefer red button pressed
-    
-    def C_blue_button_state():
-        return np.array([0.1, 0.9])  # Prefer blue button pressed
-    
-    def C_game_result():
-        return np.array([0.1, 0.9, 0.1])  # Prefer winning
-    
-    C_funcs = {
-        'agent_pos': C_agent_pos,
-        'on_red_button': C_on_red_button,
-        'on_blue_button': C_on_blue_button,
-        'red_button_state': C_red_button_state,
-        'blue_button_state': C_blue_button_state,
-        'game_result': C_game_result
-    }
-    
-    # Initial beliefs
-    D_funcs = {
-        'agent_pos': np.ones(9) / 9,
-        'red_door_pos': np.ones(9) / 9,
-        'blue_door_pos': np.ones(9) / 9,
-        'red_door_state': np.array([0.8, 0.2]),
-        'blue_door_state': np.array([0.8, 0.2]),
-        'goal_context': np.array([0.5, 0.5])
-    }
-    
-    # Create decode table
-    decode_table = build_decode_table(3, 3)
-    
-    # Environment parameters
-    env_params = {
-        'width': 3,
-        'height': 3,
-        'obs_sizes': {
-            'agent_pos': 9,
-            'on_red_button': 2,
-            'on_blue_button': 2,
-            'red_button_state': 2,
-            'blue_button_state': 2,
-            'game_result': 3
-        }
-    }
-    
-    # Create agent
-    agent = FunctionalAgent(
-        A_funcs=A_funcs,
-        B_func=apply_B,
-        C_funcs=C_funcs,
-        D_funcs=D_funcs,
-        decode_table=decode_table,
-        env_params=env_params,
-        policy_len=1,  # Policy length 1 as requested
-        gamma=16.0,
-        alpha=16.0
+    agent = Agent(
+        A_fn=A_fn,
+        B_fn=B_fn,
+        C_fn=C_fn,
+        D_fn=D_fn,
+        state_factors=state_factors,
+        state_sizes=state_sizes,
+        observation_labels=model_init.observations,
+        env_params={'width': model_init.n, 'height': model_init.m},
+        actions=list(range(6)),  # UP, DOWN, LEFT, RIGHT, OPEN, NOOP
+        policy_len=2,            # Plan 2 steps ahead
+        gamma=16.0,              # High precision for near-deterministic policy selection
+        alpha=16.0,              # High precision for near-deterministic action selection
+        num_iter=16,             # Inference iterations
     )
     
-    print(f"Agent created with {len(agent.policies)} policies")
-    print(f"Actions: UP(0), DOWN(1), LEFT(2), RIGHT(3), OPEN(4), NOOP(5)")
+    # Reset agent with environment-compatible config
+    agent.reset(config=d_config)
+    print("   ✓ Agent ready")
+    print(f"   Planning horizon: {agent.policy_len} steps")
+    print(f"   Number of policies: {len(agent.policies)}")
     
-    # Reset environment
-    obs, info = env.reset()
-    print(f"Environment reset. Initial observation keys: {list(obs.keys())}")
+    # =========================================================================
+    # 3. Run Episode
+    # =========================================================================
+    print("\n3. Running episode (max 10 steps)...")
+    print("-"*80)
     
-    action_names = ["UP", "DOWN", "LEFT", "RIGHT", "OPEN", "NOOP"]
+    step = 0
+    episode_reward = 0.0
+    done = False
     
-    # Run for 50 steps
-    for step in range(50):
-        print(f"\n--- STEP {step + 1} ---")
+    while not done and step < 10:
+        step += 1
         
-        # Show current observations (convert to proper format)
-        agent_pos = int(obs['position'][0] * 3 + obs['position'][1])  # Convert [row, col] to index
-        on_red = int(obs['on_red_button'])
-        on_blue = int(obs['on_blue_button'])
-        red_pressed = int(obs['red_button_pressed'])
-        blue_pressed = int(obs['blue_button_pressed'])
-        game_result = int(obs['win_lose_neutral'])
+        # Convert environment observation to model format
+        model_obs = env_utils.env_obs_to_model_obs(env_obs)
         
-        print(f"Agent at position: {agent_pos} (row {obs['position'][0]}, col {obs['position'][1]})")
-        print(f"On red button: {bool(on_red)}")
-        print(f"On blue button: {bool(on_blue)}")
-        print(f"Red button pressed: {bool(red_pressed)}")
-        print(f"Blue button pressed: {bool(blue_pressed)}")
-        print(f"Game state: {['neutral', 'win', 'lose'][game_result]}")
+        # Agent perceives, infers, plans, and acts
+        action = agent.step(model_obs)
         
-        # Convert environment observations to agent format (one-hot arrays)
-        def int_to_onehot(value, size):
-            arr = np.zeros(size)
-            arr[value] = 1.0
-            return arr
+        # Get agent's current beliefs
+        qs = agent.get_state_beliefs()
         
-        agent_obs = {
-            'agent_pos': int_to_onehot(agent_pos, 9),
-            'on_red_button': int_to_onehot(on_red, 2),
-            'on_blue_button': int_to_onehot(on_blue, 2),
-            'red_button_state': int_to_onehot(red_pressed, 2),
-            'blue_button_state': int_to_onehot(blue_pressed, 2),
-            'game_result': int_to_onehot(game_result, 3)
-        }
+        # Print step information BEFORE taking action in environment
+        # (showing what agent believes and decides)
+        print_step_info(step, model_obs, qs, action, 0.0, {'result': 'pending'})
         
-        # Agent inference
-        print("Agent processing...")
+        # Take action in environment
+        env_action = env_utils.model_action_to_env_action(action)
+        env_obs, reward, terminated, truncated, info = env.step(env_action)
         
-        # State inference
-        qs = agent.infer_states(agent_obs)
-        print(f"Agent beliefs: pos {np.argmax(qs['agent_pos'])} (confidence: {np.max(qs['agent_pos']):.3f})")
+        # Update with actual reward and result
+        print(f"\n  → Environment response:")
+        print(f"     Reward:  {reward:+.3f}")
+        print(f"     Result:  {info.get('result', 'neutral')}")
         
-        # Policy inference
-        q_pi, G = agent.infer_policies()
-        best_policy = np.argmax(q_pi)
-        print(f"Best policy: {best_policy} (confidence: {q_pi[best_policy]:.3f})")
-        
-        # Action selection
-        action = agent.sample_action()
-        print(f"Selected action: {action} ({action_names[action]})")
-        
-        # Step environment
-        obs, reward, terminated, truncated, info = env.step(action)
+        episode_reward += reward
         done = terminated or truncated
         
-        print(f"Reward: {reward}")
-        print(f"Done: {done}")
-        
-        # Step agent time
-        agent.step_time()
-        
-        # Check if episode ended
-        if done:
-            print(f"\n🎉 Episode ended at step {step + 1}!")
-            break
+        # Show game state visualization
+        print(f"\n  Grid state:")
+        grid_vis = env.render(mode='silent')
+        for row in grid_vis:
+            print(f"     {' '.join(row)}")
+        print(f"     (A=agent, r/R=red button, b/B=blue button)")
     
-    print(f"\n=== Simulation Complete ===")
-    print(f"Final position: {np.argmax(agent_obs['agent_pos'])}")
-    print(f"Final game state: {['neutral', 'win', 'lose'][np.argmax(agent_obs['game_result'])]}")
+    # =========================================================================
+    # 4. Print Summary
+    # =========================================================================
+    outcome = info.get('result', 'neutral')
+    print_summary(episode_reward, step, outcome)
+    
+    # =========================================================================
+    # 5. Agent Diagnostics
+    # =========================================================================
+    print("\n" + "="*80)
+    print("AGENT DIAGNOSTICS")
+    print("="*80)
+    
+    # Get final beliefs
+    final_qs = agent.get_state_beliefs()
+    
+    print("\nFinal belief distribution entropies:")
+    for factor, belief in final_qs.items():
+        entropy = -np.sum(belief * np.log(belief + 1e-16))
+        max_entropy = np.log(len(belief))
+        certainty = 100 * (1 - entropy / max_entropy)
+        print(f"  {factor:20s}: H={entropy:.3f} ({certainty:.1f}% certain)")
+    
+    # Get action history
+    print(f"\nAction history: {agent.prev_actions}")
+    action_names = {0: 'UP', 1: 'DOWN', 2: 'LEFT', 3: 'RIGHT', 4: 'OPEN', 5: 'NOOP'}
+    action_seq = [action_names[a] for a in agent.prev_actions]
+    print(f"Action sequence: {' → '.join(action_seq)}")
+    
+    print("\n" + "="*80)
+    print("DONE!")
+    print("="*80)
+
 
 if __name__ == "__main__":
     main()

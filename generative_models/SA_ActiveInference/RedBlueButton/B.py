@@ -34,9 +34,9 @@ def normalize(p):
 # Factor updates
 # --------------------------------
 def B_agent_pos(parents, action, width, height, noise):
-    q = parents["agent_pos"]              # shape [S]
+    q = np.array(parents["agent_pos"])   # Convert to numpy first
     S = q.shape[0]
-    new_q = jnp.zeros_like(q)
+    new_q = np.zeros(S)
 
     def next_idx(i):
         x, y = i % width, i // width
@@ -54,29 +54,31 @@ def B_agent_pos(parents, action, width, height, noise):
     for cur in range(S):
         p_cur = q[cur]
         nxt = next_idx(cur) if action in (0, 1, 2, 3) else cur
-        new_q = new_q.at[nxt].add(p_cur * (1.0 - noise))
+        new_q[nxt] += p_cur * (1.0 - noise)  # Direct assignment
 
         if S > 1:
             noise_share = p_cur * noise / (S - 1)
-            new_q = new_q + noise_share
-            new_q = new_q.at[nxt].add(-noise_share)
+            new_q += noise_share
+            new_q[nxt] -= noise_share
 
-    return normalize(new_q)
+    # Normalize in numpy, return numpy (avoid JAX overhead)
+    return new_q / np.maximum(np.sum(new_q), 1e-8)
 
 
 def B_static_with_noise(parents, self_key, noise):
-    q = parents[self_key]
+    q = np.array(parents[self_key])  # Convert to numpy first
     S = q.shape[0]
     if S <= 1:
         return q
-    new = jnp.zeros_like(q)
+    new = np.zeros(S)
     for s in range(S):
         stay = q[s] * (1.0 - noise)
         leak = q[s] * noise / (S - 1)
-        new = new.at[s].add(stay)
-        new = new + leak
-        new = new.at[s].add(-leak)
-    return normalize(new)
+        new[s] += stay  # Direct assignment
+        new += leak
+        new[s] -= leak
+    # Normalize in numpy, return numpy
+    return new / np.maximum(np.sum(new), 1e-8)
 
 
 def B_red_button_state(parents, action, noise):
@@ -87,17 +89,18 @@ def B_red_button_state(parents, action, noise):
       "red_button_state": [p(not_pressed), p(pressed)]
     }
     """
-    q_state = parents["red_button_state"]
-    q_agent = parents["agent_pos"]
-    q_button = parents["red_button_pos"]
+    # Convert to numpy to avoid JAX recompilation
+    q_state = np.array(parents["red_button_state"])
+    q_agent = np.array(parents["agent_pos"])
+    q_button = np.array(parents["red_button_pos"])
 
     # Non-OPEN actions: button state stays exactly the same (deterministic)
     if action in (0, 1, 2, 3, 5):
-        return q_state
+        return q_state  # Already numpy
 
     # OPEN action: check if agent is at button position
     # Compute P(agent_pos == red_button_pos)
-    p_at_button = jnp.sum(q_agent * q_button)
+    p_at_button = np.sum(q_agent * q_button)
     
     q0, q1 = q_state[0], q_state[1]
     
@@ -107,7 +110,9 @@ def B_red_button_state(parents, action, noise):
     next0 = q0 * (p_at_button * 0.2 + (1.0 - p_at_button) * 1.0)
     next1 = q0 * p_at_button * 0.8 + q1 * 1.0
     
-    return normalize(jnp.array([next0, next1]))
+    result = np.array([next0, next1])
+    result = result / np.maximum(np.sum(result), 1e-8)
+    return result  # Return numpy, not jax
 
 
 def B_blue_button_state(parents, action, noise):
@@ -118,17 +123,18 @@ def B_blue_button_state(parents, action, noise):
       "blue_button_state": [p(not_pressed), p(pressed)]
     }
     """
-    q_state = parents["blue_button_state"]
-    q_agent = parents["agent_pos"]
-    q_button = parents["blue_button_pos"]
+    # Convert to numpy to avoid JAX recompilation
+    q_state = np.array(parents["blue_button_state"])
+    q_agent = np.array(parents["agent_pos"])
+    q_button = np.array(parents["blue_button_pos"])
 
     # Non-OPEN actions: button state stays exactly the same (deterministic)
     if action in (0, 1, 2, 3, 5):
-        return q_state
+        return q_state  # Already numpy
 
     # OPEN action: check if agent is at button position
     # Compute P(agent_pos == blue_button_pos)
-    p_at_button = jnp.sum(q_agent * q_button)
+    p_at_button = np.sum(q_agent * q_button)
     
     q0, q1 = q_state[0], q_state[1]
     
@@ -138,7 +144,9 @@ def B_blue_button_state(parents, action, noise):
     next0 = q0 * (p_at_button * 0.2 + (1.0 - p_at_button) * 1.0)
     next1 = q0 * p_at_button * 0.8 + q1 * 1.0
     
-    return normalize(jnp.array([next0, next1]))
+    result = np.array([next0, next1])
+    result = result / np.maximum(np.sum(result), 1e-8)
+    return result  # Return numpy, not jax
 
 
 # --------------------------------

@@ -24,134 +24,70 @@ def C_agent_pos(obs_idx):
     """
     Preference for observing agent at different positions.
     
-    Parameters
-    ----------
-    obs_idx : int
-        Observed agent position (0 to S-1)
-    
-    Returns
-    -------
-    preference : float
-        Preference value for this observation (0.0 = neutral)
+    Returns 0.0 (neutral) for all positions.
     """
-    # Neutral about agent position - no preference
     return 0.0
 
 
 def C_on_red_button(obs_idx):
     """
-    Preference for being on red button.
-    
-    Parameters
-    ----------
-    obs_idx : int
-        0 = FALSE (not on button), 1 = TRUE (on button)
-    
-    Returns
-    -------
-    preference : float
-        Preference value
+    Preference for being on the red button.
+    Reward should come only from 'button_just_pressed'.
+    0 = FALSE (not on button), 1 = TRUE (on button)
     """
-    # Slight preference for being on red button
-    return 0.1 if obs_idx == 1 else 0.0
+    return 0.0
 
 
 def C_on_blue_button(obs_idx):
     """
-    Preference for being on blue button.
-    
-    Parameters
-    ----------
-    obs_idx : int
-        0 = FALSE (not on button), 1 = TRUE (on button)
-    
-    Returns
-    -------
-    preference : float
-        Preference value
+    Preference for being on the blue button.
+    Reward should come only from 'button_just_pressed'.
+    0 = FALSE (not on button), 1 = TRUE (on button)
     """
-    # Slight preference for being on blue button
-    return 0.1 if obs_idx == 1 else 0.0
+    return 0.0
 
 
 def C_red_button_state(obs_idx):
     """
     Preference for red button state.
-    
-    Parameters
-    ----------
-    obs_idx : int
-        0 = not_pressed, 1 = pressed
-    
-    Returns
-    -------
-    preference : float
-        Preference value
+    0 = not_pressed, 1 = pressed
     """
     if obs_idx == 1:  # pressed
-        return 0.5    # Prefer button being pressed
-    else:             # not pressed (idle)
-        return -0.01  # Small penalty for not having pressed it yet
+        return 0.0
+    else:             # not pressed
+        return 0.0
 
 
 def C_blue_button_state(obs_idx):
     """
     Preference for blue button state.
-    
-    Parameters
-    ----------
-    obs_idx : int
-        0 = not_pressed, 1 = pressed
-    
-    Returns
-    -------
-    preference : float
-        Preference value
+    0 = not_pressed, 1 = pressed
     """
     if obs_idx == 1:  # pressed
-        return 0.5    # Prefer button being pressed
-    else:             # not pressed (idle)
-        return -0.01  # Small penalty for not having pressed it yet
+        return 0.0
+    else:             # not pressed
+        return 0.0
 
 
 def C_game_result(obs_idx):
     """
     Preference for game result.
-    
-    Parameters
-    ----------
-    obs_idx : int
-        0 = neutral, 1 = win, 2 = lose
-    
-    Returns
-    -------
-    preference : float
-        Preference value (can be negative for aversive outcomes)
+    0 = neutral, 1 = win, 2 = lose
     """
     if obs_idx == 1:    # win
-        return 5.0      # Strongly prefer winning
+        return 0.0
     elif obs_idx == 2:  # lose
-        return -5.0     # Strongly avoid losing
-    else:               # neutral (idle state)
-        return -0.01    # Small penalty for staying idle (encourages action)
+        return 0.0
+    else:               # neutral (idle)
+        return 0.0
 
 
 def C_button_just_pressed(obs_idx):
     """
     Preference for button press events.
-    
-    Parameters
-    ----------
-    obs_idx : int
-        0 = FALSE (no press), 1 = TRUE (just pressed)
-    
-    Returns
-    -------
-    preference : float
-        Preference value
+    0 = FALSE (no press), 1 = TRUE (just pressed)
     """
-    # Slight preference for NOT pressing (encourage deliberate actions)
-    return 0.1 if obs_idx == 1 else 0.0
+    return 0.0 if obs_idx == 1 else 0.0
 
 
 # =============================================================================
@@ -175,54 +111,46 @@ C_FUNCTIONS = {
 
 def C_fn(observation_indices):
     """
-    Get preference values for ALL modalities given specific observations.
+    Compute preferences for each observation modality.
     
-    This is the main C function analogous to A_fn and B_fn.
-    Takes specific observation indices and returns preference values.
-    
-    Parameters
-    ----------
-    observation_indices : dict
-        Dictionary mapping modality names to specific observation indices.
-        Example: {
-            "agent_pos": 4,
-            "on_red_button": 1,  # TRUE
-            "on_blue_button": 0,  # FALSE
-            "red_button_state": 1,  # pressed
-            "blue_button_state": 0,  # not pressed
-            "game_result": 1,  # win
-            "button_just_pressed": 0,  # FALSE
-        }
-    
-    Returns
-    -------
-    preferences : dict
-        Dictionary mapping modality names to preference values (scalars).
+    Includes context-dependent penalties (e.g., punish staying on pressed button).
     """
     preferences = {}
     
+    # Get basic preferences
     for modality, obs_idx in observation_indices.items():
         if modality in C_FUNCTIONS:
             C_func = C_FUNCTIONS[modality]
             preferences[modality] = C_func(obs_idx)
     
+    # CONTEXT-AWARE REWARDS/PENALTIES:
+    # Punish being on red button if it's already pressed
+    if ('on_red_button' in observation_indices and 
+        'red_button_state' in observation_indices):
+        on_red = observation_indices['on_red_button']  # 0=FALSE, 1=TRUE
+        red_pressed = observation_indices['red_button_state']  # 0=not_pressed, 1=pressed
+        if on_red == 1 and red_pressed == 1:  # On button AND it's pressed
+            preferences['on_red_button'] = -1.0  # Strong penalty for lingering
+    
+    # REWARD being on blue button if red is already pressed (guide toward goal)
+    if ('on_blue_button' in observation_indices and 
+        'red_button_state' in observation_indices and
+        'blue_button_state' in observation_indices):
+        on_blue = observation_indices['on_blue_button']
+        red_pressed = observation_indices['red_button_state']
+        blue_pressed = observation_indices['blue_button_state']
+        
+        if on_blue == 1 and red_pressed == 1 and blue_pressed == 0:
+            # On blue, red already pressed, blue not yet pressed = GOOD!
+            preferences['on_blue_button'] = 2.0  # Strong reward for being in right place
+        elif on_blue == 1 and blue_pressed == 1:
+            # On blue but already pressed = neutral/slight penalty
+            preferences['on_blue_button'] = -0.5
+    
     return preferences
 
 
 def get_total_preference(observation_indices):
-    """
-    Get total preference (sum across all modalities).
-    
-    Parameters
-    ----------
-    observation_indices : dict
-        Dictionary mapping modality names to observation indices
-    
-    Returns
-    -------
-    total_pref : float
-        Sum of preferences across all modalities
-    """
     prefs = C_fn(observation_indices)
     return sum(prefs.values())
 
@@ -232,28 +160,12 @@ def get_total_preference(observation_indices):
 # =============================================================================
 
 def build_C_vectors():
-    """
-    Build preference vectors for all modalities.
-    
-    Returns a dict where each modality maps to a vector of preferences,
-    one value per possible observation outcome.
-    
-    Returns
-    -------
-    C_vectors : dict
-        Dictionary mapping modality names to preference vectors.
-        Each vector has length = number of possible observations for that modality.
-    """
     C_vectors = {}
-    
     for modality, obs_labels in model_init.observations.items():
         num_obs = len(obs_labels)
         C_func = C_FUNCTIONS[modality]
-        
-        # Build vector of preferences for all possible observations
         C_vec = np.array([C_func(i) for i in range(num_obs)])
         C_vectors[modality] = C_vec
-    
     return C_vectors
 
 
@@ -262,36 +174,13 @@ def build_C_vectors():
 # =============================================================================
 
 def compute_expected_utility(observation_likelihoods):
-    """
-    Compute expected utility given observation likelihood distributions.
-    
-    This computes: EU = Σ_modalities Σ_o p(o) * C(o)
-    
-    Parameters
-    ----------
-    observation_likelihoods : dict
-        Dictionary mapping modality names to observation distributions.
-        Each distribution is p(o) over possible observations.
-        (e.g., output from A_fn or predict_obs_from_beliefs)
-    
-    Returns
-    -------
-    expected_utility : float
-        Expected utility across all modalities
-    modality_utilities : dict
-        Expected utility per modality (for debugging/analysis)
-    """
     C_vecs = build_C_vectors()
-    
     modality_utilities = {}
     total_utility = 0.0
-    
     for modality, p_obs in observation_likelihoods.items():
         if modality in C_vecs:
-            # Expected utility for this modality: Σ_o p(o) * C(o)
             C_vec = C_vecs[modality]
             utility = np.dot(p_obs, C_vec)
             modality_utilities[modality] = utility
             total_utility += utility
-    
     return total_utility, modality_utilities
