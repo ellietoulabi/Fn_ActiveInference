@@ -9,6 +9,8 @@ but resets position to 0 and button states to not_pressed.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import csv
+from datetime import datetime
 from pathlib import Path
 from environments.RedBlueButton.SingleAgentRedBlueButton import SingleAgentRedBlueButtonEnv
 from generative_models.SA_ActiveInference.RedBlueButton import (
@@ -103,7 +105,12 @@ def print_step_info(step, obs_dict, qs, action, reward, info, agent, env):
     print(f"  Result:               {info.get('result', 'pending')}")
 
 
-def run_episode(env, agent, episode_num, max_steps=50, verbose=True):
+def grid_to_string(grid):
+    """Convert grid array to string representation."""
+    return '|'.join([''.join(row) for row in grid])
+
+
+def run_episode(env, agent, episode_num, max_steps=50, verbose=True, csv_writer=None):
     """Run one episode."""
     
     # Reset environment
@@ -146,6 +153,10 @@ def run_episode(env, agent, episode_num, max_steps=50, verbose=True):
     outcome = 'timeout'
     
     for step in range(1, max_steps + 1):
+        # Get map before action
+        grid = env.render(mode="array")
+        map_str = grid_to_string(grid)
+        
         # Agent perceives, infers, plans, and acts
         action = agent.step(obs_dict)
         
@@ -159,6 +170,18 @@ def run_episode(env, agent, episode_num, max_steps=50, verbose=True):
         # Execute action in environment
         env_obs, reward, done, _, info = env.step(action)
         episode_reward += reward
+        
+        # Log to CSV
+        if csv_writer is not None:
+            action_names = {0: 'UP', 1: 'DOWN', 2: 'LEFT', 3: 'RIGHT', 4: 'PRESS', 5: 'NOOP'}
+            csv_writer.writerow({
+                'episode': episode_num,
+                'step': step,
+                'action': action,
+                'action_name': action_names[action],
+                'map': map_str,
+                'reward': reward
+            })
         
         if verbose:
             print(f"\n  → Environment response:")
@@ -198,6 +221,20 @@ def main():
     # Parameters
     NUM_EPISODES = 4
     EPISODES_PER_CONFIG = 2  # Change button positions every 2 episodes
+    MAX_STEPS = 50
+    
+    # Setup CSV logging with timestamp
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv_filename = f"active_inference_log_ep{NUM_EPISODES}_step{MAX_STEPS}_{timestamp}.csv"
+    csv_path = log_dir / csv_filename
+    
+    csv_file = open(csv_path, 'w', newline='')
+    csv_writer = csv.DictWriter(csv_file, fieldnames=['episode', 'step', 'action', 'action_name', 'map', 'reward'])
+    csv_writer.writeheader()
+    
+    print(f"Logging to: {csv_path}")
     
     # Setup agent (only once!)
     print("\nSetting up agent...")
@@ -215,7 +252,7 @@ def main():
         env_params={'width': model_init.n, 'height': model_init.m},
         actions=list(range(6)),
         policy_len=2,
-        gamma=4.0,
+        gamma=2.0,
         alpha=1.0,
         num_iter=16,
     )
@@ -228,36 +265,40 @@ def main():
     results = []
     env = None
     
-    for episode in range(1, NUM_EPISODES + 1):
-        # Create new environment every k episodes
-        if (episode - 1) % EPISODES_PER_CONFIG == 0:
-            # Generate random button positions (avoid agent start position 0)
-            available_positions = list(range(1, 9))
-            np.random.shuffle(available_positions)
-            red_pos_idx = available_positions[0]
-            blue_pos_idx = available_positions[1]
+    try:
+        for episode in range(1, NUM_EPISODES + 1):
+            # Create new environment every k episodes
+            if (episode - 1) % EPISODES_PER_CONFIG == 0:
+                # Generate random button positions (avoid agent start position 0)
+                available_positions = list(range(1, 9))
+                np.random.shuffle(available_positions)
+                red_pos_idx = available_positions[0]
+                blue_pos_idx = available_positions[1]
+                
+                # Convert to (row, col)
+                red_pos = (red_pos_idx // 3, red_pos_idx % 3)
+                blue_pos = (blue_pos_idx // 3, blue_pos_idx % 3)
+                
+                print(f"\n{'='*80}")
+                print(f"NEW ENVIRONMENT CONFIGURATION (Episodes {episode}-{min(episode+EPISODES_PER_CONFIG-1, NUM_EPISODES)})")
+                print(f"{'='*80}")
+                print(f"Red button moving to position {red_pos_idx} {red_pos}")
+                print(f"Blue button moving to position {blue_pos_idx} {blue_pos}")
+                
+                env = SingleAgentRedBlueButtonEnv(
+                    width=3,
+                    height=3,
+                    red_button_pos=red_pos,
+                    blue_button_pos=blue_pos,
+                    agent_start_pos=(0, 0),
+                    max_steps=100
+                )
             
-            # Convert to (row, col)
-            red_pos = (red_pos_idx // 3, red_pos_idx % 3)
-            blue_pos = (blue_pos_idx // 3, blue_pos_idx % 3)
-            
-            print(f"\n{'='*80}")
-            print(f"NEW ENVIRONMENT CONFIGURATION (Episodes {episode}-{min(episode+EPISODES_PER_CONFIG-1, NUM_EPISODES)})")
-            print(f"{'='*80}")
-            print(f"Red button moving to position {red_pos_idx} {red_pos}")
-            print(f"Blue button moving to position {blue_pos_idx} {blue_pos}")
-            
-            env = SingleAgentRedBlueButtonEnv(
-                width=3,
-                height=3,
-                red_button_pos=red_pos,
-                blue_button_pos=blue_pos,
-                agent_start_pos=(0, 0),
-                max_steps=100
-            )
-        
-        result = run_episode(env, agent, episode, max_steps=50, verbose=True)
-        results.append(result)
+            result = run_episode(env, agent, episode, max_steps=MAX_STEPS, verbose=True, csv_writer=csv_writer)
+            results.append(result)
+    finally:
+        csv_file.close()
+        print(f"\nLog saved to: {csv_path}")
     
     # Print summary
     print("\n" + "="*80)

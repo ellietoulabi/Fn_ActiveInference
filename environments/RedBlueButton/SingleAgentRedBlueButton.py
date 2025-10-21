@@ -77,7 +77,12 @@ class SingleAgentRedBlueButtonEnv(gym.Env):
         return observation, {}
 
     def step(self, action):
-        reward = -0.01  # Default reward for neutral actions
+        # REWARD LOGIC MATCHES ACTIVE INFERENCE C.py PREFERENCES:
+        # - C_red_button_state: +0.5 when pressed
+        # - C_blue_button_state: +0.5 when pressed
+        # - C_game_result: +1.0 for win, -1.0 for lose
+        # - All other preferences: 0.0
+        reward = 0.0  # Default reward (neutral, matches C.py)
         terminated = False
         truncated = False
         self.button_just_pressed = (
@@ -108,18 +113,7 @@ class SingleAgentRedBlueButtonEnv(gym.Env):
             new_pos = (x + dx, y + dy)
             if self._valid_move(new_pos):
                 self.agent_position = new_pos
-
-                # Check if agent stepped on a button (reward: 0.01)
-                if (
-                    self.agent_position == self.red_button
-                    and not self.red_button_pressed
-                ):
-                    reward = 0.01
-                elif (
-                    self.agent_position == self.blue_button
-                    and not self.blue_button_pressed
-                ):
-                    reward = 0.01
+                # No reward for stepping on buttons (matches C.py: C_on_red_button = 0.0)
 
         elif action == 4:  # Press action
             x, y = self.agent_position
@@ -131,7 +125,8 @@ class SingleAgentRedBlueButtonEnv(gym.Env):
                     "red"  # Mark that red button was just pressed
                 )
                 info["button_pressed"] = "red"
-                reward = 0.1  # Press red when blue is not pressed: 0.1
+                # Matches C_red_button_state(1) = 0.5
+                reward = 0.5
 
             # Try to press blue button (agent must be ON the button)
             if (x, y) == self.blue_button and not self.blue_button_pressed:
@@ -143,14 +138,16 @@ class SingleAgentRedBlueButtonEnv(gym.Env):
 
                 # Check if red button was pressed first
                 if self.red_button_pressed:
-                    reward = 1.0  # Press blue when red is pressed: 1 (win)
+                    # WIN: C_blue_button_state(1) + C_game_result(1) = 0.5 + 1.0 = 1.5
+                    reward = 1.5
                     terminated = True
                 else:
-                    reward = -1.0  # Press blue when red is not pressed: -1 (lose)
+                    # LOSE: C_blue_button_state(1) + C_game_result(2) = 0.5 + (-1.0) = -0.5
+                    reward = -0.5
                     terminated = True
 
         elif action == 5:  # Noop action - do nothing
-            pass  # Agent stays in place
+            pass  # Agent stays in place, reward = 0.0 (neutral)
 
         self.step_count += 1
 

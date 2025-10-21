@@ -37,6 +37,10 @@ def B_agent_pos(parents, action, width, height, noise):
     q = np.array(parents["agent_pos"])   #a probability vector over all grid cells (size S = width * height)
     S = q.shape[0]
     new_q = np.zeros(S)
+    
+    # Use LESS noise for NOOP (more certain when staying)
+    noise = noise * 0.2 if action == 5 else noise  # 1% for NOOP vs 5% for movement
+    
 
     def next_idx(i):
         x, y = i % width, i // width
@@ -107,8 +111,8 @@ def B_red_button_state(parents, action, noise):
     # If at button and not pressed ->  pressed (80% success, 20% fail)
     # If at button and pressed -> stays pressed (100%)
     # If not at button -> stays exactly the same (deterministic)
-    next0 = q0 * (p_at_button * 0.2 + (1.0 - p_at_button) * 1.0)
-    next1 = q0 * p_at_button * 0.8 + q1 * 1.0
+    next0 = q0 * (p_at_button * 0.05 + (1.0 - p_at_button) * 1.0)
+    next1 = q0 * p_at_button * 0.95 + q1 * 1.0
     
     result = np.array([next0, next1])
     result = result / np.maximum(np.sum(result), 1e-8)

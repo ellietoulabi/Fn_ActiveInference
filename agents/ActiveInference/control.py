@@ -282,46 +282,56 @@ def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_siz
         
         qo_pi.append(qo_t)
         
-        # --- INFO GAIN (using same cached likelihoods) ---
-        qo_per_modality = {}
-        cond_entropy_per_modality = {}
+        # --- INFO GAIN (using JOINT observations, not sum of modalities) ---
+        # Compute I(s; o_joint) = H[Q(o_joint)] - E_Q(s)[H[p(o_joint|s)]]
         
-        for modality, deps in model_init.observation_state_dependencies.items():
-            if modality in SKIP_MODALITIES:
-                continue
+        # Get modalities to include (skip button_just_pressed)
+        active_modalities = [m for m in model_init.observation_state_dependencies.keys() 
+                            if m not in SKIP_MODALITIES]
+        
+        if len(active_modalities) == 0:
+            timestep_info_gain = 0.0
+        else:
+            # Build joint observation space
+            obs_sizes = [len(model_init.observations[m]) for m in active_modalities]
+            total_joint_obs = np.prod(obs_sizes)
             
-            num_obs = len(model_init.observations[modality])
-            qo_m = np.zeros(num_obs)
-            cond_entropy_m = 0.0
+            # Initialize joint distributions
+            qo_joint = np.zeros(total_joint_obs)  # P(o_joint) under beliefs
+            cond_entropy_joint = 0.0  # E_Q(s)[H[p(o_joint|s)]]
             
+            # For each plausible state, compute joint observation distribution
             for obs_lik, joint_prob in zip(likelihood_cache, prob_cache):
-                p_o = obs_lik[modality]
-                qo_m += joint_prob * p_o
-                H_o_given_s = -np.sum(p_o * maths.log_stable(p_o))
-                cond_entropy_m += joint_prob * H_o_given_s
+                # Create joint observation distribution for this state
+                # po_joint = p(o1|s) ⊗ p(o2|s) ⊗ ... (outer product)
+                po_joint = np.array([1.0])
+                for m in active_modalities:
+                    p_o_m = obs_lik[m]
+                    po_joint = np.outer(po_joint, p_o_m).ravel()
+                
+                # Accumulate predicted joint observation distribution
+                qo_joint += joint_prob * po_joint
+                
+                # Accumulate conditional entropy: H[p(o_joint|s)]
+                H_o_given_s = -np.sum(po_joint * maths.log_stable(po_joint))
+                cond_entropy_joint += joint_prob * H_o_given_s
             
-            qo_per_modality[modality] = maths.normalize(qo_m)
-            cond_entropy_per_modality[modality] = cond_entropy_m
+            # Normalize joint observation distribution
+            qo_joint = maths.normalize(qo_joint)
+            
+            # Compute predicted entropy: H[Q(o_joint)]
+            pred_entropy_joint = -np.sum(qo_joint * maths.log_stable(qo_joint))
+            
+            # Info gain = H[Q(o_joint)] - E_Q(s)[H[p(o_joint|s)]]
+            timestep_info_gain = pred_entropy_joint - cond_entropy_joint
         
-        # Approximate button_just_pressed contribution
-        if 'button_just_pressed' in model_init.observation_state_dependencies:
-            qo_per_modality['button_just_pressed'] = np.array([0.9, 0.1])
-            cond_entropy_per_modality['button_just_pressed'] = 0.01
-        
-        # Compute entropies
-        pred_entropy = 0.0
-        cond_entropy = 0.0
-        for modality in qo_per_modality.keys():
-            qo = qo_per_modality[modality]
-            H_qo = -np.sum(qo * maths.log_stable(qo))
-            pred_entropy += H_qo
-            cond_entropy += cond_entropy_per_modality[modality]
-        
-        timestep_info_gain = pred_entropy - cond_entropy
         total_info_gain += timestep_info_gain
         
         if debug and t_idx < 3:  # Show first 3 timesteps
-            print(f"      t={t_idx}: pred_H={pred_entropy:.4f}, cond_H={cond_entropy:.4f}, IG={timestep_info_gain:.4f}")
+            if len(active_modalities) > 0:
+                print(f"      t={t_idx}: pred_H={pred_entropy_joint:.4f}, cond_H={cond_entropy_joint:.4f}, IG={timestep_info_gain:.4f}")
+            else:
+                print(f"      t={t_idx}: IG={timestep_info_gain:.4f} (no active modalities)")
     
     return qo_pi, float(total_info_gain)
 
@@ -467,7 +477,7 @@ def vanilla_fpi_update_posterior_policies(
             _, info_gain = get_expected_obs_and_info_gain_unified(
                 A_fn, qs_pi, state_factors, state_sizes, observation_labels
             )
-            G[policy_idx] -= info_gain  # Subtract info gain (we want to maximize it)
+            G[policy_idx] -= info_gain
             utility = 0.0
             policy_details.append((policy_idx, policy, qs_pi, utility, info_gain))
     
@@ -487,12 +497,40 @@ def vanilla_fpi_update_posterior_policies(
         policy_str = '→'.join([action_names[a] for a in policy])
         print(f"  #{rank} Policy {policy_idx:2d} [{policy_str:11s}]: prob={q_pi[idx]:.4f}, util={utility:7.4f}, info={info_gain:7.4f}, G={G[idx]:7.4f}")
         
+        # Show predicted agent positions (entropy of belief)
+        if rank <= 5 and len(qs_pi) > 0:
+            print(f"      Predicted agent position entropy at each step:")
+            for t_idx, qs_t in enumerate(qs_pi):
+                agent_pos_belief = np.array(qs_t['agent_pos'])
+                entropy = -np.sum(agent_pos_belief * np.log(agent_pos_belief + 1e-16))
+                most_likely_pos = int(np.argmax(agent_pos_belief))
+                max_prob = agent_pos_belief[most_likely_pos]
+                print(f"        t={t_idx}: pos*={most_likely_pos}, prob={max_prob:.3f}, H={entropy:.4f}")
+        
         # Show per-timestep breakdown for top 2
         if rank <= 2:
             # Re-compute with debug enabled for detailed view
             qo_pi_debug, info_gain_debug = get_expected_obs_and_info_gain_unified(
                 A_fn, qs_pi, state_factors, state_sizes, observation_labels, debug=True
             )
+            
+            # Show what observations contribute to utility
+            print(f"      Utility breakdown per timestep:")
+            for t, qo_t in enumerate(qo_pi_debug):
+                # Compute utility for this timestep
+                timestep_util = 0.0
+                for modality, qo_m in qo_t.items():
+                    for obs_idx in range(len(qo_m)):
+                        obs_indices = {modality: obs_idx}
+                        prefs = C_fn(obs_indices)
+                        pref_value = prefs.get(modality, 0.0)
+                        contribution = qo_m[obs_idx] * pref_value
+                        if abs(contribution) > 0.01:  # Only show significant contributions
+                            obs_labels = observation_labels.get(modality, [])
+                            obs_name = obs_labels[obs_idx] if obs_idx < len(obs_labels) else str(obs_idx)
+                            timestep_util += contribution
+                            print(f"        t={t} {modality}[{obs_name}]: p={qo_m[obs_idx]:.3f} × pref={pref_value:.2f} = {contribution:.4f}")
+                print(f"        t={t} TOTAL: {timestep_util:.4f}")
     
     return q_pi, G
 
