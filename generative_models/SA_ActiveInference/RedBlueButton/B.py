@@ -34,7 +34,7 @@ def normalize(p):
 # Factor updates
 # --------------------------------
 def B_agent_pos(parents, action, width, height, noise):
-    q = np.array(parents["agent_pos"])   # Convert to numpy first
+    q = np.array(parents["agent_pos"])   #a probability vector over all grid cells (size S = width * height)
     S = q.shape[0]
     new_q = np.zeros(S)
 
@@ -51,18 +51,18 @@ def B_agent_pos(parents, action, width, height, noise):
         # 4=open, 5=noop: stay
         return y * width + x
 
-    for cur in range(S):
-        p_cur = q[cur]
-        nxt = next_idx(cur) if action in (0, 1, 2, 3) else cur
-        new_q[nxt] += p_cur * (1.0 - noise)  # Direct assignment
+    for cur in range(S): #  for each pissible position:
+        p_cur = q[cur] # prob of being in that pos
+        nxt = next_idx(cur) if action in (0, 1, 2, 3) else cur # next pos
+        new_q[nxt] += p_cur * (1.0 - noise)  # move prob to next state
 
         if S > 1:
-            noise_share = p_cur * noise / (S - 1)
+            noise_share = p_cur * noise / (S - 1) # spread noise to other states
             new_q += noise_share
             new_q[nxt] -= noise_share
 
-    # Normalize in numpy, return numpy (avoid JAX overhead)
-    return new_q / np.maximum(np.sum(new_q), 1e-8)
+    # Normalize 
+    return new_q / np.maximum(np.sum(new_q), 1e-8) 
 
 
 def B_static_with_noise(parents, self_key, noise):
@@ -104,15 +104,15 @@ def B_red_button_state(parents, action, noise):
     
     q0, q1 = q_state[0], q_state[1]
     
-    # If at button and not pressed → pressed (80% success, 20% fail)
-    # If at button and pressed → stays pressed (100%)
-    # If not at button → stays exactly the same (deterministic)
+    # If at button and not pressed ->  pressed (80% success, 20% fail)
+    # If at button and pressed -> stays pressed (100%)
+    # If not at button -> stays exactly the same (deterministic)
     next0 = q0 * (p_at_button * 0.2 + (1.0 - p_at_button) * 1.0)
     next1 = q0 * p_at_button * 0.8 + q1 * 1.0
     
     result = np.array([next0, next1])
     result = result / np.maximum(np.sum(result), 1e-8)
-    return result  # Return numpy, not jax
+    return result  
 
 
 def B_blue_button_state(parents, action, noise):
@@ -141,8 +141,8 @@ def B_blue_button_state(parents, action, noise):
     # If at button and not pressed → pressed (80% success, 20% fail)
     # If at button and pressed → stays pressed (100%)
     # If not at button → stays exactly the same (deterministic)
-    next0 = q0 * (p_at_button * 0.2 + (1.0 - p_at_button) * 1.0)
-    next1 = q0 * p_at_button * 0.8 + q1 * 1.0
+    next0 = q0 * (p_at_button * 0.05 + (1.0 - p_at_button) * 1.0)
+    next1 = q0 * p_at_button * 0.95 + q1 * 1.0
     
     result = np.array([next0, next1])
     result = result / np.maximum(np.sum(result), 1e-8)
@@ -162,7 +162,10 @@ def B_fn(qs, action, width, height, B_NOISE_LEVEL=0.05):
             new_qs[factor] = B_agent_pos(parents, action, width, height, B_NOISE_LEVEL)
 
         elif factor in ("red_button_pos", "blue_button_pos"):
-            new_qs[factor] = B_static_with_noise(parents, factor, B_NOISE_LEVEL)
+            # Small noise for non-stationary environment (buttons may slowly drift)
+            # Beliefs decay slowly unless confirmed by observations
+            BUTTON_POS_NOISE = 0.01  # 1% uncertainty per step
+            new_qs[factor] = B_static_with_noise(parents, factor, BUTTON_POS_NOISE)
 
         elif factor == "red_button_state":
             new_qs[factor] = B_red_button_state(parents, action, B_NOISE_LEVEL)

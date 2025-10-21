@@ -37,7 +37,7 @@ def print_header():
     print("="*80)
 
 
-def print_step_info(step, obs_dict, qs, action, reward, info):
+def print_step_info(step, obs_dict, qs, action, reward, info, agent):
     """Print detailed step information."""
     print(f"\n{'='*80}")
     print(f"STEP {step}")
@@ -73,8 +73,21 @@ def print_step_info(step, obs_dict, qs, action, reward, info):
             state_name = ['not_pressed', 'pressed'][most_likely_idx]
             print(f"  Blue button:          {state_name} (confidence: {confidence:.3f})")
     
-    # Action
+    # Policies and their probabilities
     action_names = {0: 'UP', 1: 'DOWN', 2: 'LEFT', 3: 'RIGHT', 4: 'OPEN', 5: 'NOOP'}
+    print("\n📋 POLICY POSTERIOR (Top 5):")
+    
+    # Get top 5 policies by probability
+    q_pi = agent.q_pi
+    top_indices = np.argsort(q_pi)[-5:][::-1]  # Top 5 in descending order
+    
+    for rank, idx in enumerate(top_indices, 1):
+        policy = agent.policies[idx]
+        prob = q_pi[idx]
+        policy_str = ' → '.join([action_names[a] for a in policy])
+        print(f"  #{rank} [{idx:2d}]: {policy_str:20s} (p={prob:.4f})")
+    
+    # Action
     print(f"\n🎯 ACTION SELECTED:     {action} ({action_names[action]})")
     
     # Outcome
@@ -118,7 +131,7 @@ def main():
         red_button_pos=(0, 2),   # Position 6
         blue_button_pos=(2, 0),  # Position 2
         agent_start_pos=(0, 0),  # Position 0
-        max_steps=10
+        max_steps=100
     )
     env_obs, _ = env.reset()
     print("   ✓ Environment ready")
@@ -145,8 +158,8 @@ def main():
         env_params={'width': model_init.n, 'height': model_init.m},
         actions=list(range(6)),  # UP, DOWN, LEFT, RIGHT, OPEN, NOOP
         policy_len=2,            # Plan 2 steps ahead
-        gamma=16.0,              # High precision for near-deterministic policy selection
-        alpha=16.0,              # High precision for near-deterministic action selection
+        gamma=1.0,              # High precision for near-deterministic policy selection
+        alpha=1.0,              # High precision for near-deterministic action selection
         num_iter=16,             # Inference iterations
     )
     
@@ -159,14 +172,14 @@ def main():
     # =========================================================================
     # 3. Run Episode
     # =========================================================================
-    print("\n3. Running episode (max 10 steps)...")
+    print("\n3. Running episode ...")
     print("-"*80)
     
     step = 0
     episode_reward = 0.0
     done = False
     
-    while not done and step < 10:
+    while not done and step < 100:
         step += 1
         
         # Convert environment observation to model format
@@ -180,7 +193,7 @@ def main():
         
         # Print step information BEFORE taking action in environment
         # (showing what agent believes and decides)
-        print_step_info(step, model_obs, qs, action, 0.0, {'result': 'pending'})
+        print_step_info(step, model_obs, qs, action, 0.0, {'result': 'pending'}, agent)
         
         # Take action in environment
         env_action = env_utils.model_action_to_env_action(action)

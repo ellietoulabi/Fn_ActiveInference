@@ -92,7 +92,7 @@ class Agent:
         self.observation_labels = observation_labels
         self.env_params = env_params
 
-        # Actions and policies
+        # Actions and policies u d l r n p
         self.actions = actions if actions is not None else list(range(6))
         
         if policies is not None:
@@ -132,18 +132,33 @@ class Agent:
     # Reset
     # =============================================================================
     
-    def reset(self, config=None):
+    def reset(self, config=None, keep_factors=None):
         """
         Reset agent beliefs and counters.
         
         Args:
             config: optional config dict for D_fn (e.g., custom initial state)
+            keep_factors: optional list of factor names to preserve from previous episode
+                         (e.g., ['red_button_pos', 'blue_button_pos'])
         """
         self.curr_timestep = 0
         
         # Get prior beliefs from D_fn
         D = self.D_fn(config)
-        self.qs = {factor: D[factor].copy() for factor in self.state_factors}
+        
+        # Build new beliefs, preserving specified factors
+        if keep_factors is not None and hasattr(self, 'qs'):
+            self.qs = {}
+            for factor in self.state_factors:
+                if factor in keep_factors:
+                    # Keep belief from previous episode
+                    self.qs[factor] = self.qs.get(factor, D[factor]).copy()
+                else:
+                    # Reset to prior
+                    self.qs[factor] = D[factor].copy()
+        else:
+            # Full reset
+            self.qs = {factor: D[factor].copy() for factor in self.state_factors}
         
         # Initialize policy posterior (uniform)
         self.q_pi = np.ones(len(self.policies)) / len(self.policies)
@@ -177,8 +192,8 @@ class Agent:
                 self.B_fn, self.qs, self.action, self.env_params
             )
         else:
-            # Use current beliefs (initialized from D_fn at reset) as prior
-            prior_dict = {factor: self.qs[factor].copy() for factor in self.state_factors}
+            # First observation - use initial prior D # NOTE: use the D_fn as the prior
+            prior_dict = self.D_fn()
 
         # Run variational inference
         self.qs = inference.vanilla_fpi_update_posterior_states(
@@ -271,7 +286,7 @@ class Agent:
         return self.curr_timestep
 
     # =============================================================================
-    # Full Perception-Action Cycle
+    # Full Perception-Action Cycle: infer_states -> infer_policies -> sample_action -> step_time
     # =============================================================================
     
     def step(self, obs_dict):
@@ -302,7 +317,7 @@ class Agent:
         return action
     
     # =============================================================================
-    # Diagnostics and Debugging
+    # Debugging
     # =============================================================================
     
     def get_state_beliefs(self):

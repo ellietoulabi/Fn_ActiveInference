@@ -82,8 +82,10 @@ def vanilla_fpi_update_posterior_states(
     # Convert priors to log space for numerical stability
     log_prior_dict = {f: maths.log_stable(prior_dict[f]) for f in state_factors}
     
-    # Initialize free energy tracking
-    prev_vfe = maths.calc_variational_free_energy(qs_dict, prior_dict)
+    # Initialize free energy tracking (with accuracy term for complete VFE)
+    prev_vfe = maths.calc_variational_free_energy(
+        qs_dict, prior_dict, obs_dict, A_fn, state_factors, state_sizes
+    )
     
     # Coordinate ascent loop
     for iteration in range(num_iter):
@@ -148,8 +150,10 @@ def vanilla_fpi_update_posterior_states(
                 print(f"  Updated belief (top 3): {np.argsort(qs_dict[factor])[-3:][::-1]} = {np.sort(qs_dict[factor])[-3:][::-1]}")
                 print(f"  Belief at agent position {obs_dict.get('agent_pos')}: {qs_dict[factor][obs_dict.get('agent_pos', 0)]:.4f}")
         
-        # Check convergence
-        vfe = maths.calc_variational_free_energy(qs_dict, prior_dict)
+        # Check convergence (with accuracy term for complete VFE)
+        vfe = maths.calc_variational_free_energy(
+            qs_dict, prior_dict, obs_dict, A_fn, state_factors, state_sizes
+        )
         dF = abs(prev_vfe - vfe)
         
         if dF < dF_tol:
@@ -327,8 +331,10 @@ def compute_inference_diagnostics(qs_dict, prior_dict, obs_dict, A_fn, state_fac
     """
     diagnostics = {}
     
-    # Variational free energy
-    diagnostics['vfe'] = maths.calc_variational_free_energy(qs_dict, prior_dict)
+    # Variational free energy (with accuracy term)
+    diagnostics['vfe'] = maths.calc_variational_free_energy(
+        qs_dict, prior_dict, obs_dict, A_fn, state_factors, state_sizes
+    )
     
     # Entropy of each factor
     diagnostics['entropy'] = {}

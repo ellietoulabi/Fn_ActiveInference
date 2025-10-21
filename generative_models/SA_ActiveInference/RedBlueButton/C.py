@@ -75,9 +75,9 @@ def C_game_result(obs_idx):
     0 = neutral, 1 = win, 2 = lose
     """
     if obs_idx == 1:    # win
-        return 0.0
+        return 1
     elif obs_idx == 2:  # lose
-        return 0.0
+        return -1
     else:               # neutral (idle)
         return 0.0
 

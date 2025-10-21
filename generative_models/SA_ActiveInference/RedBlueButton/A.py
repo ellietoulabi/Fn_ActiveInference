@@ -37,10 +37,12 @@ def A_agent_pos(agent_pos_idx, num_obs, noise_level=A_NOISE_LEVEL):
     
     Dependencies: agent_pos
     
+    # Returns: p(observing each possible position | agent is actually at agent_pos_idx)
+    
     Parameters
     ----------
     agent_pos_idx : int
-        Specific agent position (0 to S-1)
+        Specific agent position state index (0 to S-1)
     num_obs : int
         Number of possible observations (same as S)
     noise_level : float
@@ -57,7 +59,7 @@ def A_agent_pos(agent_pos_idx, num_obs, noise_level=A_NOISE_LEVEL):
     return pos_obs
 
 
-def A_on_red_button(agent_pos_idx, red_button_pos_idx):
+def A_on_red_button(agent_pos_idx, red_button_pos_idx): # NOTE: positions are prob dist; how to check equality?
     """
     Observation likelihood for being on red button.
     
@@ -66,9 +68,9 @@ def A_on_red_button(agent_pos_idx, red_button_pos_idx):
     Parameters
     ----------
     agent_pos_idx : int
-        Specific agent position
+        Specific agent position state index 
     red_button_pos_idx : int
-        Specific red button position
+        Specific red button position state index (0 to S-1)
     
     Returns
     -------

@@ -189,7 +189,7 @@ def get_expected_obs_sequence(A_fn, qs_pi, state_factors, state_sizes):
     return qo_pi
 
 
-def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_sizes, observation_labels):
+def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_sizes, observation_labels, debug=False):
     """
     UNIFIED: Compute BOTH expected observations AND info gain in ONE pass.
     
@@ -206,7 +206,7 @@ def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_siz
     qo_pi = []
     total_info_gain = 0.0
     
-    for qs_t in qs_pi:
+    for t_idx, qs_t in enumerate(qs_pi):
         # Convert to numpy once
         qs_dict_np = {f: np.array(qs_t[f]) for f in state_factors}
         map_indices = {f: int(np.argmax(qs_dict_np[f])) for f in state_factors}
@@ -317,7 +317,11 @@ def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_siz
             pred_entropy += H_qo
             cond_entropy += cond_entropy_per_modality[modality]
         
-        total_info_gain += (pred_entropy - cond_entropy)
+        timestep_info_gain = pred_entropy - cond_entropy
+        total_info_gain += timestep_info_gain
+        
+        if debug and t_idx < 3:  # Show first 3 timesteps
+            print(f"      t={t_idx}: pred_H={pred_entropy:.4f}, cond_H={cond_entropy:.4f}, IG={timestep_info_gain:.4f}")
     
     return qo_pi, float(total_info_gain)
 
@@ -435,7 +439,9 @@ def vanilla_fpi_update_posterior_policies(
     else:
         lnE = maths.log_stable(E)
 
-    # Evaluate each policy
+    # Evaluate each policy (store details for later debug)
+    policy_details = []  # Store (policy_idx, policy, qs_pi, utility, info_gain) for debugging
+    
     for policy_idx, policy in enumerate(policies):
         # Predict future states under this policy
         qs_pi = get_expected_states(B_fn, qs, policy, env_params)
@@ -443,26 +449,50 @@ def vanilla_fpi_update_posterior_policies(
         # UNIFIED: Compute expected obs AND info gain in one pass (30-40% speedup)
         if use_utility and use_states_info_gain:
             qo_pi, info_gain = get_expected_obs_and_info_gain_unified(
-                A_fn, qs_pi, state_factors, state_sizes, observation_labels
+                A_fn, qs_pi, state_factors, state_sizes, observation_labels, debug=False
             )
             utility = calc_expected_utility(qo_pi, C_fn, observation_labels)
             G[policy_idx] -= utility
             G[policy_idx] -= info_gain
+            policy_details.append((policy_idx, policy, qs_pi, utility, info_gain))
         elif use_utility:
             # Only utility needed
             qo_pi = get_expected_obs_sequence(A_fn, qs_pi, state_factors, state_sizes)
             utility = calc_expected_utility(qo_pi, C_fn, observation_labels)
             G[policy_idx] -= utility
+            info_gain = 0.0
+            policy_details.append((policy_idx, policy, qs_pi, utility, info_gain))
         elif use_states_info_gain:
             # Only info gain needed (rare case)
             _, info_gain = get_expected_obs_and_info_gain_unified(
                 A_fn, qs_pi, state_factors, state_sizes, observation_labels
             )
             G[policy_idx] -= info_gain  # Subtract info gain (we want to maximize it)
+            utility = 0.0
+            policy_details.append((policy_idx, policy, qs_pi, utility, info_gain))
     
     # Compute policy posterior: q(π) ∝ exp(-γ * G(π)) * p(π)
     log_q_pi = -gamma * G + lnE
     q_pi = maths.softmax(log_q_pi)
+    
+    # DEBUG: Show top 5 most probable policies with detailed breakdown
+    top_k = 5
+    top_indices = np.argsort(q_pi)[-top_k:][::-1]  # Highest probability first
+    
+    print(f"\n🔍 Top {top_k} Most Probable Policies:")
+    action_names = {0: 'UP', 1: 'DO', 2: 'LE', 3: 'RI', 4: 'OP', 5: 'NO'}
+    
+    for rank, idx in enumerate(top_indices, 1):
+        policy_idx, policy, qs_pi, utility, info_gain = policy_details[idx]
+        policy_str = '→'.join([action_names[a] for a in policy])
+        print(f"  #{rank} Policy {policy_idx:2d} [{policy_str:11s}]: prob={q_pi[idx]:.4f}, util={utility:7.4f}, info={info_gain:7.4f}, G={G[idx]:7.4f}")
+        
+        # Show per-timestep breakdown for top 2
+        if rank <= 2:
+            # Re-compute with debug enabled for detailed view
+            qo_pi_debug, info_gain_debug = get_expected_obs_and_info_gain_unified(
+                A_fn, qs_pi, state_factors, state_sizes, observation_labels, debug=True
+            )
     
     return q_pi, G
 
