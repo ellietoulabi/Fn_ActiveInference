@@ -486,51 +486,52 @@ def vanilla_fpi_update_posterior_policies(
     q_pi = maths.softmax(log_q_pi)
     
     # DEBUG: Show top 5 most probable policies with detailed breakdown
-    top_k = 5
-    top_indices = np.argsort(q_pi)[-top_k:][::-1]  # Highest probability first
-    
-    print(f"\n🔍 Top {top_k} Most Probable Policies:")
-    action_names = {0: 'UP', 1: 'DO', 2: 'LE', 3: 'RI', 4: 'OP', 5: 'NO'}
-    
-    for rank, idx in enumerate(top_indices, 1):
-        policy_idx, policy, qs_pi, utility, info_gain = policy_details[idx]
-        policy_str = '→'.join([action_names[a] for a in policy])
-        print(f"  #{rank} Policy {policy_idx:2d} [{policy_str:11s}]: prob={q_pi[idx]:.4f}, util={utility:7.4f}, info={info_gain:7.4f}, G={G[idx]:7.4f}")
-        
-        # Show predicted agent positions (entropy of belief)
-        if rank <= 5 and len(qs_pi) > 0:
-            print(f"      Predicted agent position entropy at each step:")
-            for t_idx, qs_t in enumerate(qs_pi):
-                agent_pos_belief = np.array(qs_t['agent_pos'])
-                entropy = -np.sum(agent_pos_belief * np.log(agent_pos_belief + 1e-16))
-                most_likely_pos = int(np.argmax(agent_pos_belief))
-                max_prob = agent_pos_belief[most_likely_pos]
-                print(f"        t={t_idx}: pos*={most_likely_pos}, prob={max_prob:.3f}, H={entropy:.4f}")
-        
-        # Show per-timestep breakdown for top 2
-        if rank <= 2:
-            # Re-compute with debug enabled for detailed view
-            qo_pi_debug, info_gain_debug = get_expected_obs_and_info_gain_unified(
-                A_fn, qs_pi, state_factors, state_sizes, observation_labels, debug=True
-            )
-            
-            # Show what observations contribute to utility
-            print(f"      Utility breakdown per timestep:")
-            for t, qo_t in enumerate(qo_pi_debug):
-                # Compute utility for this timestep
-                timestep_util = 0.0
-                for modality, qo_m in qo_t.items():
-                    for obs_idx in range(len(qo_m)):
-                        obs_indices = {modality: obs_idx}
-                        prefs = C_fn(obs_indices)
-                        pref_value = prefs.get(modality, 0.0)
-                        contribution = qo_m[obs_idx] * pref_value
-                        if abs(contribution) > 0.01:  # Only show significant contributions
-                            obs_labels = observation_labels.get(modality, [])
-                            obs_name = obs_labels[obs_idx] if obs_idx < len(obs_labels) else str(obs_idx)
-                            timestep_util += contribution
-                            print(f"        t={t} {modality}[{obs_name}]: p={qo_m[obs_idx]:.3f} × pref={pref_value:.2f} = {contribution:.4f}")
-                print(f"        t={t} TOTAL: {timestep_util:.4f}")
+    # Commented out for cleaner output
+    # top_k = 5
+    # top_indices = np.argsort(q_pi)[-top_k:][::-1]  # Highest probability first
+    # 
+    # print(f"\n🔍 Top {top_k} Most Probable Policies:")
+    # action_names = {0: 'UP', 1: 'DO', 2: 'LE', 3: 'RI', 4: 'OP', 5: 'NO'}
+    # 
+    # for rank, idx in enumerate(top_indices, 1):
+    #     policy_idx, policy, qs_pi, utility, info_gain = policy_details[idx]
+    #     policy_str = '→'.join([action_names[a] for a in policy])
+    #     print(f"  #{rank} Policy {policy_idx:2d} [{policy_str:11s}]: prob={q_pi[idx]:.4f}, util={utility:7.4f}, info={info_gain:7.4f}, G={G[idx]:7.4f}")
+    #     
+    #     # Show predicted agent positions (entropy of belief)
+    #     if rank <= 5 and len(qs_pi) > 0:
+    #         print(f"      Predicted agent position entropy at each step:")
+    #         for t_idx, qs_t in enumerate(qs_pi):
+    #             agent_pos_belief = np.array(qs_t['agent_pos'])
+    #             entropy = -np.sum(agent_pos_belief * np.log(agent_pos_belief + 1e-16))
+    #             most_likely_pos = int(np.argmax(agent_pos_belief))
+    #             max_prob = agent_pos_belief[most_likely_pos]
+    #             print(f"        t={t_idx}: pos*={most_likely_pos}, prob={max_prob:.3f}, H={entropy:.4f}")
+    #     
+    #     # Show per-timestep breakdown for top 2
+    #     if rank <= 2:
+    #         # Re-compute with debug enabled for detailed view
+    #         qo_pi_debug, info_gain_debug = get_expected_obs_and_info_gain_unified(
+    #             A_fn, qs_pi, state_factors, state_sizes, observation_labels, debug=True
+    #         )
+    #         
+    #         # Show what observations contribute to utility
+    #         print(f"      Utility breakdown per timestep:")
+    #         for t, qo_t in enumerate(qo_pi_debug):
+    #             # Compute utility for this timestep
+    #             timestep_util = 0.0
+    #             for modality, qo_m in qo_t.items():
+    #                 for obs_idx in range(len(qo_m)):
+    #                     obs_indices = {modality: obs_idx}
+    #                     prefs = C_fn(obs_indices)
+    #                     pref_value = prefs.get(modality, 0.0)
+    #                     contribution = qo_m[obs_idx] * pref_value
+    #                     if abs(contribution) > 0.01:  # Only show significant contributions
+    #                         obs_labels = observation_labels.get(modality, [])
+    #                         obs_name = obs_labels[obs_idx] if obs_idx < len(obs_labels) else str(obs_idx)
+    #                         timestep_util += contribution
+    #                         print(f"        t={t} {modality}[{obs_name}]: p={qo_m[obs_idx]:.3f} × pref={pref_value:.2f} = {contribution:.4f}")
+    #         print(f"        t={t} TOTAL: {timestep_util:.4f}")
     
     return q_pi, G
 
