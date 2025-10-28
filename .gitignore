@@ -1,2 +1,25 @@
 __pycache__/
 .venv/
+
+# Logs and data files
+logs/
+*.log
+*.csv
+
+# Images and plots
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# JSON data files
+q_table*.json
+*_log*.csv
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+
+# Results
+results/
