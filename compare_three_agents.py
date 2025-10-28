@@ -192,8 +192,8 @@ def main():
     print("="*80)
     
     # Parameters
-    NUM_EPISODES = 200
-    EPISODES_PER_CONFIG = 40  # Change environment every 40 episodes
+    NUM_EPISODES = 80
+    EPISODES_PER_CONFIG = 20  # Change environment every 20 episodes
     MAX_STEPS = 50
     PLANNING_STEPS = 2  # Dyna-Q planning steps
     RANDOM_SEED = 42
