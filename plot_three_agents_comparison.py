@@ -68,6 +68,19 @@ def main():
     ql_episodes = aggregate_episodes(log_df, 'QL', args.max_episodes)
     dynaq_episodes = aggregate_episodes(log_df, 'DynaQ', args.max_episodes)
     
+    # Debug: Check if data is loaded
+    print(f"\nDebug - Episodes loaded:")
+    print(f"  AIF: {len(aif_episodes)} episodes")
+    print(f"  QL: {len(ql_episodes)} episodes")
+    print(f"  DynaQ: {len(dynaq_episodes)} episodes")
+    
+    if len(aif_episodes) == 0:
+        print("WARNING: No AIF episodes found!")
+    if len(ql_episodes) == 0:
+        print("WARNING: No QL episodes found!")
+    if len(dynaq_episodes) == 0:
+        print("WARNING: No DynaQ episodes found!")
+    
     num_episodes = max(len(aif_episodes), len(ql_episodes), len(dynaq_episodes))
     
     print(f"\nActive Inference: {len(aif_episodes)} episodes")
