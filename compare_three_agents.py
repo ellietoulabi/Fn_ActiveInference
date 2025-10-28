@@ -326,9 +326,11 @@ def main():
                 print(f"Red at {config['red_pos']}, Blue at {config['blue_pos']}")
                 print(f"{'='*80}")
             
-            # Run all three agents on same environment
-            print(f"\nEpisode {episode}:")
+            # Progress indicator
+            progress_pct = (episode / NUM_EPISODES) * 100
+            print(f"\n[{progress_pct:5.1f}%] Episode {episode}/{NUM_EPISODES}:")
             
+            # Run all three agents on same environment
             aif_result = run_aif_episode(env, aif_agent, episode, MAX_STEPS, verbose=False, csv_writer=csv_writer)
             aif_results.append(aif_result)
             print(f"  AIF:    {'✅ WIN' if aif_result['success'] else '❌ FAIL'} "
@@ -345,6 +347,27 @@ def main():
             print(f"  Dyna-Q: {'✅ WIN' if dynaq_result['success'] else '❌ FAIL'} "
                   f"- {dynaq_result['steps']:2d} steps, reward: {dynaq_result['reward']:+.2f}, "
                   f"ε={dynaq_result['epsilon']:.3f}, Q-size={dynaq_result['q_table_size']}, Model={dynaq_result['model_size']}")
+            
+            # Show running statistics every 20 episodes
+            if episode % 20 == 0:
+                aif_wins = sum(1 for r in aif_results if r['success'])
+                ql_wins = sum(1 for r in ql_results if r['success'])
+                dynaq_wins = sum(1 for r in dynaq_results if r['success'])
+                
+                aif_rate = 100 * aif_wins / len(aif_results)
+                ql_rate = 100 * ql_wins / len(ql_results)
+                dynaq_rate = 100 * dynaq_wins / len(dynaq_results)
+                
+                aif_avg_r = np.mean([r['reward'] for r in aif_results])
+                ql_avg_r = np.mean([r['reward'] for r in ql_results])
+                dynaq_avg_r = np.mean([r['reward'] for r in dynaq_results])
+                
+                print(f"\n  📊 PROGRESS SUMMARY (Episodes 1-{episode}):")
+                print(f"     {'Agent':<15} {'Success Rate':<15} {'Avg Reward':<15}")
+                print(f"     {'-'*45}")
+                print(f"     {'AIF':<15} {aif_wins}/{episode} ({aif_rate:>5.1f}%)   {aif_avg_r:>+7.2f}")
+                print(f"     {'Q-Learning':<15} {ql_wins}/{episode} ({ql_rate:>5.1f}%)   {ql_avg_r:>+7.2f}")
+                print(f"     {'Dyna-Q':<15} {dynaq_wins}/{episode} ({dynaq_rate:>5.1f}%)   {dynaq_avg_r:>+7.2f}")
     finally:
         csv_file.close()
         print(f"\n✓ Log saved to: {csv_path}")
