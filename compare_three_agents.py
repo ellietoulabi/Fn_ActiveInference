@@ -251,7 +251,7 @@ def main():
         learning_rate=0.1,
         discount_factor=0.95,
         epsilon=1.0,
-        epsilon_decay=0.95,
+        epsilon_decay=0.995,  # Slower decay for 200 episodes (was 0.95)
         min_epsilon=0.05,
         load_existing=False
     )
@@ -266,7 +266,7 @@ def main():
         learning_rate=0.1,
         discount_factor=0.95,
         epsilon=1.0,
-        epsilon_decay=0.95,
+        epsilon_decay=0.995,  # Slower decay for 200 episodes (was 0.95)
         min_epsilon=0.05,
         load_existing=False
     )
