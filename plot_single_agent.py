@@ -254,21 +254,35 @@ def plot_agent_analysis(log_df, agent_type, log_file, output_path=None, episodes
     ax1.grid(True, alpha=0.3, linewidth=0.8)
     ax1.set_xlim(0, max_ep + 1)
     
-    # Plot 2: Episode Returns (Second row, left)
+    # Plot 2: Average Reward Convergence (Cumulative Average)
     ax2 = fig.add_subplot(gs[1, 0])
+    
+    # Calculate CUMULATIVE average reward (true convergence metric)
+    # This is the average of ALL rewards from episode 1 to current episode
+    cumsum_reward = episode_stats['total_reward'].cumsum()
+    episode_numbers = np.arange(1, len(episode_stats) + 1)
+    cumulative_avg_reward = cumsum_reward / episode_numbers
+    
+    # Plot raw episode rewards (very light, for context)
     ax2.plot(episode_stats['episode'], episode_stats['total_reward'], 
-             marker='o', linestyle='-', linewidth=2, markersize=4, 
-             color=agent_color, alpha=0.8)
-    ax2.axhline(y=2.0, color='green', linestyle='--', alpha=0.3, label='Win (+2.0)')
-    ax2.axhline(y=-0.5, color='red', linestyle='--', alpha=0.3, label='Lose (-0.5)')
-    ax2.axhline(y=0, color='gray', linestyle='--', alpha=0.3)
+             linestyle='-', linewidth=0.8, color=agent_color, alpha=0.15, zorder=1)
+    
+    # Plot cumulative average (CONVERGENCE line - this is the key plot!)
+    ax2.plot(episode_stats['episode'], cumulative_avg_reward,
+             linestyle='-', linewidth=3.5, color=agent_color, alpha=0.95, zorder=3,
+             label='Cumulative average')
+    
+    # Reference lines
+    ax2.axhline(y=1.5, color='#06A77D', linestyle='--', alpha=0.3, linewidth=1.5, label='Win reward')
+    ax2.axhline(y=0, color='gray', linestyle='-', alpha=0.3, linewidth=0.8)
+    ax2.axhline(y=-0.5, color='#E63946', linestyle='--', alpha=0.3, linewidth=1.5, label='Loss reward')
     
     add_config_boundaries(ax2, episode_stats['episode'].min(), episode_stats['episode'].max())
     
     ax2.set_xlabel('Episode', fontsize=12, fontweight='bold')
-    ax2.set_ylabel('Total Reward', fontsize=12, fontweight='bold')
-    ax2.set_title('Episode Returns', fontsize=14, fontweight='bold')
-    ax2.legend(loc='lower right', fontsize=9)
+    ax2.set_ylabel('Average Reward', fontsize=12, fontweight='bold')
+    ax2.set_title('Average Reward Convergence', fontsize=14, fontweight='bold')
+    ax2.legend(loc='best', fontsize=9, framealpha=0.9)
     ax2.grid(True, alpha=0.3)
     ax2.set_xlim(0, max_ep + 1)
     ax2.set_ylim(-0.8, 2.3)
@@ -297,54 +311,56 @@ def plot_agent_analysis(log_df, agent_type, log_file, output_path=None, episodes
     # Plot 4: Win/Loss per Episode (Third row, left)
     ax4 = fig.add_subplot(gs[2, 0])
     episodes_range = episode_stats['episode'].values
-    bar_width = 0.6
+    bar_width = 0.8
     
-    # Create win/loss bars
-    wins = episode_stats['success'].astype(int)
-    losses = (~episode_stats['success']).astype(int)
+    # Create outcome values: +1 for win, -1 for loss
+    outcomes = episode_stats['success'].apply(lambda x: 1 if x else -1)
     
-    ax4.bar(episodes_range, wins, bar_width, 
-            label='Win', color=agent_color, alpha=0.8)
-    ax4.bar(episodes_range, -losses, bar_width,
-            label='Loss', color=agent_color, alpha=0.3)
+    # Create colors: green for wins (+1), red for losses (-1)
+    bar_colors = ['#06A77D' if outcome == 1 else '#E63946' for outcome in outcomes]
     
-    ax4.axhline(y=0, color='black', linestyle='-', linewidth=0.8)
+    # Plot bars
+    ax4.bar(episodes_range, outcomes, bar_width, 
+            color=bar_colors, alpha=0.85, edgecolor='none')
+    
+    # Add legend manually
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='#06A77D', label='Win (up)', alpha=0.85),
+        Patch(facecolor='#E63946', label='Loss (down)', alpha=0.85)
+    ]
+    ax4.legend(handles=legend_elements, loc='upper left', fontsize=10)
+    
+    ax4.axhline(y=0, color='black', linestyle='-', linewidth=1.0)
     
     add_config_boundaries(ax4, episode_stats['episode'].min(), episode_stats['episode'].max())
     
     ax4.set_xlabel('Episode', fontsize=12, fontweight='bold')
-    ax4.set_ylabel('Outcome (1=Win, -1=Loss)', fontsize=12, fontweight='bold')
+    ax4.set_ylabel('Outcome', fontsize=12, fontweight='bold')
     ax4.set_title('Win/Loss per Episode', fontsize=14, fontweight='bold')
-    ax4.legend(loc='upper left', fontsize=10)
+    ax4.set_yticks([-1, 0, 1])
+    ax4.set_yticklabels(['Loss', '0', 'Win'])
     ax4.grid(True, alpha=0.3, axis='y')
     ax4.set_xlim(0, max_ep + 1)
-    ax4.set_ylim(-1.5, 1.5)
+    ax4.set_ylim(-1.3, 1.3)
     
-    # Plot 5: Success Rate (Third row, right)
+    # Plot 5: Success Rate (Third row, right) - Cumulative only
     ax5 = fig.add_subplot(gs[2, 1])
-    window = max(5, len(episode_stats) // 20)  # 5-episode rolling window
     
     cumsum = episode_stats['success'].cumsum()
     cumrate = 100 * cumsum / np.arange(1, len(episode_stats) + 1)
     
     ax5.plot(episode_stats['episode'], cumrate,
-             linestyle='-', linewidth=2.5,
-             label='Cumulative', color=agent_color, alpha=0.8)
+             linestyle='-', linewidth=3,
+             color=agent_color, alpha=0.9, zorder=3)
     
-    # Add rolling average
-    rolling = episode_stats['success'].rolling(window=window, min_periods=1).mean() * 100
-    
-    ax5.plot(episode_stats['episode'], rolling,
-             linestyle='--', linewidth=1.5, alpha=0.5,
-             label=f'{window}-ep avg', color=agent_color)
-    
-    ax5.axhline(y=50, color='gray', linestyle='--', alpha=0.3)
+    ax5.axhline(y=50, color='gray', linestyle='--', alpha=0.3, label='50% baseline')
     
     add_config_boundaries(ax5, episode_stats['episode'].min(), episode_stats['episode'].max())
     
     ax5.set_xlabel('Episode', fontsize=12, fontweight='bold')
     ax5.set_ylabel('Success Rate (%)', fontsize=12, fontweight='bold')
-    ax5.set_title('Success Rate', fontsize=14, fontweight='bold')
+    ax5.set_title('Cumulative Success Rate', fontsize=14, fontweight='bold')
     ax5.legend(loc='lower right', fontsize=9)
     ax5.grid(True, alpha=0.3)
     ax5.set_xlim(0, max_ep + 1)
