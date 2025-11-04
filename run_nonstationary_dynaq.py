@@ -195,9 +195,9 @@ def main():
     print("="*80)
     
     # Parameters
-    NUM_EPISODES = 50
-    EPISODES_PER_CONFIG = 5  # Change button positions every 5 episodes
-    MAX_STEPS = 50
+    NUM_EPISODES = 2000
+    EPISODES_PER_CONFIG = 100  # Change button positions every 5 episodes
+    MAX_STEPS = 100
     PLANNING_STEPS = 10  # Number of planning steps per real step
     
     # Setup CSV logging with timestamp

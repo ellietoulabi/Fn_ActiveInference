@@ -23,6 +23,8 @@ q_table*.json
 
 # Results
 results/
+tmp_pretrained_dynaq/
 
 # Test files
 test_*.py
+test_*.json

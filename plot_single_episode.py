@@ -133,18 +133,22 @@ def main():
     # Plot 2: Reward per Step
     ax2 = axes[0, 1]
     width = 0.25
-    steps = aif_df['step'].values
-    x = np.arange(len(steps))
     
-    ax2.bar(x - width, aif_df['reward'], width, label='AIF', color=colors['AIF'], alpha=0.8)
-    ax2.bar(x, ql_df['reward'], width, label='QL', color=colors['QL'], alpha=0.8)
-    ax2.bar(x + width, dynaq_df['reward'], width, label='DynaQ', color=colors['DynaQ'], alpha=0.8)
+    # Get max step to set x-axis range
+    max_step = max(aif_df['step'].max(), ql_df['step'].max(), dynaq_df['step'].max())
+    
+    # Plot each agent with their own step numbers
+    ax2.bar(aif_df['step'] - width, aif_df['reward'], width, 
+            label=f'AIF ({len(aif_df)} steps)', color=colors['AIF'], alpha=0.8)
+    ax2.bar(ql_df['step'], ql_df['reward'], width, 
+            label=f'QL ({len(ql_df)} steps)', color=colors['QL'], alpha=0.8)
+    ax2.bar(dynaq_df['step'] + width, dynaq_df['reward'], width, 
+            label=f'DynaQ ({len(dynaq_df)} steps)', color=colors['DynaQ'], alpha=0.8)
     
     ax2.set_xlabel('Step', fontsize=12, fontweight='bold')
     ax2.set_ylabel('Reward', fontsize=12, fontweight='bold')
     ax2.set_title('Reward per Step', fontsize=14, fontweight='bold')
-    ax2.set_xticks(x[::2])  # Show every other step
-    ax2.set_xticklabels(steps[::2])
+    ax2.set_xlim(0, max_step + 1)
     ax2.legend(loc='best', fontsize=10)
     ax2.grid(True, alpha=0.3, axis='y')
     ax2.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
