@@ -111,7 +111,7 @@ def main():
     parser.add_argument('log_file', help='Path to agent CSV log file')
     parser.add_argument('--output', default=None,
                        help='Output filename (default: auto-generated)')
-    parser.add_argument('--episodes_per_config', type=int, default=None,
+    parser.add_argument('--episodes_per_config', type=int, default=200,
                        help='Episodes per configuration (for non-stationary environments)')
     
     args = parser.parse_args()
@@ -230,32 +230,8 @@ def plot_agent_analysis(log_df, agent_type, log_file, output_path=None, episodes
     
     max_ep = episode_stats['episode'].max()
     
-    # Plot 1: Cumulative Reward Over Time (Top row, full width)
+    # Plot 1: Average Reward Convergence (Top row, full width)
     ax1 = fig.add_subplot(gs[0, :])
-    cumulative = episode_stats['total_reward'].cumsum()
-    
-    ax1.plot(episode_stats['episode'], cumulative,
-             linestyle='-', linewidth=3, marker='o', markersize=5,
-             color=agent_color, alpha=0.9, zorder=3)
-    
-    # Fill area under curve
-    ax1.fill_between(episode_stats['episode'], cumulative, alpha=0.15, color=agent_color)
-    
-    # Add annotation for final value
-    final_reward = cumulative.iloc[-1]
-    ax1.text(max_ep, final_reward, f'{final_reward:.1f}', fontsize=12, fontweight='bold', 
-             ha='left', va='bottom', color=agent_color)
-    
-    add_config_boundaries(ax1, episode_stats['episode'].min(), episode_stats['episode'].max())
-    
-    ax1.set_xlabel('Episode', fontsize=14, fontweight='bold')
-    ax1.set_ylabel('Cumulative Reward', fontsize=14, fontweight='bold')
-    ax1.set_title('Cumulative Reward Over Time', fontsize=16, fontweight='bold', pad=15)
-    ax1.grid(True, alpha=0.3, linewidth=0.8)
-    ax1.set_xlim(0, max_ep + 1)
-    
-    # Plot 2: Average Reward Convergence (Cumulative Average)
-    ax2 = fig.add_subplot(gs[1, 0])
     
     # Calculate CUMULATIVE average reward (true convergence metric)
     # This is the average of ALL rewards from episode 1 to current episode
@@ -264,28 +240,52 @@ def plot_agent_analysis(log_df, agent_type, log_file, output_path=None, episodes
     cumulative_avg_reward = cumsum_reward / episode_numbers
     
     # Plot raw episode rewards (very light, for context)
-    ax2.plot(episode_stats['episode'], episode_stats['total_reward'], 
+    ax1.plot(episode_stats['episode'], episode_stats['total_reward'], 
              linestyle='-', linewidth=0.8, color=agent_color, alpha=0.15, zorder=1)
     
     # Plot cumulative average (CONVERGENCE line - this is the key plot!)
-    ax2.plot(episode_stats['episode'], cumulative_avg_reward,
+    ax1.plot(episode_stats['episode'], cumulative_avg_reward,
              linestyle='-', linewidth=3.5, color=agent_color, alpha=0.95, zorder=3,
              label='Cumulative average')
     
     # Reference lines
-    ax2.axhline(y=1.5, color='#06A77D', linestyle='--', alpha=0.3, linewidth=1.5, label='Win reward')
-    ax2.axhline(y=0, color='gray', linestyle='-', alpha=0.3, linewidth=0.8)
-    ax2.axhline(y=-0.5, color='#E63946', linestyle='--', alpha=0.3, linewidth=1.5, label='Loss reward')
+    ax1.axhline(y=1.5, color='#06A77D', linestyle='--', alpha=0.3, linewidth=1.5, label='Win reward')
+    ax1.axhline(y=0, color='gray', linestyle='-', alpha=0.3, linewidth=0.8)
+    ax1.axhline(y=-0.5, color='#E63946', linestyle='--', alpha=0.3, linewidth=1.5, label='Loss reward')
+    
+    add_config_boundaries(ax1, episode_stats['episode'].min(), episode_stats['episode'].max())
+    
+    ax1.set_xlabel('Episode', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('Average Reward', fontsize=14, fontweight='bold')
+    ax1.set_title('Average Reward Convergence', fontsize=16, fontweight='bold', pad=15)
+    ax1.legend(loc='best', fontsize=10, framealpha=0.9)
+    ax1.grid(True, alpha=0.3, linewidth=0.8)
+    ax1.set_xlim(0, max_ep + 1)
+    ax1.set_ylim(-0.8, 2.3)
+    
+    # Plot 2: Cumulative Reward Over Time (Second row, left)
+    ax2 = fig.add_subplot(gs[1, 0])
+    cumulative = episode_stats['total_reward'].cumsum()
+    
+    ax2.plot(episode_stats['episode'], cumulative,
+             linestyle='-', linewidth=2.5, marker='o', markersize=4,
+             color=agent_color, alpha=0.9, zorder=3)
+    
+    # Fill area under curve
+    ax2.fill_between(episode_stats['episode'], cumulative, alpha=0.15, color=agent_color)
+    
+    # Add annotation for final value
+    final_reward = cumulative.iloc[-1]
+    ax2.text(max_ep, final_reward, f'{final_reward:.1f}', fontsize=11, fontweight='bold', 
+             ha='left', va='bottom', color=agent_color)
     
     add_config_boundaries(ax2, episode_stats['episode'].min(), episode_stats['episode'].max())
     
     ax2.set_xlabel('Episode', fontsize=12, fontweight='bold')
-    ax2.set_ylabel('Average Reward', fontsize=12, fontweight='bold')
-    ax2.set_title('Average Reward Convergence', fontsize=14, fontweight='bold')
-    ax2.legend(loc='best', fontsize=9, framealpha=0.9)
+    ax2.set_ylabel('Cumulative Reward', fontsize=12, fontweight='bold')
+    ax2.set_title('Cumulative Reward Over Time', fontsize=14, fontweight='bold')
     ax2.grid(True, alpha=0.3)
     ax2.set_xlim(0, max_ep + 1)
-    ax2.set_ylim(-0.8, 2.3)
     
     # Plot 3: Step Count per Episode (Second row, right)
     ax3 = fig.add_subplot(gs[1, 1])
