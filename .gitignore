@@ -2,6 +2,7 @@ __pycache__/
 .venv/
 
 # Logs and data files
+logs
 logs/
 *.log
 *.csv
@@ -23,7 +24,7 @@ q_table*.json
 
 # Results
 results/
-tmp_pretrained_dynaq/
+# tmp_pretrained_dynaq/
 
 # Test files
 test_*.py

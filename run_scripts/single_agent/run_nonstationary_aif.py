@@ -6,12 +6,18 @@ Agent keeps its beliefs about button positions from previous episode,
 but resets position to 0 and button states to not_pressed.
 """
 
+import sys
+from pathlib import Path
+
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent.parent.resolve()
+sys.path.insert(0, str(project_root))
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import csv
 from datetime import datetime
-from pathlib import Path
 from environments.RedBlueButton.SingleAgentRedBlueButton import SingleAgentRedBlueButtonEnv
 from generative_models.SA_ActiveInference.RedBlueButton import (
     A_fn, B_fn, C_fn, D_fn, model_init, env_utils
@@ -224,7 +230,7 @@ def main():
     MAX_STEPS = 50
     
     # Setup CSV logging with timestamp
-    log_dir = Path("logs")
+    log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     csv_filename = f"active_inference_log_ep{NUM_EPISODES}_step{MAX_STEPS}_{timestamp}.csv"

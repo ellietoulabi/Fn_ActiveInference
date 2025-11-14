@@ -3,7 +3,7 @@ Plot detailed comparison of all three agents for a single episode.
 Shows step-by-step actions, rewards, and map states.
 
 Usage:
-    python plot_single_episode.py <log_file.csv> <episode_number>
+    python utils/plotting/plot_single_episode.py <log_file.csv> <episode_number>
 """
 
 import pandas as pd

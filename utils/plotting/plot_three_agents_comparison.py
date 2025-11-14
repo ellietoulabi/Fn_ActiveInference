@@ -8,7 +8,7 @@ Creates 5 comparison plots:
   5. Success Rate
 
 Usage:
-    python plot_three_agents_comparison.py <log_file.csv> [--max_episodes N]
+    python utils/plotting/plot_three_agents_comparison.py <log_file.csv> [--max_episodes N]
 """
 
 import pandas as pd

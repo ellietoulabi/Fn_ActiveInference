@@ -1,25 +1,28 @@
 """
-Compare Vanilla Dyna-Q vs Dyna-Q with Multiple Recency Biases.
+Compare Dyna-Q Variants: Single-Step vs Trajectory Sampling.
 
-Compares 5 agents on the same environment configurations:
-- Vanilla Dyna-Q (uniform random sampling)
-- Dyna-Q with recency_decay = 0.99 (slow forgetting)
-- Dyna-Q with recency_decay = 0.95 (medium forgetting)
-- Dyna-Q with recency_decay = 0.90 (fast forgetting)
-- Dyna-Q with recency_decay = 0.85 (very fast forgetting)
+Compares 3 agents on the same environment configurations:
+- Vanilla Dyna-Q (single-step planning)
+- Trajectory Sampling (rollout_length=3, n_trajectories=5)
+- Trajectory Sampling (rollout_length=5, n_trajectories=10)
 
 All agents experience the EXACT SAME button position changes at the same episodes.
-This ensures a fair comparison of their adaptation capabilities.
+This ensures a fair comparison of planning approaches.
 """
+
+import sys
+from pathlib import Path
+
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent.parent.resolve()
+sys.path.insert(0, str(project_root))
 
 import numpy as np
 import csv
 from datetime import datetime
-from pathlib import Path
 from environments.RedBlueButton.SingleAgentRedBlueButton import SingleAgentRedBlueButtonEnv
 from generative_models.SA_ActiveInference.RedBlueButton import env_utils
-from agents.QLearning.dynaq_agent import DynaQAgent as VanillaDynaQ
-from agents.QLearning.dynaq_agent_with_recency_bias import DynaQAgent as RecencyDynaQ
+from agents.QLearning.dynaq_agent_trajectory_sampling import DynaQAgent
 
 
 def grid_to_string(grid):
@@ -103,33 +106,34 @@ def run_episode(env, agent, agent_name, episode_num, max_steps=50, csv_writer=No
         'model_size': len(agent.model),
         'visited_sa_pairs': len(agent.visited_state_actions),
         'epsilon': agent.epsilon,
-        'global_step': stats.get('global_step', 0),
-        'avg_experience_age': stats.get('avg_experience_age', 0)
+        'synthetic_updates': stats.get('synthetic_updates_count', 0)
     }
 
 
 def main():
     print("="*80)
-    print("COMPARING: Vanilla Dyna-Q vs Dyna-Q with Multiple Recency Biases")
-    print("5 Agents - Same Environment Configurations - Fair Comparison")
+    print("COMPARING: Single-Step Dyna-Q vs Trajectory Sampling Dyna-Q")
+    print("3 Agents - Same Environment Configurations - Fair Comparison")
     print("="*80)
     
     # Parameters
     NUM_EPISODES = 1000
-    EPISODES_PER_CONFIG = 20  # Change button positions every 200 episodes
+    EPISODES_PER_CONFIG = 20  # Change button positions every 20 episodes
     MAX_STEPS = 50
     PLANNING_STEPS = 10
-    RECENCY_DECAYS = [0.99, 0.95, 0.90, 0.85]  # Different recency bias levels
     SEED = 42  # For reproducibility
     
     np.random.seed(SEED)
     
     # Setup CSV logging
-    log_dir = Path("logs")
+    log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"dynaq_comparison_ep{NUM_EPISODES}_step{MAX_STEPS}_{timestamp}.csv"
+    csv_filename = f"trajectory_sampling_ep{NUM_EPISODES}_step{MAX_STEPS}_{timestamp}.csv"
     csv_path = log_dir / csv_filename
+    
+    # Base filename for Q-tables (without extension)
+    base_qtable_name = csv_filename.replace("_ep", "_qtable_ep").replace(".csv", "")
     
     csv_file = open(csv_path, 'w', newline='')
     csv_writer = csv.DictWriter(csv_file, 
@@ -138,7 +142,7 @@ def main():
     
     print(f"\nLogging to: {csv_path}")
     
-    # Setup all agents (1 vanilla + 4 recency variants)
+    # Setup all agents
     print("\n" + "="*80)
     print("SETTING UP AGENTS")
     print("="*80)
@@ -146,12 +150,14 @@ def main():
     agents = []
     agent_names = []
     
-    # 1. Vanilla Dyna-Q
-    print("\n1. Vanilla Dyna-Q (uniform random sampling)...")
-    vanilla_agent = VanillaDynaQ(
+    # 1. Single-Step Dyna-Q
+    print("\n1. Single-Step Dyna-Q (standard planning)...")
+    q_table_path_single = log_dir / f"{base_qtable_name}_singlestep.json"
+    single_step_agent = DynaQAgent(
         action_space_size=6,
         planning_steps=PLANNING_STEPS,
-        q_table_path="q_table_vanilla_comparison.json",
+        use_trajectory_sampling=False,
+        q_table_path=str(q_table_path_single),
         learning_rate=0.1,
         discount_factor=0.95,
         epsilon=1.0,
@@ -159,30 +165,56 @@ def main():
         min_epsilon=0.05,
         load_existing=False
     )
-    agents.append(vanilla_agent)
-    agent_names.append("Vanilla")
-    print("   ✓ Vanilla Dyna-Q ready")
-    print(f"   Planning: Uniform random sampling from all (s,a) pairs")
+    agents.append(single_step_agent)
+    agent_names.append("SingleStep")
+    print("   ✓ Single-Step Dyna-Q ready")
+    print(f"   Planning: {PLANNING_STEPS} single-step updates per real step")
     
-    # 2-5. Dyna-Q with different recency biases
-    for i, decay in enumerate(RECENCY_DECAYS, start=2):
-        print(f"\n{i}. Dyna-Q with Recency Bias (decay={decay})...")
-        recency_agent = RecencyDynaQ(
-            action_space_size=6,
-            planning_steps=PLANNING_STEPS,
-            recency_decay=decay,
-            q_table_path=f"q_table_recency{decay}_comparison.json",
-            learning_rate=0.1,
-            discount_factor=0.95,
-            epsilon=1.0,
-            epsilon_decay=0.95,
-            min_epsilon=0.05,
-            load_existing=False
-        )
-        agents.append(recency_agent)
-        agent_names.append(f"Recency{decay}")
-        print(f"   ✓ Dyna-Q with Recency Bias ready")
-        print(f"   Planning: Recency-weighted sampling (decay={decay})")
+    # 2. Trajectory Sampling (short trajectories)
+    print("\n2. Trajectory Sampling (short: rollout=3, n_traj=5)...")
+    q_table_path_short = log_dir / f"{base_qtable_name}_trajshort.json"
+    traj_short_agent = DynaQAgent(
+        action_space_size=6,
+        planning_steps=PLANNING_STEPS,
+        use_trajectory_sampling=True,
+        n_trajectories=5,
+        rollout_length=3,
+        planning_epsilon=0.1,
+        q_table_path=str(q_table_path_short),
+        learning_rate=0.1,
+        discount_factor=0.95,
+        epsilon=1.0,
+        epsilon_decay=0.95,
+        min_epsilon=0.05,
+        load_existing=False
+    )
+    agents.append(traj_short_agent)
+    agent_names.append("TrajShort")
+    print("   ✓ Trajectory Sampling (short) ready")
+    print(f"   Planning: 5 trajectories × 3 steps (up to 15 updates per real step)")
+    
+    # 3. Trajectory Sampling (long trajectories)
+    print("\n3. Trajectory Sampling (long: rollout=5, n_traj=10)...")
+    q_table_path_long = log_dir / f"{base_qtable_name}_trajlong.json"
+    traj_long_agent = DynaQAgent(
+        action_space_size=6,
+        planning_steps=PLANNING_STEPS,
+        use_trajectory_sampling=True,
+        n_trajectories=10,
+        rollout_length=5,
+        planning_epsilon=0.1,
+        q_table_path=str(q_table_path_long),
+        learning_rate=0.1,
+        discount_factor=0.95,
+        epsilon=1.0,
+        epsilon_decay=0.95,
+        min_epsilon=0.05,
+        load_existing=False
+    )
+    agents.append(traj_long_agent)
+    agent_names.append("TrajLong")
+    print("   ✓ Trajectory Sampling (long) ready")
+    print(f"   Planning: 10 trajectories × 5 steps (up to 50 updates per real step)")
     
     print(f"\nAll {len(agents)} agents have identical hyperparameters except for planning strategy")
     
@@ -288,6 +320,7 @@ def main():
         success_rate = 100 * successes / len(results)
         avg_reward = np.mean([r['reward'] for r in results])
         avg_steps = np.mean([r['steps'] for r in results])
+        total_synthetic = sum(r['synthetic_updates'] for r in results)
         
         agent_stats.append({
             'name': agent_name,
@@ -296,26 +329,28 @@ def main():
             'avg_reward': avg_reward,
             'avg_steps': avg_steps,
             'final_q_size': results[-1]['q_table_size'],
-            'final_model_size': results[-1]['model_size']
+            'final_model_size': results[-1]['model_size'],
+            'total_synthetic_updates': total_synthetic
         })
     
     # Print overall statistics table
-    print(f"\n{'Agent':<15} {'Success Rate':<18} {'Avg Reward':<15} {'Avg Steps':<12}")
-    print(f"{'-'*60}")
+    print(f"\n{'Agent':<15} {'Success Rate':<18} {'Avg Reward':<15} {'Avg Steps':<12} {'Synthetic Updates':<20}")
+    print(f"{'-'*80}")
     for stats in agent_stats:
         print(f"{stats['name']:<15} "
               f"{stats['successes']}/{len(all_results[0])} ({stats['success_rate']:.1f}%){'':<5} "
               f"{stats['avg_reward']:+.3f}{'':<10} "
-              f"{stats['avg_steps']:.1f}")
+              f"{stats['avg_steps']:.1f}{'':<7} "
+              f"{stats['total_synthetic_updates']}")
     
     # Find best performers
     best_success_rate = max(s['success_rate'] for s in agent_stats)
     best_avg_reward = max(s['avg_reward'] for s in agent_stats)
     best_avg_steps = min(s['avg_steps'] for s in agent_stats)
     
-    print(f"\n{'='*60}")
+    print(f"\n{'='*80}")
     print("WINNERS:")
-    print(f"{'-'*60}")
+    print(f"{'-'*80}")
     best_success_agents = [s['name'] for s in agent_stats if s['success_rate'] == best_success_rate]
     print(f"Best Success Rate: {', '.join(best_success_agents)} ({best_success_rate:.1f}%)")
     
@@ -360,10 +395,12 @@ def main():
         print(row)
     
     print("\n" + "="*80)
-    print(f"\n✓ Comparison complete! Use plot_dynaq_comparison.py to visualize results")
-    print(f"  python plot_dynaq_comparison.py {csv_path} --episodes_per_config {EPISODES_PER_CONFIG}")
+    print(f"\n✓ Comparison complete! CSV saved to: {csv_path}")
+    print(f"\nTo visualize results, use plot_dynaq_comparison.py:")
+    print(f"  python utils/plotting/plot_dynaq_comparison.py {csv_path} --episodes_per_config {EPISODES_PER_CONFIG}")
 
 
 if __name__ == "__main__":
     main()
+
 

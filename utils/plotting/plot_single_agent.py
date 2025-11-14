@@ -2,10 +2,10 @@
 Plot detailed analysis of a single agent's run across multiple episodes.
 
 Usage:
-    python plot_single_agent.py <log_file.csv> [--episodes_per_config N]
+    python utils/plotting/plot_single_agent.py <log_file.csv> [--episodes_per_config N]
     
 Example:
-    python plot_single_agent.py logs/qlearning_log_ep25_step50_20251104_153000.csv --episodes_per_config 5
+    python utils/plotting/plot_single_agent.py logs/qlearning_log_ep25_step50_20251104_153000.csv --episodes_per_config 5
 """
 
 import pandas as pd

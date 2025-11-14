@@ -1,27 +1,35 @@
 """
-Compare Q-Learning vs Vanilla Dyna-Q vs Dyna-Q with Multiple Recency Biases.
+Compare Q-Learning vs Vanilla Dyna-Q vs Dyna-Q with Recency Biases vs Trajectory Sampling.
 
-Compares 6 agents on the same environment configurations:
+Compares 7 agents on the same environment configurations:
 - Q-Learning (baseline, no planning)
 - Vanilla Dyna-Q (uniform random sampling)
 - Dyna-Q with recency_decay = 0.99 (slow forgetting)
 - Dyna-Q with recency_decay = 0.95 (medium forgetting)
 - Dyna-Q with recency_decay = 0.90 (fast forgetting)
 - Dyna-Q with recency_decay = 0.85 (very fast forgetting)
+- Trajectory Sampling Dyna-Q (multi-step rollouts for fast Q-value propagation)
 
 All agents experience the EXACT SAME button position changes at the same episodes.
 This ensures a fair comparison of their adaptation capabilities.
 """
 
+import sys
+from pathlib import Path
+
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent.parent.resolve()
+sys.path.insert(0, str(project_root))
+
 import numpy as np
 import csv
 from datetime import datetime
-from pathlib import Path
 from environments.RedBlueButton.SingleAgentRedBlueButton import SingleAgentRedBlueButtonEnv
 from generative_models.SA_ActiveInference.RedBlueButton import env_utils
 from agents.QLearning.qlearning_agent import QLearningAgent
 from agents.QLearning.dynaq_agent import DynaQAgent as VanillaDynaQ
 from agents.QLearning.dynaq_agent_with_recency_bias import DynaQAgent as RecencyDynaQ
+from agents.QLearning.dynaq_agent_trajectory_sampling import DynaQAgent as TrajectorySamplingDynaQ
 
 
 def grid_to_string(grid):
@@ -56,11 +64,9 @@ def run_episode(env, agent, agent_name, episode_num, max_steps=50, csv_writer=No
         done = terminated or truncated
         episode_reward += reward
         
-        # Log to CSV (note: csv_writer is passed from main, we need to get seed from somewhere)
-        # We'll pass seed as a parameter to this function
+        # Log to CSV
         if csv_writer is not None:
             action_names = {0: 'UP', 1: 'DOWN', 2: 'LEFT', 3: 'RIGHT', 4: 'PRESS', 5: 'NOOP'}
-            # Get seed from csv_writer if available (we'll add it as metadata)
             csv_writer.writerow({
                 'seed': getattr(csv_writer, 'current_seed', 0),
                 'agent': agent_name,
@@ -108,14 +114,15 @@ def run_episode(env, agent, agent_name, episode_num, max_steps=50, csv_writer=No
         'visited_sa_pairs': stats.get('visited_state_actions', 0),
         'epsilon': agent.epsilon,
         'global_step': stats.get('global_step', 0),
-        'avg_experience_age': stats.get('avg_experience_age', 0)
+        'avg_experience_age': stats.get('avg_experience_age', 0),
+        'synthetic_updates': stats.get('synthetic_updates_count', 0)
     }
 
 
 def main():
     print("="*80)
-    print("COMPARING: Q-Learning vs Vanilla Dyna-Q vs Dyna-Q with Multiple Recency Biases")
-    print("6 Agents - Same Environment Configurations - Fair Comparison")
+    print("COMPARING: Q-Learning vs Vanilla Dyna-Q vs Recency Dyna-Q vs Trajectory Sampling")
+    print("7 Agents - Same Environment Configurations - Fair Comparison")
     print("Running with 5 different seeds for statistical reliability")
     print("="*80)
     
@@ -132,11 +139,14 @@ def main():
     all_seeds_results = []  # List of all_results for each seed
     
     # Setup CSV logging (will include seed column)
-    log_dir = Path("logs")
+    log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"six_agents_comparison_ep{NUM_EPISODES}_step{MAX_STEPS}_{NUM_SEEDS}seeds_{timestamp}.csv"
+    csv_filename = f"seven_agents_comparison_ep{NUM_EPISODES}_step{MAX_STEPS}_{NUM_SEEDS}seeds_{timestamp}.csv"
     csv_path = log_dir / csv_filename
+    
+    # Base filename for Q-tables (without extension)
+    base_qtable_name = csv_filename.replace("_comparison_", "_qtable_").replace(".csv", "")
     
     csv_file = open(csv_path, 'w', newline='')
     csv_writer = csv.DictWriter(csv_file, 
@@ -146,7 +156,7 @@ def main():
     print(f"\nLogging to: {csv_path}")
     
     # Agent names (consistent across all seeds)
-    agent_names = ['QLearning', 'Vanilla', 'Recency0.99', 'Recency0.95', 'Recency0.9', 'Recency0.85']
+    agent_names = ['QLearning', 'Vanilla', 'Recency0.99', 'Recency0.95', 'Recency0.9', 'Recency0.85', 'TrajSampling']
     
     # Run experiments for each seed
     for seed_idx in range(NUM_SEEDS):
@@ -157,15 +167,16 @@ def main():
         print(f"SEED {seed_idx + 1}/{NUM_SEEDS} (seed={current_seed})")
         print(f"{'='*80}")
         
-        # Setup all agents (1 QL + 1 vanilla DynaQ + 4 recency variants)
+        # Setup all agents (1 QL + 1 vanilla DynaQ + 4 recency variants + 1 trajectory sampling)
         print("\nSetting up agents for this seed...")
         
         agents = []
         
         # 1. Q-Learning (baseline, no planning)
+        q_table_path_ql = log_dir / f"{base_qtable_name}_ql_seed{current_seed}.json"
         ql_agent = QLearningAgent(
             action_space_size=6,
-            q_table_path=f"q_table_ql_seed{current_seed}.json",
+            q_table_path=str(q_table_path_ql),
             learning_rate=0.1,
             discount_factor=0.95,
             epsilon=1.0,
@@ -176,10 +187,11 @@ def main():
         agents.append(ql_agent)
         
         # 2. Vanilla Dyna-Q
+        q_table_path_vanilla = log_dir / f"{base_qtable_name}_vanilla_seed{current_seed}.json"
         vanilla_agent = VanillaDynaQ(
             action_space_size=6,
             planning_steps=PLANNING_STEPS,
-            q_table_path=f"q_table_vanilla_seed{current_seed}.json",
+            q_table_path=str(q_table_path_vanilla),
             learning_rate=0.1,
             discount_factor=0.95,
             epsilon=1.0,
@@ -191,11 +203,12 @@ def main():
         
         # 3-6. Dyna-Q with different recency biases
         for decay in RECENCY_DECAYS:
+            q_table_path_recency = log_dir / f"{base_qtable_name}_recency{decay}_seed{current_seed}.json"
             recency_agent = RecencyDynaQ(
                 action_space_size=6,
                 planning_steps=PLANNING_STEPS,
                 recency_decay=decay,
-                q_table_path=f"q_table_recency{decay}_seed{current_seed}.json",
+                q_table_path=str(q_table_path_recency),
                 learning_rate=0.1,
                 discount_factor=0.95,
                 epsilon=1.0,
@@ -204,6 +217,25 @@ def main():
                 load_existing=False
             )
             agents.append(recency_agent)
+        
+        # 7. Trajectory Sampling Dyna-Q (long trajectories)
+        q_table_path_traj = log_dir / f"{base_qtable_name}_traj_seed{current_seed}.json"
+        traj_agent = TrajectorySamplingDynaQ(
+            action_space_size=6,
+            planning_steps=PLANNING_STEPS,
+            use_trajectory_sampling=True,
+            n_trajectories=10,
+            rollout_length=5,
+            planning_epsilon=0.1,
+            q_table_path=str(q_table_path_traj),
+            learning_rate=0.1,
+            discount_factor=0.95,
+            epsilon=1.0,
+            epsilon_decay=0.95,
+            min_epsilon=0.05,
+            load_existing=False
+        )
+        agents.append(traj_agent)
         
         print(f"✓ All {len(agents)} agents initialized for seed {current_seed}")
         
@@ -353,8 +385,8 @@ def main():
     print("\n" + "="*85)
     print(f"\n✓ Comparison complete with {NUM_SEEDS} seeds for statistical reliability!")
     print(f"✓ Log saved to: {csv_path}")
-    print(f"\nUse plot_six_agents_comparison.py to visualize results:")
-    print(f"  python plot_six_agents_comparison.py {csv_path} --episodes_per_config {EPISODES_PER_CONFIG}")
+    print(f"\nUse plot_seven_agents_aggregated.py to visualize results:")
+    print(f"  python utils/plotting/plot_seven_agents_aggregated.py {csv_path} --episodes_per_config {EPISODES_PER_CONFIG}")
 
 
 if __name__ == "__main__":

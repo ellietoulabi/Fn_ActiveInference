@@ -129,7 +129,7 @@ def plot_aggregated_comparison(aggregated, agent_names, episodes_per_config=None
         if episodes_per_config:
             for config_ep in range(episodes_per_config, int(max_ep), episodes_per_config):
                 ax.axvline(x=config_ep, color='gray', linestyle=':', 
-                          linewidth=1.5, alpha=0.3, zorder=1)
+                          linewidth=0.5, alpha=0.3, zorder=1)
     
     episodes = aggregated[agent_names[0]]['episodes']
     max_ep = episodes.max()

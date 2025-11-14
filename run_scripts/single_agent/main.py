@@ -4,6 +4,13 @@ Main script: Active Inference agent interacting with RedBlueButton environment.
 Runs one episode showing beliefs, observations, and actions at each step.
 """
 
+import sys
+from pathlib import Path
+
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent.parent.resolve()
+sys.path.insert(0, str(project_root))
+
 import numpy as np
 
 # Import environment

@@ -1,21 +1,23 @@
 """
-Run Dyna-Q with RECENCY BIAS for non-stationary button positions.
+Run Q-Learning episodes with non-stationary button positions.
 
 Every k episodes, button positions change in the environment.
-Agent keeps its Q-table AND world model from previous episodes but explores new environment.
-Dyna-Q combines direct RL with model-based planning for faster learning.
-
-RECENCY BIAS: Planning prioritizes recently experienced state-action pairs,
-helping the agent adapt faster when environment dynamics change.
+Agent keeps its Q-table from previous episodes but explores new environment.
 """
+
+import sys
+from pathlib import Path
+
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent.parent.resolve()
+sys.path.insert(0, str(project_root))
 
 import numpy as np
 import csv
 from datetime import datetime
-from pathlib import Path
 from environments.RedBlueButton.SingleAgentRedBlueButton import SingleAgentRedBlueButtonEnv
 from generative_models.SA_ActiveInference.RedBlueButton import env_utils
-from agents.QLearning.dynaq_agent_with_recency_bias import DynaQAgent
+from agents.QLearning import QLearningAgent
 
 
 def print_step_info(step, obs_dict, state, action, reward, info, agent, env, q_values=None):
@@ -76,7 +78,7 @@ def grid_to_string(grid):
 
 
 def run_episode(env, agent, episode_num, max_steps=50, verbose=True, csv_writer=None):
-    """Run one Dyna-Q episode with recency bias."""
+    """Run one episode."""
     
     # Reset environment
     env_obs, _ = env.reset()
@@ -96,17 +98,7 @@ def run_episode(env, agent, episode_num, max_steps=50, verbose=True, csv_writer=
         print(f"Environment: Red at {env.red_button} (idx={env_red_idx}), "
               f"Blue at {env.blue_button} (idx={env_blue_idx})")
         print(f"Q-table (from all previous episodes): {len(agent.q_table)} states learned")
-        print(f"World model: {len(agent.model)} states, {len(agent.visited_state_actions)} (s,a) pairs")
-        
-        # Show recency bias stats
-        stats = agent.get_stats()
-        print(f"Recency decay: {agent.recency_decay:.3f} (lower = faster forgetting)")
-        print(f"Global step: {stats['global_step']} (total steps across all episodes)")
-        if stats['avg_experience_age'] > 0:
-            print(f"Average experience age: {stats['avg_experience_age']:.1f} steps")
-        
         print(f"Epsilon: {agent.epsilon:.4f} (exploration rate)")
-        print(f"Planning steps per real step: {agent.planning_steps} (with recency bias)")
     
     episode_reward = 0.0
     outcome = 'timeout'
@@ -152,22 +144,14 @@ def run_episode(env, agent, episode_num, max_steps=50, verbose=True, csv_writer=
         next_obs_dict = env_utils.env_obs_to_model_obs(env_obs)
         next_state = agent.get_state(next_obs_dict) if not done else None
         
-        # (1) Direct RL: Update Q-table from real experience
+        # Update Q-table
         agent.update_q_table(state, action, reward, next_state)
-        
-        # (2) Model Learning: Store transition in world model (with timestamp)
-        agent.update_model(state, action, next_state, reward, terminated)
-        
-        # (3) Planning: Learn from simulated experience (WITH RECENCY BIAS)
-        agent.planning()
         
         if verbose:
             print(f"\n  → Environment response:")
             print(f"     Reward:  {reward:+.3f}")
             print(f"     Result:  {info.get('result', 'neutral')}")
-            print(f"     Q-table updated from REAL experience")
-            print(f"     Model updated (now {len(agent.model)} states, step={agent.global_step})")
-            print(f"     Performed {agent.planning_steps} PLANNING updates (recency-weighted)")
+            print(f"     Q-table updated for state-action pair")
         
         # Update for next iteration
         state = next_state
@@ -185,10 +169,6 @@ def run_episode(env, agent, episode_num, max_steps=50, verbose=True, csv_writer=
         print(f"\nResult: {status} - {outcome} (steps: {step}, reward: {episode_reward:+.3f})")
         print(f"Epsilon decayed to: {agent.epsilon:.4f}")
         print(f"Q-table now has: {len(agent.q_table)} states (persists to next episode)")
-        print(f"Model now has: {len(agent.model)} states, {len(agent.visited_state_actions)} (s,a) pairs")
-    
-    # Get final stats
-    stats = agent.get_stats()
     
     return {
         'outcome': outcome,
@@ -196,48 +176,44 @@ def run_episode(env, agent, episode_num, max_steps=50, verbose=True, csv_writer=
         'steps': step,
         'success': outcome == 'win',
         'q_table_size': len(agent.q_table),
-        'model_size': len(agent.model),
-        'visited_sa_pairs': len(agent.visited_state_actions),
-        'epsilon': agent.epsilon,
-        'global_step': stats['global_step'],
-        'avg_experience_age': stats['avg_experience_age']
+        'epsilon': agent.epsilon
     }
 
 
 def main():
     print("="*80)
-    print("DYNA-Q WITH RECENCY BIAS: NON-STATIONARY ENVIRONMENT")
-    print("Model-Based Planning + Direct RL + Recency-Weighted Sampling")
+    print("Q-LEARNING: NON-STATIONARY ENVIRONMENT - BUTTON POSITIONS CHANGE")
     print("="*80)
     
     # Parameters
-    NUM_EPISODES = 2000
-    EPISODES_PER_CONFIG = 200  # Change button positions every 200 episodes
-    MAX_STEPS = 100
-    PLANNING_STEPS = 10  # Number of planning steps per real step
-    RECENCY_DECAY = 0.95  # Decay rate for recency bias (lower = faster forgetting)
+    NUM_EPISODES = 50
+    EPISODES_PER_CONFIG = 5  # Change button positions every 5 episodes
+    MAX_STEPS = 50
     
     # Setup CSV logging with timestamp
-    log_dir = Path("logs")
+    log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"dynaq_recency_log_ep{NUM_EPISODES}_step{MAX_STEPS}_plan{PLANNING_STEPS}_decay{RECENCY_DECAY}_{timestamp}.csv"
+    csv_filename = f"qlearning_log_ep{NUM_EPISODES}_step{MAX_STEPS}_{timestamp}.csv"
     csv_path = log_dir / csv_filename
+    
+    # Q-table filename matching log filename
+    q_table_filename = csv_filename.replace("_log_", "_qtable_").replace(".csv", ".json")
+    q_table_path = log_dir / q_table_filename
     
     csv_file = open(csv_path, 'w', newline='')
     csv_writer = csv.DictWriter(csv_file, fieldnames=['episode', 'step', 'action', 'action_name', 'map', 'reward'])
     csv_writer.writeheader()
     
     print(f"Logging to: {csv_path}")
+    print(f"Q-table will be saved to: {q_table_path}")
     
-    # Setup Dyna-Q agent WITH RECENCY BIAS (only once!)
-    # Q-table AND world model persist across ALL episodes
-    print("\nSetting up Dyna-Q agent with RECENCY BIAS...")
-    agent = DynaQAgent(
+    # Setup Q-Learning agent (only once!)
+    # Q-table persists across ALL episodes - analogous to Active Inference beliefs
+    print("\nSetting up Q-Learning agent...")
+    agent = QLearningAgent(
         action_space_size=6,
-        planning_steps=PLANNING_STEPS,  # Key Dyna-Q parameter
-        recency_decay=RECENCY_DECAY,  # NEW: Recency bias parameter
-        q_table_path="q_table_dynaq_recency_nonstationary.json",
+        q_table_path=str(q_table_path),
         learning_rate=0.1,
         discount_factor=0.95,
         epsilon=1.0,  # Start with full exploration
@@ -247,10 +223,7 @@ def main():
     )
     print("✓ Agent ready")
     print(f"   Q-table will persist across all {NUM_EPISODES} episodes")
-    print(f"   World model will persist and grow with experience")
-    print(f"   {PLANNING_STEPS} planning updates per real environment step")
-    print(f"   RECENCY DECAY: {RECENCY_DECAY} (prioritizes recent experiences)")
-    print(f"   (Dyna-Q + Recency Bias = Direct RL + Model Learning + Recency-Weighted Planning)\n")
+    print(f"   (analogous to Active Inference preserving button position beliefs)\n")
     
     # Run episodes
     results = []
@@ -258,9 +231,9 @@ def main():
     
     try:
         for episode in range(1, NUM_EPISODES + 1):
-            # NOTE: Agent's Q-table AND model are NOT reset between episodes
-            # They accumulate knowledge across all episodes and environment changes
-            
+            # NOTE: Agent's Q-table is NOT reset between episodes
+            # It accumulates knowledge across all episodes and environment changes
+            # This matches Active Inference behavior where beliefs persist
             # Create new environment every k episodes
             if (episode - 1) % EPISODES_PER_CONFIG == 0:
                 # Generate random button positions (avoid agent start position 0)
@@ -278,7 +251,6 @@ def main():
                 print(f"{'='*80}")
                 print(f"Red button moving to position {red_pos_idx} (row={red_pos[0]}, col={red_pos[1]})")
                 print(f"Blue button moving to position {blue_pos_idx} (row={blue_pos[0]}, col={blue_pos[1]})")
-                print(f"Recency bias will prioritize learning from new button positions")
                 
                 env = SingleAgentRedBlueButtonEnv(
                     width=3,
@@ -297,8 +269,6 @@ def main():
             print(f"Episode {episode}: {status} - {result['steps']} steps, "
                   f"reward: {result['reward']:+.2f}, "
                   f"Q-table: {result['q_table_size']} states, "
-                  f"Model: {result['model_size']} states, "
-                  f"Avg exp age: {result['avg_experience_age']:.1f}, "
                   f"ε: {result['epsilon']:.3f}")
     finally:
         csv_file.close()
@@ -320,13 +290,7 @@ def main():
     print(f"Successes:       {successes} ({success_rate:.1f}%)")
     print(f"Failures:        {len(results) - successes} ({100-success_rate:.1f}%)")
     print(f"Final Q-table size: {results[-1]['q_table_size']} states")
-    print(f"Final model size: {results[-1]['model_size']} states")
-    print(f"Final (s,a) pairs: {results[-1]['visited_sa_pairs']}")
     print(f"Final epsilon: {results[-1]['epsilon']:.4f}")
-    print(f"Planning steps per real step: {PLANNING_STEPS}")
-    print(f"Recency decay: {RECENCY_DECAY}")
-    print(f"Total steps (global): {results[-1]['global_step']}")
-    print(f"Avg experience age: {results[-1]['avg_experience_age']:.1f} steps")
     
     # Success rate per configuration
     print(f"\nSuccess rate per configuration (every {EPISODES_PER_CONFIG} episodes):")
@@ -337,27 +301,22 @@ def main():
         config_successes = sum(1 for r in config_results if r['success'])
         config_rate = 100 * config_successes / len(config_results)
         avg_reward = np.mean([r['reward'] for r in config_results])
-        avg_model_size = np.mean([r['model_size'] for r in config_results])
-        avg_exp_age = np.mean([r['avg_experience_age'] for r in config_results])
         print(f"  Config {config_idx+1} (Episodes {start+1}-{end}): "
               f"{config_successes}/{len(config_results)} ({config_rate:.1f}%), "
-              f"avg reward: {avg_reward:+.2f}, "
-              f"avg model size: {avg_model_size:.1f}, "
-              f"avg exp age: {avg_exp_age:.1f}")
+              f"avg reward: {avg_reward:+.2f}")
     
     # Episode-by-episode results
     print(f"\nEpisode-by-episode results:")
-    print(f"  {'Ep':<4} {'Outcome':<8} {'Steps':<6} {'Reward':<8} {'Q-size':<8} {'Model':<8} {'ExpAge':<8} {'Epsilon':<8}")
-    print(f"  {'-'*70}")
+    print(f"  {'Ep':<4} {'Outcome':<8} {'Steps':<6} {'Reward':<8} {'Q-size':<8} {'Epsilon':<8}")
+    print(f"  {'-'*50}")
     for i, r in enumerate(results, 1):
         outcome_short = "WIN" if r['success'] else "FAIL"
         print(f"  {i:<4} {outcome_short:<8} {r['steps']:<6} {r['reward']:+7.2f}  "
-              f"{r['q_table_size']:<8} {r['model_size']:<8} {r['avg_experience_age']:<8.1f} {r['epsilon']:<8.4f}")
+              f"{r['q_table_size']:<8} {r['epsilon']:<8.4f}")
     
     print("\n" + "="*80)
 
 
 if __name__ == "__main__":
     main()
-
 
