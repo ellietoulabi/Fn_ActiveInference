@@ -13,12 +13,17 @@ Compares 8 agents on the same environment configurations:
 
 All agents experience the EXACT SAME button position changes at the same episodes.
 This ensures a fair comparison of their adaptation capabilities.
+
+NOTE: This script uses relative paths based on script location. It can be run from any
+directory and will work on any server as long as the project structure is maintained.
+All paths are computed relative to the script's location.
 """
 
 import sys
 from pathlib import Path
 
 # Add project root to path for imports
+# Uses __file__ to find project root relative to script location (portable across servers)
 project_root = Path(__file__).parent.parent.parent.resolve()
 sys.path.insert(0, str(project_root))
 
@@ -218,7 +223,10 @@ def main():
                                 fieldnames=['seed', 'agent', 'episode', 'step', 'action', 'action_name', 'map', 'reward'])
     csv_writer.writeheader()
     
-    print(f"\nLogging to: {csv_path}")
+    # Show relative path for portability
+    csv_path_relative = csv_path.relative_to(project_root)
+    print(f"\nLogging to: logs/{csv_path_relative.name}")
+    print(f"  Full path: {csv_path}")
     
     # Agent names (consistent across all seeds)
     agent_names = ['AIF', 'QLearning', 'Vanilla', 'Recency0.99', 'Recency0.95', 'Recency0.9', 'Recency0.85', 'TrajSampling']
@@ -439,7 +447,8 @@ def main():
     
     # Close CSV file
     csv_file.close()
-    print(f"\n✓ Log saved to: {csv_path}")
+    csv_path_relative = csv_path.relative_to(project_root)
+    print(f"\n✓ Log saved to: logs/{csv_path_relative.name}")
     
     # Aggregate results across all seeds
     print("\n" + "="*80)
@@ -507,9 +516,13 @@ def main():
     
     print("\n" + "="*85)
     print(f"\n✓ Comparison complete with {NUM_SEEDS} seeds for statistical reliability!")
-    print(f"✓ Log saved to: {csv_path}")
+    
+    # Show relative path from project root for portability
+    csv_path_relative = csv_path.relative_to(project_root)
+    print(f"✓ Log saved to: logs/{csv_path_relative.name}")
+    print(f"  Full path: {csv_path}")
     print(f"\nUse plot_eight_agents_aggregated.py to visualize results:")
-    print(f"  python utils/plotting/plot_eight_agents_aggregated.py {csv_path} --episodes_per_config {EPISODES_PER_CONFIG}")
+    print(f"  python utils/plotting/plot_eight_agents_aggregated.py logs/{csv_path_relative.name} --episodes_per_config {EPISODES_PER_CONFIG}")
 
 
 if __name__ == "__main__":
