@@ -197,12 +197,12 @@ def main():
     print("="*80)
     
     # Parameters
-    NUM_EPISODES = 1000
-    EPISODES_PER_CONFIG = 20  # Change button positions every 20 episodes
+    NUM_EPISODES = 2000
+    EPISODES_PER_CONFIG = 50  # Change button positions every 20 episodes
     MAX_STEPS = 50
     PLANNING_STEPS = 2
     RECENCY_DECAYS = [0.99, 0.95, 0.90, 0.85]  # Different recency bias levels
-    NUM_SEEDS = 5
+    NUM_SEEDS = 30
     BASE_SEED = 42  # Base seed for reproducibility
     
     # Store results across all seeds
