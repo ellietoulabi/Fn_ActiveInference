@@ -209,8 +209,8 @@ def main():
     print("="*80)
     
     # Parameters
-    NUM_EPISODES = 2000
-    EPISODES_PER_CONFIG = 50  # Change button positions every 20 episodes
+    NUM_EPISODES = 1000
+    EPISODES_PER_CONFIG = 25  # Change button positions every 20 episodes
     MAX_STEPS = 50
     PLANNING_STEPS = 2
     RECENCY_DECAYS = [0.99, 0.95, 0.90, 0.85]  # Different recency bias levels
@@ -410,7 +410,7 @@ def main():
             red_button_pos=config['red_pos'],
             blue_button_pos=config['blue_pos'],
             agent_start_pos=(0, 0),
-            max_steps=100
+            max_steps=50
         )
         
         # Run all agents on the same environment

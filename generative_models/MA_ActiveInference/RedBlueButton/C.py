@@ -56,7 +56,7 @@ def C_red_button_state(obs_idx):
     Main reward comes from game_result (win).
     """
     if obs_idx == 1:  # pressed
-        return 0.0 # Small reward to encourage pressing
+        return 0.5  # Small reward to encourage pressing
     return 0.0
 
 
@@ -69,7 +69,7 @@ def C_blue_button_state(obs_idx):
     Main reward comes from game_result (win).
     """
     if obs_idx == 1:  # pressed
-        return 0.0  # Small reward to encourage pressing
+        return 0.5  # Small reward to encourage pressing
     return 0.0
 
 

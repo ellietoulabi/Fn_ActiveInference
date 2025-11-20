@@ -77,17 +77,20 @@ class SingleAgentRedBlueButtonEnv(gym.Env):
         return observation, {}
 
     def step(self, action):
-        # REWARD LOGIC MATCHES ACTIVE INFERENCE C.py PREFERENCES:
-        # - C_red_button_state: +0.5 when pressed
-        # - C_blue_button_state: +0.5 when pressed
-        # - C_game_result: +1.0 for win, -1.0 for lose
-        # - All other preferences: 0.0
-        reward = 0.0  # Default reward (neutral, matches C.py)
+        # REWARD LOGIC:
+        # if action == press:
+        #   - if on red button and red not pressed: press it, neutral (reward 0)
+        #   - if on blue button and blue not pressed:
+        #     - if red pressed: press blue, win (reward 1), terminate
+        #     - if red not pressed: press blue, lose (reward -1), terminate
+        # if step > maxstep: lose (reward -1), truncate
+        # else: neutral (reward 0)
+        
+        reward = 0.0  # Default reward (neutral)
         terminated = False
         truncated = False
-        self.button_just_pressed = (
-            None  # Reset button_just_pressed at start of each step
-        )
+        self.button_just_pressed = None  # Reset button_just_pressed at start of each step
+        win_lose_neutral = 0
 
         info = {
             "step": self.step_count,
@@ -96,6 +99,7 @@ class SingleAgentRedBlueButtonEnv(gym.Env):
             "red_button_pressed": self.red_button_pressed,
             "blue_button_pressed": self.blue_button_pressed,
             "button_just_pressed": self.button_just_pressed,
+            "result": win_lose_neutral,
         }
 
         if action in [0, 1, 2, 3]:  # Movement actions
@@ -113,56 +117,54 @@ class SingleAgentRedBlueButtonEnv(gym.Env):
             new_pos = (x + dx, y + dy)
             if self._valid_move(new_pos):
                 self.agent_position = new_pos
-                # No reward for stepping on buttons (matches C.py: C_on_red_button = 0.0)
+            # Movement: neutral (reward 0) - already set as default
 
         elif action == 4:  # Press action
             x, y = self.agent_position
 
-            # Try to press red button (agent must be ON the button)
+            # If on red button and red button not pressed: press it, neutral
             if (x, y) == self.red_button and not self.red_button_pressed:
                 self.red_button_pressed = True
-                self.button_just_pressed = (
-                    "red"  # Mark that red button was just pressed
-                )
-                info["button_pressed"] = "red"
-                # Matches C_red_button_state(1) = 0.5
-                reward = 0.5
+                self.button_just_pressed = "red"
+                info["button_just_pressed"] = "red"
+                reward = 0  # neutral
+                win_lose_neutral = 0
 
-            # Try to press blue button (agent must be ON the button)
-            if (x, y) == self.blue_button and not self.blue_button_pressed:
+            # If on blue button and blue not pressed
+            elif (x, y) == self.blue_button and not self.blue_button_pressed:
                 self.blue_button_pressed = True
-                self.button_just_pressed = (
-                    "blue"  # Mark that blue button was just pressed
-                )
-                info["button_pressed"] = "blue"
+                self.button_just_pressed = "blue"
+                info["button_just_pressed"] = "blue"
 
-                # Check if red button was pressed first
+                # If red pressed: press blue, win (reward 1), terminate
                 if self.red_button_pressed:
-                    # WIN: C_blue_button_state(1) + C_game_result(1) = 0.5 + 1.0 = 1.5
-                    reward = 1.5
+                    reward = 1
                     terminated = True
+                    win_lose_neutral = 1
+                # If red not pressed: press blue, lose (reward -1), terminate
                 else:
-                    # LOSE: C_blue_button_state(1) + C_game_result(2) = 0.5 + (-1.0) = -0.5
-                    reward = -0.5
+                    reward = -1
                     terminated = True
+                    win_lose_neutral = 2
 
         elif action == 5:  # Noop action - do nothing
-            pass  # Agent stays in place, reward = 0.0 (neutral)
+            pass  # Neutral (reward 0) - already set as default
 
         self.step_count += 1
 
-        # Check termination conditions
-        if self.step_count >= self.max_steps:
+        # Check termination conditions: if step > maxstep: lose (reward -1), truncate
+        if self.step_count >= self.max_steps and not terminated:
             truncated = True
-            info["result"] = "lose"  # Max steps reached = lose
-        elif terminated:
-            # Termination already handled in button pressing logic
-            if self.red_button_pressed and self.blue_button_pressed:
-                info["result"] = "win"  # Blue pressed after red = win
-            else:
-                info["result"] = "lose"  # Blue pressed before red = lose
-        else:
-            info["result"] = "neutral"  # Episode continues
+            reward = -1
+            win_lose_neutral = 2
+        # elif terminated:
+        #     # Termination already handled in button pressing logic
+        #     if self.red_button_pressed and self.blue_button_pressed:
+        #         info["result"] = "win"  # Blue pressed after red = win
+        #     else:
+        #         info["result"] = "lose"  # Blue pressed before red = lose
+        # else:
+        #     info["result"] = "neutral"  # Episode continues
 
         self.cumulative_reward += reward
         info["reward"] = reward
@@ -172,15 +174,21 @@ class SingleAgentRedBlueButtonEnv(gym.Env):
         # Generate observation directly in step function
         position_coords = np.array(self.agent_position, dtype=int)
 
-        # Determine win/lose/neutral observation
-        if self.step_count >= self.max_steps:
-            win_lose_neutral = 2  # lose - max steps reached
-        elif self.blue_button_pressed and not self.red_button_pressed:
-            win_lose_neutral = 2  # lose - blue pressed before red
-        elif self.red_button_pressed and self.blue_button_pressed:
-            win_lose_neutral = 1  # win - blue pressed after red
-        else:
-            win_lose_neutral = 0  # neutral - episode continues
+        # # Determine win/lose/neutral observation
+        # if self.step_count >= self.max_steps:
+        #     win_lose_neutral = 2  # lose - max steps reached
+        # elif self.blue_button_pressed and not self.red_button_pressed:
+        #     win_lose_neutral = 2  # lose - blue pressed before red
+        # elif self.red_button_pressed and self.blue_button_pressed:
+        #     win_lose_neutral = 1  # win - blue pressed after red
+        # else:
+        #     win_lose_neutral = 0  # neutral - episode continues
+        if win_lose_neutral == 0:
+            info["result"] = "neutral"
+        elif win_lose_neutral == 1:
+            info["result"] = "win"
+        elif win_lose_neutral == 2:
+            info["result"] = "lose"
 
         observation = {
             "position": position_coords,  # Return position as (x, y) coordinates
