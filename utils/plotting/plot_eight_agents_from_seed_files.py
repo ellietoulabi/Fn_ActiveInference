@@ -62,7 +62,7 @@ def load_seed_files(logs_dir):
             }).reset_index()
             
             episode_stats.columns = ['episode', 'total_reward', 'steps']
-            episode_stats['success'] = episode_stats['total_reward'] > 1.0
+            episode_stats['success'] = episode_stats['total_reward'] > 0.0  # Win: +1.0, Lose: -1.0, Neutral: 0.0
             
             return episode_stats
         
