@@ -6,6 +6,7 @@ logs
 logs/
 *.log
 *.csv
+old_logs
 
 # Images and plots
 *.png
@@ -29,3 +30,6 @@ results/
 # Test files
 test_*.py
 test_*.json
+
+COMPREHENSIVE_REVIEW_REPORT.md
+OPSRL_PERFORMANCE_ANALYSIS.md

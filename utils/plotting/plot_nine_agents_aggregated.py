@@ -1,8 +1,9 @@
 """
-Plot aggregated comparison across multiple seeds for 8 agents.
+Plot aggregated comparison across multiple seeds for 9 agents.
 
 Loads multi-seed data and plots mean values for each agent.
 Shows the statistical reliability of the comparisons.
+Includes OPSRL as the 9th agent.
 """
 
 import pandas as pd
@@ -19,7 +20,7 @@ def load_and_process_multiseed_log(log_file):
     
     # Check if seed column exists
     if 'seed' not in df.columns:
-        raise ValueError("Log file must contain 'seed' column. Use compare_eight_agents.py with multiple seeds.")
+        raise ValueError("Log file must contain 'seed' column. Use compare_nine_agents.py with multiple seeds.")
     
     # Get unique seeds and agents
     seeds = df['seed'].unique()
@@ -36,7 +37,7 @@ def load_and_process_multiseed_log(log_file):
         }).reset_index()
         
         episode_stats.columns = ['episode', 'total_reward', 'steps']
-        episode_stats['success'] = episode_stats['total_reward'] > 1.0
+        episode_stats['success'] = episode_stats['total_reward'] >= 1.0  # Win gives exactly 1.0
         
         return episode_stats
     
@@ -110,7 +111,7 @@ def plot_aggregated_comparison(aggregated, agent_names, episodes_per_config=None
     fig = plt.figure(figsize=(22, 16))
     gs = fig.add_gridspec(3, 2, height_ratios=[1.2, 1, 1], hspace=0.3, wspace=0.25)
     
-    # Colors for 8 agents
+    # Colors for 9 agents (added OPSRL)
     colors = {
         'AIF': '#1A1A1A',          # Dark Gray/Black
         'QLearning': '#000000',      # Black
@@ -119,10 +120,11 @@ def plot_aggregated_comparison(aggregated, agent_names, episodes_per_config=None
         'Recency0.95': '#A23B72',     # Magenta
         'Recency0.9': '#F18F01',      # Orange
         'Recency0.85': '#E63946',     # Red
-        'TrajSampling': '#7209B7'     # Purple
+        'TrajSampling': '#7209B7',    # Purple
+        'OPSRL': '#FF6B35'            # Coral/Orange-Red (new color for OPSRL)
     }
     
-    fig.suptitle(f'Aggregated Comparison Across Multiple Seeds (mean values)', 
+    fig.suptitle(f'Aggregated Comparison Across Multiple Seeds (mean values) - 9 Agents', 
                  fontsize=18, fontweight='bold', y=0.98)
     
     # Helper function to add config change boundaries
@@ -160,23 +162,23 @@ def plot_aggregated_comparison(aggregated, agent_names, episodes_per_config=None
                  label=agent_name,
                  zorder=3)
         
-        # Plot confidence interval (commented out)
+        # Plot confidence interval (commented out for clarity)
         # ax1.fill_between(episodes, cumavg_ci_lower, cumavg_ci_upper,
         #                 color=colors.get(agent_name, '#888888'),
         #                 alpha=0.15,
         #                 zorder=2)
     
     # Reference lines
-    ax1.axhline(y=1.5, color='#06A77D', linestyle='--', alpha=0.3, linewidth=1.5, label='Win reward')
+    ax1.axhline(y=1, color='#06A77D', linestyle='--', alpha=0.3, linewidth=1.5, label='Win reward')
     ax1.axhline(y=0, color='gray', linestyle='-', alpha=0.3, linewidth=0.8)
-    ax1.axhline(y=-0.5, color='#E63946', linestyle='--', alpha=0.3, linewidth=1.5, label='Loss reward')
+    ax1.axhline(y=-1, color='#E63946', linestyle='--', alpha=0.3, linewidth=1.5, label='Loss reward')
     
     add_config_boundaries(ax1, max_ep)
     
     ax1.set_xlabel('Episode', fontsize=14, fontweight='bold')
     ax1.set_ylabel('Average Reward', fontsize=14, fontweight='bold')
     ax1.set_title('Average Reward Convergence', fontsize=16, fontweight='bold', pad=15)
-    ax1.legend(loc='best', fontsize=10, framealpha=0.9, ncol=2)
+    ax1.legend(loc='best', fontsize=10, framealpha=0.9, ncol=3)
     ax1.grid(True, alpha=0.3, linewidth=0.8)
     ax1.set_xlim(0, max_ep + 1)
     ax1.set_ylim(-0.8, 2.3)
@@ -329,7 +331,7 @@ def plot_aggregated_comparison(aggregated, agent_names, episodes_per_config=None
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Plot aggregated multi-seed comparison (mean values) for 8 agents')
+    parser = argparse.ArgumentParser(description='Plot aggregated multi-seed comparison (mean values) for 9 agents')
     parser.add_argument('log_file', type=str, help='Path to multi-seed comparison CSV log file')
     parser.add_argument('--episodes_per_config', type=int, default=20,
                        help='Number of episodes per config (for vertical lines)')
@@ -363,8 +365,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
 

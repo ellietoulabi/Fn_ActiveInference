@@ -225,7 +225,7 @@ def main():
     print("="*80)
     
     # Parameters
-    NUM_EPISODES = 4
+    NUM_EPISODES = 10
     EPISODES_PER_CONFIG = 2  # Change button positions every 2 episodes
     MAX_STEPS = 50
     
