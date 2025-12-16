@@ -1,0 +1,1 @@
+- [x] Agent 1 takes action then agent 2; Therefore, at one time step, they can open both doors if agent 1 on red and 2 on blue.

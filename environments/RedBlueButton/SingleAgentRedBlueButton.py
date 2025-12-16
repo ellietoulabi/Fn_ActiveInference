@@ -1,6 +1,6 @@
 import numpy as np
-from gym import spaces
-import gym
+import gymnasium as gym
+from gymnasium import spaces
 
 
 class SingleAgentRedBlueButtonEnv(gym.Env):

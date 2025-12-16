@@ -28,6 +28,7 @@ class Agent:
         state_sizes,
         observation_labels,
         env_params,
+        observation_state_dependencies=None,
         policies=None,
         actions=None,
         gamma=4.0,  # Lower gamma = more exploration (was 16.0)
@@ -90,6 +91,7 @@ class Agent:
         self.state_factors = state_factors
         self.state_sizes = state_sizes
         self.observation_labels = observation_labels
+        self.observation_state_dependencies = observation_state_dependencies
         self.env_params = env_params
 
         # Actions and policies u d l r n p
@@ -186,14 +188,18 @@ class Agent:
         if self.inference_algorithm != "VANILLA":
             raise NotImplementedError("Only VANILLA inference supported")
 
-        # Get prior: if we took an action, use predicted state; else use D
+        # Get prior:
+        # - if we took an action, use predicted state (B propagation)
+        # - else (first observation after reset), use the agent's current beliefs
+        #   initialized by `reset(config=...)` rather than calling `D_fn()` with
+        #   default config (which can silently ignore env-specific start positions)
         if self.action is not None:
             prior_dict = control.get_expected_state(
                 self.B_fn, self.qs, self.action, self.env_params
             )
         else:
-            # First observation - use initial prior D # NOTE: use the D_fn as the prior
-            prior_dict = self.D_fn()
+            # First observation - use current beliefs (set by reset/config)
+            prior_dict = {factor: self.qs[factor].copy() for factor in self.state_factors}
 
         # Run variational inference
         self.qs = inference.vanilla_fpi_update_posterior_states(
@@ -234,6 +240,7 @@ class Agent:
             self.state_factors,
             self.state_sizes,
             self.observation_labels,
+            observation_state_dependencies=self.observation_state_dependencies,
             use_utility=self.use_utility,
             use_states_info_gain=self.use_states_info_gain,
             E=self.E,

@@ -80,13 +80,20 @@ def get_expected_states(B_fn, qs_current, policy, env_params):
 # Expected Observation Prediction (using A_fn)
 # =============================================================================
 
-def get_expected_obs_from_beliefs(A_fn, qs_dict, state_factors, state_sizes):
+def get_expected_obs_from_beliefs(A_fn, qs_dict, state_factors, state_sizes,
+                                   observation_labels=None, observation_state_dependencies=None):
     """
     Compute expected observation distributions from belief over states.
     
     Optimized: enumerate unique state configurations once, reuse across modalities.
     """
-    from generative_models.SA_ActiveInference.RedBlueButton import model_init
+    # Import default model_init for backward compatibility
+    if observation_labels is None or observation_state_dependencies is None:
+        from generative_models.SA_ActiveInference.RedBlueButton import model_init as default_model
+        if observation_labels is None:
+            observation_labels = default_model.observations
+        if observation_state_dependencies is None:
+            observation_state_dependencies = default_model.observation_state_dependencies
     import itertools
     
     # Convert JAX arrays to numpy to avoid compilation overhead
@@ -111,7 +118,7 @@ def get_expected_obs_from_beliefs(A_fn, qs_dict, state_factors, state_sizes):
     
     # Find deps that are actually dynamic
     all_deps = set()
-    for modality, deps in model_init.observation_state_dependencies.items():
+    for modality, deps in observation_state_dependencies.items():
         if modality not in SKIP_MODALITIES:
             for dep in deps:
                 if dep in dynamic_factors:
@@ -143,11 +150,11 @@ def get_expected_obs_from_beliefs(A_fn, qs_dict, state_factors, state_sizes):
     
     # Now marginalize each modality using cached likelihoods
     qo_dict = {}
-    for modality, deps in model_init.observation_state_dependencies.items():
+    for modality, deps in observation_state_dependencies.items():
         if modality in SKIP_MODALITIES:
             continue
         
-        num_obs = len(model_init.observations[modality])
+        num_obs = len(observation_labels[modality])
         qo_m = np.zeros(num_obs)
         
         for obs_lik, joint_prob in zip(likelihood_cache, prob_cache):
@@ -156,10 +163,17 @@ def get_expected_obs_from_beliefs(A_fn, qs_dict, state_factors, state_sizes):
         
         qo_dict[modality] = maths.normalize(qo_m)
     
-    # Approximate button_just_pressed
-    if 'button_just_pressed' in model_init.observation_state_dependencies:
-        p_on_red = qo_dict['on_red_button'][1]
-        p_on_blue = qo_dict['on_blue_button'][1]
+    # Approximate button_just_pressed (works with both SA and MA naming)
+    if 'button_just_pressed' in observation_state_dependencies:
+        if 'on_red_button' in qo_dict:
+            p_on_red = qo_dict['on_red_button'][1]
+            p_on_blue = qo_dict['on_blue_button'][1]
+        elif 'my_on_red_button' in qo_dict:
+            p_on_red = qo_dict['my_on_red_button'][1]
+            p_on_blue = qo_dict['my_on_blue_button'][1]
+        else:
+            p_on_red = 0.0
+            p_on_blue = 0.0
         p_just_pressed = min(1.0, p_on_red + p_on_blue)
         qo_dict['button_just_pressed'] = np.array([1.0 - p_just_pressed, p_just_pressed])
     
@@ -189,7 +203,8 @@ def get_expected_obs_sequence(A_fn, qs_pi, state_factors, state_sizes):
     return qo_pi
 
 
-def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_sizes, observation_labels, debug=False):
+def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_sizes, observation_labels, 
+                                            observation_state_dependencies=None, debug=False):
     """
     UNIFIED: Compute BOTH expected observations AND info gain in ONE pass.
     
@@ -200,7 +215,10 @@ def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_siz
         qo_pi: list of observation predictions per timestep
         total_info_gain: float, sum of Bayesian surprise over timesteps
     """
-    from generative_models.SA_ActiveInference.RedBlueButton import model_init
+    # Import default model_init for backward compatibility
+    if observation_state_dependencies is None:
+        from generative_models.SA_ActiveInference.RedBlueButton import model_init as default_model
+        observation_state_dependencies = default_model.observation_state_dependencies
     import itertools
     
     qo_pi = []
@@ -231,7 +249,7 @@ def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_siz
         # Find dynamic deps
         SKIP_MODALITIES = {'button_just_pressed'}
         all_deps = set()
-        for modality, deps in model_init.observation_state_dependencies.items():
+        for modality, deps in observation_state_dependencies.items():
             if modality not in SKIP_MODALITIES:
                 for dep in deps:
                     if dep in dynamic_factors:
@@ -261,11 +279,11 @@ def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_siz
         
         # --- EXPECTED OBSERVATIONS ---
         qo_t = {}
-        for modality, deps in model_init.observation_state_dependencies.items():
+        for modality, deps in observation_state_dependencies.items():
             if modality in SKIP_MODALITIES:
                 continue
             
-            num_obs = len(model_init.observations[modality])
+            num_obs = len(observation_labels[modality])
             qo_m = np.zeros(num_obs)
             
             for obs_lik, joint_prob in zip(likelihood_cache, prob_cache):
@@ -273,10 +291,18 @@ def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_siz
             
             qo_t[modality] = maths.normalize(qo_m)
         
-        # Approximate button_just_pressed
-        if 'button_just_pressed' in model_init.observation_state_dependencies:
-            p_on_red = qo_t['on_red_button'][1]
-            p_on_blue = qo_t['on_blue_button'][1]
+        # Approximate button_just_pressed (works with both SA and MA naming)
+        if 'button_just_pressed' in observation_state_dependencies:
+            # Try both naming conventions
+            if 'on_red_button' in qo_t:
+                p_on_red = qo_t['on_red_button'][1]
+                p_on_blue = qo_t['on_blue_button'][1]
+            elif 'my_on_red_button' in qo_t:
+                p_on_red = qo_t['my_on_red_button'][1]
+                p_on_blue = qo_t['my_on_blue_button'][1]
+            else:
+                p_on_red = 0.0
+                p_on_blue = 0.0
             p_just_pressed = min(1.0, p_on_red + p_on_blue)
             qo_t['button_just_pressed'] = np.array([1.0 - p_just_pressed, p_just_pressed])
         
@@ -286,14 +312,14 @@ def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_siz
         # Compute I(s; o_joint) = H[Q(o_joint)] - E_Q(s)[H[p(o_joint|s)]]
         
         # Get modalities to include (skip button_just_pressed)
-        active_modalities = [m for m in model_init.observation_state_dependencies.keys() 
+        active_modalities = [m for m in observation_state_dependencies.keys() 
                             if m not in SKIP_MODALITIES]
         
         if len(active_modalities) == 0:
             timestep_info_gain = 0.0
         else:
             # Build joint observation space
-            obs_sizes = [len(model_init.observations[m]) for m in active_modalities]
+            obs_sizes = [len(observation_labels[m]) for m in active_modalities]
             total_joint_obs = np.prod(obs_sizes)
             
             # Initialize joint distributions
@@ -403,6 +429,7 @@ def vanilla_fpi_update_posterior_policies(
     state_factors,
     state_sizes,
     observation_labels,
+    observation_state_dependencies=None,
     use_utility=True,
     use_states_info_gain=True,
     E=None,
@@ -459,7 +486,8 @@ def vanilla_fpi_update_posterior_policies(
         # UNIFIED: Compute expected obs AND info gain in one pass (30-40% speedup)
         if use_utility and use_states_info_gain:
             qo_pi, info_gain = get_expected_obs_and_info_gain_unified(
-                A_fn, qs_pi, state_factors, state_sizes, observation_labels, debug=False
+                A_fn, qs_pi, state_factors, state_sizes, observation_labels, 
+                observation_state_dependencies=observation_state_dependencies, debug=False
             )
             utility = calc_expected_utility(qo_pi, C_fn, observation_labels)
             G[policy_idx] -= utility
@@ -475,7 +503,8 @@ def vanilla_fpi_update_posterior_policies(
         elif use_states_info_gain:
             # Only info gain needed (rare case)
             _, info_gain = get_expected_obs_and_info_gain_unified(
-                A_fn, qs_pi, state_factors, state_sizes, observation_labels
+                A_fn, qs_pi, state_factors, state_sizes, observation_labels,
+                observation_state_dependencies=observation_state_dependencies
             )
             G[policy_idx] -= info_gain
             utility = 0.0

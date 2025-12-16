@@ -1,4 +1,3 @@
-import jax.numpy as jnp
 import numpy as np
 from . import model_init
 state_state_dependencies = model_init.state_state_dependencies
@@ -27,7 +26,8 @@ state_state_dependencies = model_init.state_state_dependencies
 # Helpers
 # -------------------------------------------------
 def normalize(p):
-    return p / jnp.maximum(jnp.sum(p), 1e-8)
+    # Pure NumPy normalization (avoid importing JAX).
+    return p / np.maximum(np.sum(p), 1e-8)
 
 
 # --------------------------------

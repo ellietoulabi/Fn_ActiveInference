@@ -84,9 +84,15 @@ def build_D_uncertain(agent_start_pos=0,
     
     # Button positions
     if button_pos_uncertainty:
-        # Uncertain - uniform over all positions
-        D["red_button_pos"] = np.ones(S) / S
-        D["blue_button_pos"] = np.ones(S) / S
+        # Uncertain - uniform, but avoid trivially impossible start (button under agent)
+        base = np.ones(S, dtype=float)
+        if 0 <= agent_start_pos < S:
+            base[agent_start_pos] = 0.0
+        if float(base.sum()) <= 0:
+            base = np.ones(S, dtype=float)
+        base = base / base.sum()
+        D["red_button_pos"] = base.copy()
+        D["blue_button_pos"] = base.copy()
     else:
         # Certain - default positions
         D["red_button_pos"] = np.zeros(S)

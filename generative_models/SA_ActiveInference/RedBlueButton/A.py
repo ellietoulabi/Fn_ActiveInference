@@ -19,7 +19,6 @@ DESIGN PRINCIPLE:
 - Belief propagation q(o) = Σ_s q(s)p(o|s) is done in inference utilities
 """
 
-import jax.numpy as jnp
 import numpy as np
 from . import model_init
 

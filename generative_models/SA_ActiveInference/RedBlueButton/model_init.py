@@ -1,4 +1,9 @@
-import jax.numpy as jnp
+"""
+SA Active Inference model init for RedBlueButton.
+
+Note: this file previously imported JAX (`jax.numpy`) but did not use it.
+Removing the import avoids large startup overhead and keeps the model purely NumPy-based.
+"""
 
 
 # -------------------------------------------------
