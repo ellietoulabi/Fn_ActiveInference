@@ -150,6 +150,87 @@ def B_blue_button_state(parents, joint_action, noise):
     return _press_update(q_state, p_any)
 
 
+def B_button_states(parents, joint_action, width, height):
+    """
+    Order-aware button state transition that better matches the environment logic.
+
+    Approximation of TwoAgentRedBlueButtonEnv press loop:
+    - Presses are processed in a fixed order: agent1, then agent2
+    - Only the FIRST successful press in that loop is applied
+    - Blue can be pressed while red is still unpressed, leading to lose
+
+    We approximate this at the belief level by enumerating over factorised
+    beliefs for positions and button positions and applying the same
+    sequential 'first press wins' logic per joint state sample, then
+    aggregating back to marginals over red/blue button states.
+    """
+    q_red_state = np.array(parents["red_button_state"], dtype=float)
+    q_blue_state = np.array(parents["blue_button_state"], dtype=float)
+    q1 = np.array(parents["agent1_pos"], dtype=float)
+    q2 = np.array(parents["agent2_pos"], dtype=float)
+    q_red_pos = np.array(parents["red_button_pos"], dtype=float)
+    q_blue_pos = np.array(parents["blue_button_pos"], dtype=float)
+
+    a1, a2 = decode_joint_action(joint_action)
+
+    # If nobody presses, keep current states
+    if a1 != model_init.PRESS and a2 != model_init.PRESS:
+        return normalize(q_red_state), normalize(q_blue_state)
+
+    S = q1.shape[0]
+    next_red = np.zeros_like(q_red_state, dtype=float)
+    next_blue = np.zeros_like(q_blue_state, dtype=float)
+
+    # Enumerate over factorised joint beliefs:
+    # red_state × blue_state × agent1_pos × agent2_pos × red_pos × blue_pos
+    for r in range(2):
+        pr_r = float(q_red_state[r])
+        if pr_r <= 1e-16:
+            continue
+        for b in range(2):
+            pr_rb = pr_r * float(q_blue_state[b])
+            if pr_rb <= 1e-16:
+                continue
+            for pr_idx in range(S):  # red button position
+                w_pr = pr_rb * float(q_red_pos[pr_idx])
+                if w_pr <= 1e-16:
+                    continue
+                for pb_idx in range(S):  # blue button position
+                    w_pr_pb = w_pr * float(q_blue_pos[pb_idx])
+                    if w_pr_pb <= 1e-16:
+                        continue
+                    for p1 in range(S):
+                        w_pr_pb_p1 = w_pr_pb * float(q1[p1])
+                        if w_pr_pb_p1 <= 1e-16:
+                            continue
+                        for p2 in range(S):
+                            w = w_pr_pb_p1 * float(q2[p2])
+                            if w <= 1e-16:
+                                continue
+
+                            # Copy current states
+                            red_s = r
+                            blue_s = b
+
+                            # Sequential press processing: agent1 then agent2
+                            for pos, act in ((p1, a1), (p2, a2)):
+                                if act != model_init.PRESS:
+                                    continue
+                                # Press on red?
+                                if pos == pr_idx and red_s == 0:
+                                    red_s = 1
+                                    break
+                                # Press on blue?
+                                if pos == pb_idx and blue_s == 0:
+                                    blue_s = 1
+                                    break
+
+                            next_red[red_s] += w
+                            next_blue[blue_s] += w
+
+    return normalize(next_red), normalize(next_blue)
+
+
 def B_fn(qs, action, width=3, height=3, B_NOISE_LEVEL=0.0):
     """
     JOINT transition. `action` is the JOINT action index in [0, 35].
@@ -176,27 +257,22 @@ def B_fn(qs, action, width=3, height=3, B_NOISE_LEVEL=0.0):
     new_qs["red_button_pos"] = B_static_with_noise({"red_button_pos": qs["red_button_pos"]}, "red_button_pos", BUTTON_POS_NOISE)
     new_qs["blue_button_pos"] = B_static_with_noise({"blue_button_pos": qs["blue_button_pos"]}, "blue_button_pos", BUTTON_POS_NOISE)
 
-    # Button state transitions depend on both agents + joint action
-    new_qs["red_button_state"] = B_red_button_state(
+    # Order-aware button state transitions that approximate env press loop
+    new_red_state, new_blue_state = B_button_states(
         {
             "red_button_state": qs["red_button_state"],
-            "agent1_pos": qs["agent1_pos"],
-            "agent2_pos": qs["agent2_pos"],
-            "red_button_pos": qs["red_button_pos"],
-        },
-        joint_action,
-        B_NOISE_LEVEL,
-    )
-    new_qs["blue_button_state"] = B_blue_button_state(
-        {
             "blue_button_state": qs["blue_button_state"],
             "agent1_pos": qs["agent1_pos"],
             "agent2_pos": qs["agent2_pos"],
+            "red_button_pos": qs["red_button_pos"],
             "blue_button_pos": qs["blue_button_pos"],
         },
         joint_action,
-        B_NOISE_LEVEL,
+        width,
+        height,
     )
+    new_qs["red_button_state"] = new_red_state
+    new_qs["blue_button_state"] = new_blue_state
 
     # Final normalization safety
     for f in new_qs:
