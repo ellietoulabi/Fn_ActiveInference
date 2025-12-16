@@ -1,0 +1,30 @@
+
+=== coop/two_aif_agents_individually_collective_seeds1_ep100_20251216_034907.csv ===
+Total episodes: 100
+Total wins:     100  (100.0% success)
+Coop wins:      80  (80.0% cooperative)
+
+Per-seed:
+Seed   Eps    Wins     CoopWins   Succ%    Coop%   
+0      100    100      80          100.0   80.0
+Saved plot to coop/results/two_aif_agents_individually_collective_seeds1_ep100_20251216_034907_coop_summary.png
+
+=== coop/two_aif_agents_individually_collective_seeds1_ep100_20251216_034908.csv ===
+Total episodes: 100
+Total wins:     100  (100.0% success)
+Coop wins:      80  (80.0% cooperative)
+
+Per-seed:
+Seed   Eps    Wins     CoopWins   Succ%    Coop%   
+0      100    100      80          100.0   80.0
+Saved plot to coop/results/two_aif_agents_individually_collective_seeds1_ep100_20251216_034908_coop_summary.png
+
+=== coop/two_aif_agents_individually_collective_seeds1_ep100_20251216_034909.csv ===
+Total episodes: 100
+Total wins:     100  (100.0% success)
+Coop wins:      80  (80.0% cooperative)
+
+Per-seed:
+Seed   Eps    Wins     CoopWins   Succ%    Coop%   
+0      100    100      80          100.0   80.0
+Saved plot to coop/results/two_aif_agents_individually_collective_seeds1_ep100_20251216_034909_coop_summary.png

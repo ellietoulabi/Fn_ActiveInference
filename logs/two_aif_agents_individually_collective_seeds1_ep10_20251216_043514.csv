@@ -1,0 +1,6 @@
+seed,episode,step,joint_action1,joint_action2,action1,action1_name,action2,action2_name,map,reward,result,button_pressed,pressed_by
+0,1,1,6,6,1,DOWN,0,UP,1r.|...|.b2,0.0,neutral,,
+0,1,2,6,6,1,DOWN,0,UP,.r.|1.2|.b.,0.0,neutral,,
+0,1,3,20,20,3,RIGHT,2,LEFT,.r2|...|1b.,0.0,neutral,,
+0,1,4,10,10,1,DOWN,4,PRESS,.2.|...|.1.,0,neutral,red,2
+0,1,5,24,24,4,PRESS,0,UP,.2.|...|.1.,1,win,blue,1

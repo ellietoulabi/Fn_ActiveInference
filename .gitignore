@@ -2,21 +2,21 @@ __pycache__/
 .venv/
 
 # Logs and data files
-logs
-logs/
-*.log
-*.csv
-old_logs
+# logs
+# logs/
+# *.log
+# *.csv
+# old_logs
 
 # Images and plots
-*.png
-*.jpg
-*.jpeg
-*.gif
+# *.png
+# *.jpg
+# *.jpeg
+# *.gif
 
 # JSON data files
-q_table*.json
-*_log*.csv
+# q_table*.json
+# *_log*.csv
 
 # OS files
 .DS_Store
@@ -24,12 +24,12 @@ q_table*.json
 *.swo
 
 # Results
-results/
+# results/
 # tmp_pretrained_dynaq/
 
 # Test files
-test_*.py
-test_*.json
+# test_*.py
+# test_*.json
 
 COMPREHENSIVE_REVIEW_REPORT.md
 OPSRL_PERFORMANCE_ANALYSIS.md
