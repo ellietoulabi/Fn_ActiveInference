@@ -44,8 +44,8 @@ echo "---- Starting seed index ${SEED_IDX} ----"
 
 python -u run_scripts/multi_agent/run_two_aif_agents_fully_collective.py \
   --seed ${SEED_IDX} \
-  --episodes 1000 \
-  --episodes-per-config 100 \
+  --episodes 200 \
+  --episodes-per-config 25 \
   --max-steps 50 \
   --verbose \
   --episode-progress \

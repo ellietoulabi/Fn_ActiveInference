@@ -100,8 +100,8 @@ def print_step_info(step, env_obs, agent1, agent2, action1, action2, reward, inf
     print(f"    Position:             {env_obs['agent2_position']}")
     print(f"    On red button:        {['FALSE', 'TRUE'][env_obs['agent2_on_red_button']]}")
     print(f"    On blue button:       {['FALSE', 'TRUE'][env_obs['agent2_on_blue_button']]}")
-    print(f"  Red button state:       {['not_pressed', 'pressed'][env_obs['red_button_state']]}")
-    print(f"  Blue button state:      {['not_pressed', 'pressed'][env_obs['blue_button_state']]}")
+    print(f"  Red button pressed:     {['FALSE', 'TRUE'][env_obs.get('red_button_pressed', 0)]}")
+    print(f"  Blue button pressed:    {['FALSE', 'TRUE'][env_obs.get('blue_button_pressed', 0)]}")
     
     # Agent 1 beliefs
     qs1 = agent1.get_state_beliefs()
