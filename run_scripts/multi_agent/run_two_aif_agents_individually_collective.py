@@ -19,6 +19,7 @@ sys.path.insert(0, str(project_root))
 
 import numpy as np
 import csv
+import json
 from datetime import datetime
 import argparse
 from tqdm import tqdm
@@ -27,6 +28,229 @@ from generative_models.MA_ActiveInference.RedBlueButton.IndividuallyCollective i
     A_fn, B_fn, C_fn, D_fn, model_init, env_utils
 )
 from agents.ActiveInference.agent import Agent
+
+
+# =============================================================================
+# Helper function for verbose step printing (similar to single-agent style)
+# =============================================================================
+
+def print_step_info(step, env_obs, agent1, agent2, joint_action1_idx, joint_action2_idx, action1, action2, reward, info, env, action_names, env_utils):
+    """Print detailed step information with map, beliefs, and policies for both agents."""
+    print(f"\n{'='*80}")
+    print(f"STEP {step}")
+    print(f"{'='*80}")
+    
+    # Grid map
+    print("\n🗺️  GRID MAP:")
+    grid = env.render(mode="array")
+    for row in grid:
+        print(f"     {' '.join(row)}")
+    print(f"     (1=agent1, 2=agent2, r/R=red button, b/B=blue button, capitals=pressed)")
+    
+    # Observations for both agents
+    print("\n📊 OBSERVATIONS:")
+    print("  Agent 1:")
+    print(f"    Position:             {env_obs['agent1_position']}")
+    print(f"    On red button:        {['FALSE', 'TRUE'][env_obs['agent1_on_red_button']]}")
+    print(f"    On blue button:       {['FALSE', 'TRUE'][env_obs['agent1_on_blue_button']]}")
+    print("  Agent 2:")
+    print(f"    Position:             {env_obs['agent2_position']}")
+    print(f"    On red button:        {['FALSE', 'TRUE'][env_obs['agent2_on_red_button']]}")
+    print(f"    On blue button:       {['FALSE', 'TRUE'][env_obs['agent2_on_blue_button']]}")
+    print(f"  Red button state:       {['not_pressed', 'pressed'][env_obs['red_button_state']]}")
+    print(f"  Blue button state:      {['not_pressed', 'pressed'][env_obs['blue_button_state']]}")
+    
+    # Agent 1 beliefs
+    qs1 = agent1.get_state_beliefs()
+    print("\n🧠 AGENT 1 BELIEFS (Full Distributions):")
+    
+    # Agent1 position belief (grid format)
+    print("  Agent1 position belief:")
+    agent1_belief = qs1['agent1_pos']
+    for row in range(3):
+        row_str = "    "
+        for col in range(3):
+            idx = row * 3 + col
+            row_str += f"{agent1_belief[idx]:.2f} "
+        print(row_str)
+    
+    # Agent2 position belief (grid format)
+    print("  Agent2 position belief:")
+    agent2_belief = qs1['agent2_pos']
+    for row in range(3):
+        row_str = "    "
+        for col in range(3):
+            idx = row * 3 + col
+            row_str += f"{agent2_belief[idx]:.2f} "
+        print(row_str)
+    
+    # Red button position belief (grid format)
+    print("  Red button position belief:")
+    red_belief = qs1['red_button_pos']
+    for row in range(3):
+        row_str = "    "
+        for col in range(3):
+            idx = row * 3 + col
+            row_str += f"{red_belief[idx]:.2f} "
+        print(row_str)
+    
+    # Blue button position belief (grid format)
+    print("  Blue button position belief:")
+    blue_belief = qs1['blue_button_pos']
+    for row in range(3):
+        row_str = "    "
+        for col in range(3):
+            idx = row * 3 + col
+            row_str += f"{blue_belief[idx]:.2f} "
+        print(row_str)
+    
+    # Button states
+    print(f"  Red button state:       {qs1['red_button_state']} (not_pressed, pressed)")
+    print(f"  Blue button state:      {qs1['blue_button_state']} (not_pressed, pressed)")
+    
+    # Agent 1 policies (top 15 for readability - joint action space is large)
+    print("\n📋 AGENT 1 POLICY BELIEFS (Top 15 Policies):")
+    q_pi1 = agent1.get_policy_posterior()
+    sorted_indices1 = np.argsort(q_pi1)[::-1]
+    top_k1 = min(15, len(sorted_indices1))
+    for i in range(0, top_k1, 3):
+        line = "  "
+        for j in range(3):
+            if i + j < top_k1:
+                idx = sorted_indices1[i + j]
+                policy = agent1.policies[idx]
+                prob = q_pi1[idx]
+                # Decode joint action
+                a1, a2 = env_utils.decode_joint_action(policy[0])
+                policy_str = f"{action_names.get(a1, str(a1))[:2]}→{action_names.get(a2, str(a2))[:2]}"
+                line += f"[{idx:2d}]{policy_str:8s}:{prob:.4f}  "
+        print(line)
+    
+    # Agent 2 beliefs
+    qs2 = agent2.get_state_beliefs()
+    print("\n🧠 AGENT 2 BELIEFS (Full Distributions):")
+    
+    # Agent1 position belief (grid format)
+    print("  Agent1 position belief:")
+    agent1_belief = qs2['agent1_pos']
+    for row in range(3):
+        row_str = "    "
+        for col in range(3):
+            idx = row * 3 + col
+            row_str += f"{agent1_belief[idx]:.2f} "
+        print(row_str)
+    
+    # Agent2 position belief (grid format)
+    print("  Agent2 position belief:")
+    agent2_belief = qs2['agent2_pos']
+    for row in range(3):
+        row_str = "    "
+        for col in range(3):
+            idx = row * 3 + col
+            row_str += f"{agent2_belief[idx]:.2f} "
+        print(row_str)
+    
+    # Red button position belief (grid format)
+    print("  Red button position belief:")
+    red_belief = qs2['red_button_pos']
+    for row in range(3):
+        row_str = "    "
+        for col in range(3):
+            idx = row * 3 + col
+            row_str += f"{red_belief[idx]:.2f} "
+        print(row_str)
+    
+    # Blue button position belief (grid format)
+    print("  Blue button position belief:")
+    blue_belief = qs2['blue_button_pos']
+    for row in range(3):
+        row_str = "    "
+        for col in range(3):
+            idx = row * 3 + col
+            row_str += f"{blue_belief[idx]:.2f} "
+        print(row_str)
+    
+    # Button states
+    print(f"  Red button state:       {qs2['red_button_state']} (not_pressed, pressed)")
+    print(f"  Blue button state:      {qs2['blue_button_state']} (not_pressed, pressed)")
+    
+    # Agent 2 policies (top 15 for readability - joint action space is large)
+    print("\n📋 AGENT 2 POLICY BELIEFS (Top 15 Policies):")
+    q_pi2 = agent2.get_policy_posterior()
+    sorted_indices2 = np.argsort(q_pi2)[::-1]
+    top_k2 = min(15, len(sorted_indices2))
+    for i in range(0, top_k2, 3):
+        line = "  "
+        for j in range(3):
+            if i + j < top_k2:
+                idx = sorted_indices2[i + j]
+                policy = agent2.policies[idx]
+                prob = q_pi2[idx]
+                # Decode joint action
+                a1, a2 = env_utils.decode_joint_action(policy[0])
+                policy_str = f"{action_names.get(a1, str(a1))[:2]}→{action_names.get(a2, str(a2))[:2]}"
+                line += f"[{idx:2d}]{policy_str:8s}:{prob:.4f}  "
+        print(line)
+    
+    # Actions
+    print(f"\n🎯 ACTIONS SELECTED:")
+    print(f"  Agent 1 joint action:    {joint_action1_idx} → ({action_names.get(action1, str(action1))}, ?)")
+    print(f"  Agent 2 joint action:    {joint_action2_idx} → (?, {action_names.get(action2, str(action2))})")
+    print(f"  Executed:                Agent 1: {action1} ({action_names.get(action1, str(action1))}), Agent 2: {action2} ({action_names.get(action2, str(action2))})")
+    
+    # Outcome
+    print(f"\n📈 OUTCOME:")
+    print(f"  Reward:                  {reward:+.3f}")
+    print(f"  Result:                  {info.get('result', 'neutral')}")
+    if info.get('button_just_pressed'):
+        print(f"  Button pressed:          {info['button_just_pressed']} by Agent {info['button_pressed_by']}")
+
+
+# =============================================================================
+# Helper functions for logging
+# =============================================================================
+
+def serialize_beliefs(qs_dict):
+    """
+    Serialize state beliefs to a readable string format (similar to single-agent style).
+    
+    Format: "factor1=idx1:prob1;factor2=idx2:prob2;..." where idx is MAP state and prob is its probability.
+    
+    Args:
+        qs_dict: dict mapping factor names to belief arrays
+    
+    Returns:
+        String representation: "agent_pos=0:0.95;red_button_pos=3:0.12;..."
+    """
+    parts = []
+    for factor, belief in sorted(qs_dict.items()):
+        belief_arr = np.array(belief)
+        map_idx = int(np.argmax(belief_arr))
+        map_prob = float(belief_arr[map_idx])
+        parts.append(f"{factor}={map_idx}:{map_prob:.4f}")
+    return ";".join(parts)
+
+
+def serialize_policies(q_pi, top_k=3):
+    """
+    Serialize policy posterior to a readable string format (similar to single-agent style).
+    
+    Format: "policy_idx1:prob1;policy_idx2:prob2;..." showing top-k policies.
+    
+    Args:
+        q_pi: array of policy posterior probabilities
+        top_k: number of top policies to include
+    
+    Returns:
+        String representation: "15:0.205;9:0.057;11:0.054;..."
+    """
+    q_pi_arr = np.array(q_pi)
+    top_indices = np.argsort(q_pi_arr)[-top_k:][::-1]  # Top k, highest first
+    parts = []
+    for idx in top_indices:
+        prob = float(q_pi_arr[idx])
+        parts.append(f"{idx}:{prob:.4f}")
+    return ";".join(parts)
 
 
 def _validate_ma_model(env):
@@ -176,36 +400,23 @@ def run_episode(
         grid = env.render(mode="silent")
         map_str = '|'.join([''.join(row) for row in grid])
         
-        if verbose:
-            print(f"\n--- Step {step} ---")
-            print(f"Agent 1 joint action: {joint_action1_idx} → ({action_names.get(action1, str(action1))}, {action_names.get(int(a2_from_agent1), str(int(a2_from_agent1)))})")
-            print(f"Agent 2 joint action: {joint_action2_idx} → ({action_names.get(int(a1_from_agent2), str(int(a1_from_agent2)))}, {action_names.get(action2, str(action2))})")
-            print(f"Executed: Agent 1: {action_names.get(action1, str(action1))}, Agent 2: {action_names.get(action2, str(action2))}")
-            if show_beliefs:
-                def _print_beliefs(label, qs, top_k=3):
-                    print(f"  {label} beliefs:")
-                    for factor, dist in qs.items():
-                        dist = np.array(dist)
-                        top_idx = dist.argsort()[::-1][:top_k]
-                        pretty = ", ".join([f"{i}:{dist[i]:.2f}" for i in top_idx])
-                        print(f"    {factor}: {pretty}")
-                _print_beliefs("Agent1", agent1.get_state_beliefs())
-                _print_beliefs("Agent2", agent2.get_state_beliefs())
-            if show_policies:
-                def _print_policies(label, agent, top_k=5):
-                    top = agent.get_top_policies(top_k=top_k)
-                    pretty = "; ".join([f"{p}:{prob:.2f}" for (p_idx, prob, p) in top])
-                    print(f"  {label} top policies: {pretty}")
-                _print_policies("Agent1", agent1)
-                _print_policies("Agent2", agent2)
-        
         # Execute actions in environment
         next_obs, reward, terminated, truncated, info = env.step(actions)
         done = terminated or truncated
         episode_reward += reward
         
+        # Print step info (similar to single-agent style)
+        if verbose:
+            print_step_info(step, obs, agent1, agent2, joint_action1_idx, joint_action2_idx, action1, action2, reward, info, env, action_names, env_utils)
+        
         # Log to CSV
         if csv_writer is not None:
+            # Get beliefs and policies from both agents (after state inference and policy evaluation)
+            agent1_beliefs = serialize_beliefs(agent1.get_state_beliefs())
+            agent1_policies = serialize_policies(agent1.get_policy_posterior())
+            agent2_beliefs = serialize_beliefs(agent2.get_state_beliefs())
+            agent2_policies = serialize_policies(agent2.get_policy_posterior())
+            
             csv_writer.writerow({
                 'episode': episode_num,
                 'step': step,
@@ -220,13 +431,11 @@ def run_episode(
                 'result': info.get('result', 'neutral'),
                 'button_pressed': info.get('button_just_pressed', ''),
                 'pressed_by': info.get('button_pressed_by', ''),
+                'agent1_beliefs': agent1_beliefs,
+                'agent1_policies': agent1_policies,
+                'agent2_beliefs': agent2_beliefs,
+                'agent2_policies': agent2_policies,
             })
-        
-        if verbose:
-            env.render()
-            print(f"Reward: {reward:+.2f}, Result: {info.get('result', 'neutral')}")
-            if info.get('button_just_pressed'):
-                print(f"Button pressed: {info['button_just_pressed']} by Agent {info['button_pressed_by']}")
         
         obs = next_obs
         
@@ -350,7 +559,8 @@ def main():
     print("="*80)
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--seeds", type=int, default=1)
+    parser.add_argument("--seeds", type=int, default=1, help="Number of seeds to run (if --seed not provided)")
+    parser.add_argument("--seed", type=int, default=None, help="Single seed to run (overrides --seeds if provided)")
     parser.add_argument("--episodes", type=int, default=10)
     parser.add_argument("--episodes-per-config", type=int, default=2)
     parser.add_argument("--max-steps", type=int, default=50)
@@ -374,7 +584,15 @@ def main():
     args = parser.parse_args()
 
     # Parameters
-    NUM_SEEDS = args.seeds
+    # If --seed is provided, run only that seed; otherwise use --seeds
+    if args.seed is not None:
+        SEEDS_TO_RUN = [args.seed]
+        NUM_SEEDS_FOR_FILENAME = 1  # For filename generation
+    else:
+        SEEDS_TO_RUN = list(range(args.seeds))
+        NUM_SEEDS_FOR_FILENAME = args.seeds
+    
+    NUM_SEEDS = len(SEEDS_TO_RUN)
     NUM_EPISODES_PER_SEED = args.episodes
     EPISODES_PER_CONFIG = args.episodes_per_config
     MAX_STEPS = args.max_steps
@@ -385,18 +603,21 @@ def main():
     log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"two_aif_agents_individually_collective_seeds{NUM_SEEDS}_ep{NUM_EPISODES_PER_SEED}_{timestamp}.csv"
+    csv_filename = f"two_aif_agents_individually_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_{timestamp}.csv"
     csv_path = log_dir / csv_filename
     
     csv_file = open(csv_path, 'w', newline='')
     csv_writer = csv.DictWriter(csv_file, fieldnames=[
         'seed', 'episode', 'step', 'joint_action1', 'joint_action2',
         'action1', 'action1_name', 'action2', 'action2_name', 'map', 'reward', 'result',
-        'button_pressed', 'pressed_by'
+        'button_pressed', 'pressed_by',
+        'agent1_beliefs', 'agent1_policies',
+        'agent2_beliefs', 'agent2_policies'
     ])
     csv_writer.writeheader()
     
     print(f"\nExperiment Parameters:")
+    print(f"  Seeds to run: {SEEDS_TO_RUN}")
     print(f"  Number of seeds: {NUM_SEEDS}")
     print(f"  Episodes per seed: {NUM_EPISODES_PER_SEED}")
     print(f"  Episodes per config: {EPISODES_PER_CONFIG}")
@@ -408,7 +629,7 @@ def main():
     seed_summaries = []
     
     try:
-        for seed_idx, seed in enumerate(range(NUM_SEEDS)):
+        for seed_idx, seed in enumerate(SEEDS_TO_RUN):
             print(f"\n{'='*80}")
             print(f"SEED {seed} ({seed_idx + 1}/{NUM_SEEDS})")
             print(f"{'='*80}")
@@ -500,9 +721,17 @@ def main():
     total_first = sum(s['first_half_wins'] for s in seed_summaries)
     total_second = sum(s['second_half_wins'] for s in seed_summaries)
     mid = NUM_EPISODES_PER_SEED // 2
+    total_episodes_first_half = NUM_SEEDS * mid
+    total_episodes_second_half = NUM_SEEDS * mid
     print(f"\nLearning Progress:")
-    print(f"  First half: {total_first}/{NUM_SEEDS * mid} ({100*total_first/(NUM_SEEDS*mid):.1f}%)")
-    print(f"  Second half: {total_second}/{NUM_SEEDS * mid} ({100*total_second/(NUM_SEEDS*mid):.1f}%)")
+    if total_episodes_first_half > 0:
+        print(f"  First half: {total_first}/{total_episodes_first_half} ({100*total_first/total_episodes_first_half:.1f}%)")
+    else:
+        print(f"  First half: {total_first}/0 (N/A)")
+    if total_episodes_second_half > 0:
+        print(f"  Second half: {total_second}/{total_episodes_second_half} ({100*total_second/total_episodes_second_half:.1f}%)")
+    else:
+        print(f"  Second half: {total_second}/0 (N/A)")
     
     # Generate plots (optional)
     if not GENERATE_PLOTS:

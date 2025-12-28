@@ -42,8 +42,8 @@ echo "Dependencies installed."
 SEED_IDX=${SLURM_ARRAY_TASK_ID}
 echo "---- Starting seed index ${SEED_IDX} ----"
 
-python run_scripts/multi_agent/run_two_aif_agents_fully_collective.py \
-  --seeds 1 \
+python -u run_scripts/multi_agent/run_two_aif_agents_fully_collective.py \
+  --seed ${SEED_IDX} \
   --episodes 1000 \
   --episodes-per-config 100 \
   --max-steps 50 \

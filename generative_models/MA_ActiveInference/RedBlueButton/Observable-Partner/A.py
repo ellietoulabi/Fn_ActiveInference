@@ -17,8 +17,7 @@ def A_fn(state_indices):
     state_indices : dict
         Dictionary with state factor indices:
         - 'my_pos': int (0-8)
-        - 'other_pos': int (0-8)
-        - 'red_button_pos': int (0-8)
+         - 'red_button_pos': int (0-8)
         - 'blue_button_pos': int (0-8)
         - 'red_button_state': int (0=not_pressed, 1=pressed)
         - 'blue_button_state': int (0=not_pressed, 1=pressed)

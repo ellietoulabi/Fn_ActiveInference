@@ -1,0 +1,1 @@
+seed,episode,step,joint_action,action1,action1_name,action2,action2_name,map,reward,result,button_pressed,pressed_by,agent_beliefs,agent_policies

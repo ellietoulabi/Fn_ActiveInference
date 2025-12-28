@@ -44,8 +44,8 @@ SEED_IDX=${SLURM_ARRAY_TASK_ID}
 echo "---- Starting seed index ${SEED_IDX} ----"
 
 # You can tweak episodes/configs below if desired
-python run_scripts/multi_agent/run_two_aif_agents_independent.py \
-  --seeds 1 \
+python -u run_scripts/multi_agent/run_two_aif_agents_independent.py \
+  --seed ${SEED_IDX} \
   --episodes 1000 \
   --episodes-per-config 100 \
   --max-steps 50 \
