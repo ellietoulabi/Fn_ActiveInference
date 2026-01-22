@@ -2,11 +2,11 @@ __pycache__/
 .venv/
 
 # Logs and data files
-# logs
-# logs/
-# *.log
-# *.csv
-# old_logs
+logs
+logs/
+*.log
+*.csv
+old_logs
 
 # Images and plots
 # *.png
@@ -15,8 +15,8 @@ __pycache__/
 # *.gif
 
 # JSON data files
-# q_table*.json
-# *_log*.csv
+q_table*.json
+*_log*.csv
 
 # OS files
 .DS_Store
@@ -24,12 +24,19 @@ __pycache__/
 *.swo
 
 # Results
-# results/
+results/
 # tmp_pretrained_dynaq/
 
 # Test files
 # test_*.py
 # test_*.json
 
-COMPREHENSIVE_REVIEW_REPORT.md
-OPSRL_PERFORMANCE_ANALYSIS.md
+coop/
+
+
+run_overcooked_independent.py
+test_overcooked_qlearning.py
+test_overcooked_collaboration.py
+main_simple.py
+q_tables/
+

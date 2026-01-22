@@ -19,5 +19,8 @@ matplotlib>=3.4.0
 # Progress bars
 tqdm>=4.62.0
 
+# Serialization (for overcooked_ai)
+dill>=0.4.0
+
 
 
