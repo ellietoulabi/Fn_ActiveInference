@@ -123,6 +123,7 @@ class Agent:
         # Internal state
         self.qs = None  # Posterior beliefs (dict)
         self.q_pi = None  # Policy posterior (array)
+        self._last_policy_details = None  # List of dicts (utility, info_gain, etc.) when requested
         self.action = None  # Current action
         self.prev_actions = []  # Action history
         self.curr_timestep = 0
@@ -230,7 +231,7 @@ class Agent:
         if self.inference_algorithm != "VANILLA":
             raise NotImplementedError("Only VANILLA inference supported")
 
-        self.q_pi, G = control.vanilla_fpi_update_posterior_policies(
+        result = control.vanilla_fpi_update_posterior_policies(
             self.qs,
             self.A_fn,
             self.B_fn,
@@ -245,7 +246,13 @@ class Agent:
             use_states_info_gain=self.use_states_info_gain,
             E=self.E,
             gamma=self.gamma,
+            return_policy_details=True,
         )
+        if len(result) == 3:
+            self.q_pi, G, self._last_policy_details = result
+        else:
+            self.q_pi, G = result
+            self._last_policy_details = None
         
         return self.q_pi, G
 
@@ -342,6 +349,16 @@ class Agent:
     def get_top_policies(self, top_k=5):
         """Get top-k most likely policies with their probabilities."""
         return control.get_top_policies(self.q_pi, self.policies, top_k)
+    
+    def get_last_policy_details(self):
+        """
+        Get utility and info_gain for each policy from the last infer_policies() call.
+        Returns list of dicts with keys: policy_idx, policy, utility, info_gain, G, prob.
+        Returns [] if details were not requested or not available.
+        """
+        if self._last_policy_details is None:
+            return []
+        return self._last_policy_details
     
     def evaluate_policy(self, policy):
         """

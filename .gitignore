@@ -1,5 +1,6 @@
 __pycache__/
 .venv/
+.env/
 
 # Logs and data files
 logs
@@ -32,6 +33,7 @@ results/
 # test_*.json
 
 coop/
+checkpoints/
 
 
 run_overcooked_independent.py

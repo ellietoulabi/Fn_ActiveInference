@@ -22,5 +22,23 @@ tqdm>=4.62.0
 # Serialization (for overcooked_ai)
 dill>=0.4.0
 
+# Computer vision and graphics (for overcooked_ai)
+opencv-python>=4.5.0
+pygame>=2.0.0
+
+# Multi-agent RL
+# IMPORTANT: Ray/RLlib requires Python 3.10, 3.11, or 3.12 (NOT 3.13 or 3.14)
+# 
+# Installation steps:
+# 1. Create venv with compatible Python version:
+#    python3.12 -m venv .venv  (or python3.11, python3.10)
+#
+# 2. Activate venv and install:
+#    source .venv/bin/activate
+#    pip install -r requirements.txt
+#    pip install "ray[rllib]>=2.0.0"  # Install ray with RLlib extras separately
+#
+# Note: ray[rllib] syntax doesn't work well in requirements.txt, so install it separately
+torch>=2.0.0
 
 

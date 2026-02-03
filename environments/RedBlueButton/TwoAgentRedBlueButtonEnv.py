@@ -1,6 +1,11 @@
 import numpy as np
-from gym import spaces
-import gym
+try:
+    from gymnasium import spaces
+    import gymnasium as gym
+except ImportError:
+    # Fallback to old gym
+    from gym import spaces
+    import gym
 
 
 class TwoAgentRedBlueButtonEnv(gym.Env):
@@ -17,7 +22,11 @@ class TwoAgentRedBlueButtonEnv(gym.Env):
     - **LOSE**: Episode reaches max steps OR blue button is pressed before red button (by either agent)
     - **NEUTRAL**: All other cases (episode continues)
 
-    No intermediate rewards are given during the episode. Both agents receive the same shared reward.
+    SPARSE REWARD STRUCTURE:
+    - Reward = 0.0 for all intermediate steps (movement, pressing red button, etc.)
+    - Reward = +1.0 only when episode ends with WIN (blue pressed after red)
+    - Reward = -1.0 only when episode ends with LOSS (blue pressed before red, or timeout)
+    - Both agents receive the same shared reward.
     
     Action format: dict with keys 'agent_0' and 'agent_1', each containing an action (0-5)
     Observation format: dict with keys 'agent_0' and 'agent_1', each containing agent-specific observations
@@ -182,13 +191,14 @@ class TwoAgentRedBlueButtonEnv(gym.Env):
                 x, y = agent_pos
 
                 # If on red button and red button not pressed: press it, neutral
+                # SPARSE REWARD: No reward for intermediate steps (pressing red button)
                 if (x, y) == self.red_button and not self.red_button_pressed:
                     self.red_button_pressed = True
                     self.button_just_pressed = "red"
                     button_pressed_by = agent_id
                     info["button_just_pressed"] = "red"
                     info["button_pressed_by"] = agent_id
-                    reward = 0  # neutral
+                    reward = 0.0  # Sparse: no reward for intermediate steps
                     win_lose_neutral = 0
                     break  # Only one button press per step
 
@@ -200,24 +210,26 @@ class TwoAgentRedBlueButtonEnv(gym.Env):
                     info["button_just_pressed"] = "blue"
                     info["button_pressed_by"] = agent_id
 
-                    # If red pressed: press blue, win (reward 1), terminate
+                    # SPARSE REWARD: Only give reward at episode termination
+                    # If red pressed: press blue, win (reward +1), terminate
                     if self.red_button_pressed:
-                        reward = 1
+                        reward = 1.0  # Sparse: reward only at win
                         terminated = True
                         win_lose_neutral = 1
                     # If red not pressed: press blue, lose (reward -1), terminate
                     else:
-                        reward = -1
+                        reward = -1.0  # Sparse: reward only at loss
                         terminated = True
                         win_lose_neutral = 2
                     break  # Only one button press per step
 
         self.step_count += 1
 
+        # SPARSE REWARD: Only give reward at episode termination
         # Check termination conditions: if step > maxstep: lose (reward -1), truncate
         if self.step_count >= self.max_steps and not terminated:
             truncated = True
-            reward = -1
+            reward = -1.0  # Sparse: reward only at timeout/loss
             win_lose_neutral = 2
 
         self.cumulative_reward += reward

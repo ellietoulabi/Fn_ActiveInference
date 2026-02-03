@@ -4,7 +4,7 @@ OPSRL (Optimistic Posterior Sampling for Reinforcement Learning) Agent.
 Adapted from rlberry implementation to work with SingleAgentRedBlueButtonEnv.
 """
 import numpy as np
-import gym.spaces as spaces
+import gymnasium.spaces as spaces
 import logging
 
 from agents.OPSRL.utils import (

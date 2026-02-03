@@ -434,6 +434,7 @@ def vanilla_fpi_update_posterior_policies(
     use_states_info_gain=True,
     E=None,
     gamma=16.0,
+    return_policy_details=False,
 ):
     """
     Update posterior over policies by computing Expected Free Energy (EFE).
@@ -458,10 +459,13 @@ def vanilla_fpi_update_posterior_policies(
         use_states_info_gain: whether to include info gain term
         E: prior over policies (if None, uniform)
         gamma: precision parameter (inverse temperature)
+        return_policy_details: if True, return list of dicts with utility, info_gain per policy
     
     Returns:
         q_pi: array of policy posterior probabilities
         G: array of expected free energies per policy
+        policy_details: if return_policy_details, list of dicts with keys
+            policy_idx, policy, utility, info_gain, G, prob; else None
     
     Notes:
         - Lower G = better policy (more utility and/or more info gain)
@@ -476,7 +480,7 @@ def vanilla_fpi_update_posterior_policies(
     else:
         lnE = maths.log_stable(E)
 
-    # Evaluate each policy (store details for later debug)
+    # Evaluate each policy (store details for later debug / printing)
     policy_details = []  # Store (policy_idx, policy, qs_pi, utility, info_gain) for debugging
     
     for policy_idx, policy in enumerate(policies):
@@ -513,6 +517,21 @@ def vanilla_fpi_update_posterior_policies(
     # Compute policy posterior: q(π) ∝ exp(-γ * G(π)) * p(π)
     log_q_pi = -gamma * G + lnE
     q_pi = maths.softmax(log_q_pi)
+    
+    # Optionally build compact details for caller (utility, info_gain, G, prob per policy)
+    out_details = None
+    if return_policy_details:
+        out_details = [
+            {
+                "policy_idx": i,
+                "policy": list(pol),
+                "utility": float(u),
+                "info_gain": float(ig),
+                "G": float(G[i]),
+                "prob": float(q_pi[i]),
+            }
+            for (i, pol, _qs_pi, u, ig) in policy_details
+        ]
     
     # DEBUG: Show top 5 most probable policies with detailed breakdown
     # Commented out for cleaner output
@@ -562,6 +581,8 @@ def vanilla_fpi_update_posterior_policies(
     #                         print(f"        t={t} {modality}[{obs_name}]: p={qo_m[obs_idx]:.3f} × pref={pref_value:.2f} = {contribution:.4f}")
     #         print(f"        t={t} TOTAL: {timestep_util:.4f}")
     
+    if return_policy_details:
+        return q_pi, G, out_details
     return q_pi, G
 
 
