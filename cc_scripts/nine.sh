@@ -4,7 +4,7 @@
 #SBATCH --array=0-4
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --time=0-8:59
+#SBATCH --time=0-2:59
 
 module purge
 module load python/3.11.4  scipy-stack

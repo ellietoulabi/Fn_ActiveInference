@@ -31,6 +31,9 @@ THETA = 0.8        # Stable success threshold
 BOOTSTRAP_N = 1000
 CI_PERCENT = 95    # 95% CI -> 2.5 and 97.5 percentiles
 
+# Default for experiments: 200 episodes, change config every 25 episodes, max_step 50
+EPISODES_PER_CONFIG_DEFAULT = 25
+
 # Agent order and colors (match plot_nine_agents_aggregated)
 AGENT_COLORS = {
     'AIF': '#1A1A1A',
@@ -180,7 +183,7 @@ def plot_a_episode_return(
     agent_names: np.ndarray,
     episodes: np.ndarray,
     output_path: Path,
-    episodes_per_config: Optional[int] = 10,
+    episodes_per_config: Optional[int] = EPISODES_PER_CONFIG_DEFAULT,
     smoothing_window: int = W_CURVE,
     n_bootstrap: int = BOOTSTRAP_N,
 ) -> None:
@@ -222,7 +225,7 @@ def plot_b_mean_success(
     agent_names: np.ndarray,
     episodes: np.ndarray,
     output_path: Path,
-    episodes_per_config: Optional[int] = 10,
+    episodes_per_config: Optional[int] = EPISODES_PER_CONFIG_DEFAULT,
     smoothing_window: int = W_CURVE,
     n_bootstrap: int = BOOTSTRAP_N,
 ) -> None:
@@ -265,7 +268,7 @@ def plot_episode_length(
     agent_names: np.ndarray,
     episodes: np.ndarray,
     output_path: Path,
-    episodes_per_config: Optional[int] = 10,
+    episodes_per_config: Optional[int] = EPISODES_PER_CONFIG_DEFAULT,
     smoothing_window: int = W_CURVE,
     n_bootstrap: int = BOOTSTRAP_N,
 ) -> None:
@@ -425,7 +428,7 @@ def plot_d_ecdf_stable_success(
 def run_all_plots(
     log_files: List[Path],
     output_dir: Optional[Path] = None,
-    episodes_per_config: Optional[int] = 10,
+    episodes_per_config: Optional[int] = EPISODES_PER_CONFIG_DEFAULT,
     smoothing_window: int = W_CURVE,
     w_stable: int = W_STABLE,
     theta: float = THETA,
@@ -502,7 +505,7 @@ def main():
     parser = argparse.ArgumentParser(description='Single-Agent Red–Blue Doors: 9-algorithm evaluation plots (spec)')
     parser.add_argument('log_files', nargs='+', type=Path, help='One or more comparison CSV log files (e.g. from compare_nine_agents.py)')
     parser.add_argument('--output_dir', '-o', type=Path, default=None, help='Directory to save plots (default: directory of first log file)')
-    parser.add_argument('--episodes_per_config', type=int, default=10, help='Episodes per config (vertical lines)')
+    parser.add_argument('--episodes_per_config', type=int, default=EPISODES_PER_CONFIG_DEFAULT, help='Episodes per config (vertical lines; default 25)')
     parser.add_argument('--smoothing_window', type=int, default=W_CURVE, help=f'Rolling window for learning curves (default {W_CURVE})')
     parser.add_argument('--w_stable', type=int, default=W_STABLE, help=f'Rolling window for stable success (default {W_STABLE})')
     parser.add_argument('--theta', type=float, default=THETA, help=f'Stable success threshold (default {THETA})')
