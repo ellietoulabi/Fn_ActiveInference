@@ -122,7 +122,8 @@ FRONT_DISH = 3
 FRONT_POT = 4
 FRONT_SERVE = 5
 FRONT_BLOCKED_BY_OTHER = 6
-N_FRONT_TYPES = 7
+FRONT_COUNTER = 7   # empty counter "X" — can drop/pick up objects
+N_FRONT_TYPES = 8
 
 # -------------------------------------------------
 # States (single-agent perspective)
@@ -244,7 +245,7 @@ def compute_front_tile_type(agent_pos_idx: int, agent_ori_idx: int, other_pos_id
     if front_idx == other_pos_idx:
         return FRONT_BLOCKED_BY_OTHER
     if front_idx in WALL_INDICES:
-        return FRONT_WALL
+        return FRONT_COUNTER  # "X" = counter (drop/pick up); only out-of-bounds is FRONT_WALL
     if front_idx in POT_INDICES:
         return FRONT_POT
     if front_idx in SERVING_INDICES:

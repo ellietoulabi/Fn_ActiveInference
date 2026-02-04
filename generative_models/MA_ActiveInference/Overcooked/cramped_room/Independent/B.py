@@ -90,8 +90,10 @@ def B_agent_pos(qs: dict, action: int, collision_awareness: float = 0.5) -> np.n
     """
     Update agent position given action, with soft collision avoidance against other agent.
 
-    If the agent attempts to move into other agent's cell, it stays.
-    If the other agent is near, add some probability of hesitation (stay).
+    - If the agent attempts to move into other agent's current cell, it stays.
+    - If the other agent is near, add some probability of hesitation (stay).
+    - If my proposed cell is adjacent to the other (they could move into it or we could swap),
+      env would block both on collision → add probability I stay (same-target / swap collision).
     """
     q_pos = np.array(qs["agent_pos"], dtype=float)
     q_other = np.array(qs["other_agent_pos"], dtype=float)
@@ -115,24 +117,25 @@ def B_agent_pos(qs: dict, action: int, collision_awareness: float = 0.5) -> np.n
 
             proposed = _compute_new_pos(pos, action)
 
-            # hesitation near other agent
+            # Hesitation when near other agent
+            p_stay = 0.0
             if is_move:
                 d = _manhattan_distance(pos, other_pos)
                 if d == 1:
-                    p_stay = collision_awareness * 0.7
+                    p_stay = max(p_stay, collision_awareness * 0.7)
                 elif d == 2:
-                    p_stay = collision_awareness * 0.4
-                else:
-                    p_stay = 0.0
-            else:
-                p_stay = 0.0
+                    p_stay = max(p_stay, collision_awareness * 0.4)
+                # Same-target or swap: my target cell is adjacent to other → they might move there too → collision → I stay
+                other_neighbors = _valid_neighbors(other_pos)
+                if proposed in other_neighbors:
+                    p_stay = max(p_stay, 0.6)  # high chance we collide and both stay (env blocks both)
 
             p_move = 1.0 - p_stay
 
             if p_stay > 0:
                 next_q[pos] += w * p_stay
 
-            # collision check
+            # Direct collision: moving into other's current cell
             if proposed == other_pos:
                 next_q[pos] += w * p_move
             else:
@@ -164,6 +167,7 @@ def B_agent_held(qs: dict, action: int) -> np.ndarray:
       front POT   + held ONION + pot in {POT_0,POT_1,POT_2} -> held NONE (or stay ONION w/ noise)
       front POT   + held DISH  + pot POT_READY -> held SOUP (or stay DISH w/ noise)
       front SERVE + held SOUP -> held NONE (or stay SOUP w/ noise)
+      front COUNTER + held in {ONION,DISH,SOUP} -> held NONE (drop on counter, or stay w/ noise)
     """
     q_pos = np.array(qs["agent_pos"], dtype=float)
     q_ori = np.array(qs["agent_orientation"], dtype=float)
@@ -228,6 +232,12 @@ def B_agent_held(qs: dict, action: int) -> np.ndarray:
 
                             elif front == model_init.FRONT_SERVE and held == model_init.HELD_SOUP:
                                 new_held = model_init.HELD_NONE
+
+                            elif (
+                                front == model_init.FRONT_COUNTER
+                                and held in (model_init.HELD_ONION, model_init.HELD_DISH, model_init.HELD_SOUP)
+                            ):
+                                new_held = model_init.HELD_NONE  # drop on counter
 
                             else:
                                 interact_success_prob = 1.0  # no-op interact, no noise
