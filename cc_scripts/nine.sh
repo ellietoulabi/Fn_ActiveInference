@@ -35,7 +35,10 @@ echo "Activated virtualenv."
 
 echo "Installing dependencies..."
 cd ../project/Fn_ActiveInference/
-pip install -r requirements.txt
+# Exclude opencv-python: Compute Canada provides OpenCV via a module (pip package is a dummy that fails).
+# compare_nine_agents does not need OpenCV (RedBlueButton env only).
+grep -v 'opencv-python' requirements.txt > requirements_cc.txt
+pip install -r requirements_cc.txt
 echo "Dependencies installed"
 
 SEED_IDX=$SLURM_ARRAY_TASK_ID
