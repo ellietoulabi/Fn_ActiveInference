@@ -27,6 +27,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent.resolve()
 sys.path.insert(0, str(project_root))
 
+import random
 import numpy as np
 import csv
 from datetime import datetime
@@ -337,16 +338,17 @@ def main():
     print("="*80)
     
     # Parameters
-    NUM_EPISODES = 50  # Changed to 100 episodes
-    EPISODES_PER_CONFIG = 10  # Change button positions every 20 episodes
-    MAX_STEPS = 100
+    NUM_EPISODES = 200  # Changed to 100 episodes
+    EPISODES_PER_CONFIG = 25  # Change button positions every 20 episodes
+    MAX_STEPS = 50
     PLANNING_STEPS = 2
     RECENCY_DECAYS = [0.99, 0.95, 0.90, 0.85]  # Different recency bias levels
     BASE_SEED = 42  # Base seed for reproducibility
     
     current_seed = BASE_SEED + seed_idx
+    random.seed(current_seed)
     np.random.seed(current_seed)
-    
+
     # Setup CSV logging (will include seed column)
     log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
