@@ -1,10 +1,10 @@
 """
 FullyCollective paradigm model init.
 
-This is a JOINT (centralised) model:
-- Hidden state includes both agent positions
-- Actions are JOINT actions (a1, a2) encoded as a single integer in [0, 35]
-  where a1, a2 are each in [0..5] (UP, DOWN, LEFT, RIGHT, PRESS, NOOP)
+Centralised model: one planner chooses the full joint action.
+- Joint state: both agent positions + button pos/state.
+- Joint action (a1, a2) encoded as one integer in [0, 35]; a1, a2 in [0..5].
+- At execution: agent_0 takes a1, agent_1 takes a2 (agent1↔agent_0, agent2↔agent_1).
 """
 
 # -------------------------------------------------

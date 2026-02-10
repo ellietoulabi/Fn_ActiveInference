@@ -1,11 +1,44 @@
 """
 Env <-> model utilities for FullyCollective paradigm.
 
-This model sees the FULL joint observation and selects a JOINT action (a1, a2),
-encoded as a single integer in [0, 35].
+Conceptually: one AIF agent (central planner) and one follower. The AIF decides
+the full joint action (a1, a2); the follower only executes the action the AIF
+assigns to it (no own policy). At step time: agent_0 executes a1, agent_1 executes a2.
+Mapping: model agent1 <-> env agent_0,  model agent2 <-> env agent_1.
 """
 
 from . import model_init
+
+
+def merge_env_obs_for_collective(env_obs):
+    """
+    Convert TwoAgentRedBlueButton env observation to joint format for the collective model.
+
+    The env returns observations = {'agent_0': obs_0, 'agent_1': obs_1}, where each
+    obs has 'position', 'on_red_button', 'on_blue_button', 'red_button_pressed',
+    'blue_button_pressed', 'win_lose_neutral', 'button_just_pressed'.
+
+    Returns a single dict with agent1_* / agent2_* keys expected by env_obs_to_model_obs.
+    """
+    o0 = env_obs["agent_0"]
+    o1 = env_obs["agent_1"]
+    pos0 = o0["position"]
+    pos1 = o1["position"]
+    # position is (x, y) from env - as array or tuple
+    xy0 = (int(pos0[0]), int(pos0[1])) if hasattr(pos0, "__len__") else (int(pos0), 0)
+    xy1 = (int(pos1[0]), int(pos1[1])) if hasattr(pos1, "__len__") else (int(pos1), 0)
+    return {
+        "agent1_position": xy0,
+        "agent2_position": xy1,
+        "agent1_on_red_button": int(o0["on_red_button"]),
+        "agent1_on_blue_button": int(o0["on_blue_button"]),
+        "agent2_on_red_button": int(o1["on_red_button"]),
+        "agent2_on_blue_button": int(o1["on_blue_button"]),
+        "red_button_pressed": int(o0["red_button_pressed"]),
+        "blue_button_pressed": int(o0["blue_button_pressed"]),
+        "win_lose_neutral": int(o0["win_lose_neutral"]),
+        "button_just_pressed": o0.get("button_just_pressed"),
+    }
 
 
 def xy_to_index(x, y, width=3):
@@ -55,10 +88,16 @@ def env_obs_to_model_obs(env_obs, width=3):
 
 def get_D_config_from_env(env):
     """
-    Extract D_fn config from a TwoAgentRedBlueButtonEnv for the centralized model.
+    Extract D_fn config from the two-agent env for the centralized model.
+    Supports both env styles: agent1/agent2 (TwoAgentRedBlueButton) or
+    agent_0/agent_1 (TwoAgentRedBlueButtonEnv).
     """
-    a1 = env.agent1_start_pos
-    a2 = env.agent2_start_pos
+    if hasattr(env, "agent1_start_pos"):
+        a1 = env.agent1_start_pos
+        a2 = env.agent2_start_pos
+    else:
+        a1 = env.agent_0_start_pos
+        a2 = env.agent_1_start_pos
     return {
         "agent1_start_pos": xy_to_index(int(a1[0]), int(a1[1]), env.width),
         "agent2_start_pos": xy_to_index(int(a2[0]), int(a2[1]), env.width),
@@ -69,7 +108,8 @@ def get_D_config_from_env(env):
 
 def model_action_to_env_action(model_action):
     """
-    Convert joint action index to (action1, action2) tuple for env.step(...).
+    Convert joint action index to (a1, a2) for env.step(...).
+    One planner chose the joint action; agent_0 executes a1, agent_1 executes a2.
     """
     return decode_joint_action(model_action)
 

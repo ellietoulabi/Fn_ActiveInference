@@ -10,6 +10,23 @@ Implements the evaluation & plotting spec:
 
 Each plot is saved to a separate file.
 Expects CSV from compare_nine_agents.py (columns: seed, agent, episode, step, reward, ...).
+
+
+
+
+
+
+# One folder: use every nine_agents_comparison_*.csv inside it
+python utils/plotting/plot_sa_redbluebuttons_nine.py logs/logs_sa_nine
+
+# Plots saved in the same folder (or use -o)
+python utils/plotting/plot_sa_redbluebuttons_nine.py logs/logs_sa_nine
+
+# Save plots somewhere else
+python utils/plotting/plot_sa_redbluebuttons_nine.py logs/logs_sa_nine -o plots/plots_sa_nine
+
+# Still works: pass explicit files
+python utils/plotting/plot_sa_redbluebuttons_nine.py logs/seed0.csv logs/seed1.csv -o results/results_sa_nine
 """
 
 from __future__ import annotations
@@ -425,6 +442,35 @@ def plot_d_ecdf_stable_success(
     plt.close(fig)
 
 
+# Glob pattern for seed CSV files produced by compare_nine_agents.py
+LOG_DIR_GLOB = "nine_agents_comparison_*.csv"
+
+
+def collect_log_files_from_paths(paths: List[Path]) -> List[Path]:
+    """
+    Collect log files from a mix of file paths and directory paths.
+    - If a path is a file, add it to the list.
+    - If a path is a directory, add all files matching LOG_DIR_GLOB inside it (non-recursive).
+    Returns a sorted list of unique paths (one per seed file).
+    """
+    collected: List[Path] = []
+    for p in paths:
+        p = Path(p).resolve()
+        if not p.exists():
+            raise FileNotFoundError(f"No such path: {p}")
+        if p.is_file():
+            collected.append(p)
+        else:
+            for f in sorted(p.glob(LOG_DIR_GLOB)):
+                if f.is_file():
+                    collected.append(f)
+    if not collected:
+        raise ValueError(
+            f"No log files found. For a directory, expected files matching '{LOG_DIR_GLOB}'."
+        )
+    return sorted(set(collected))
+
+
 def run_all_plots(
     log_files: List[Path],
     output_dir: Optional[Path] = None,
@@ -502,17 +548,31 @@ def run_all_plots(
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Single-Agent Red–Blue Doors: 9-algorithm evaluation plots (spec)')
-    parser.add_argument('log_files', nargs='+', type=Path, help='One or more comparison CSV log files (e.g. from compare_nine_agents.py)')
-    parser.add_argument('--output_dir', '-o', type=Path, default=None, help='Directory to save plots (default: directory of first log file)')
+    parser = argparse.ArgumentParser(
+        description='Single-Agent Red–Blue Doors: 9-algorithm evaluation plots (spec). '
+        'Pass a log directory (finds all nine_agents_comparison_*.csv) or one or more CSV files.'
+    )
+    parser.add_argument(
+        'paths',
+        nargs='+',
+        type=Path,
+        help='Path to folder of log files (finds nine_agents_comparison_*.csv), or one or more CSV file paths',
+    )
+    parser.add_argument('--output_dir', '-o', type=Path, default=None, help='Directory to save plots (default: log directory)')
     parser.add_argument('--episodes_per_config', type=int, default=EPISODES_PER_CONFIG_DEFAULT, help='Episodes per config (vertical lines; default 25)')
     parser.add_argument('--smoothing_window', type=int, default=W_CURVE, help=f'Rolling window for learning curves (default {W_CURVE})')
     parser.add_argument('--w_stable', type=int, default=W_STABLE, help=f'Rolling window for stable success (default {W_STABLE})')
     parser.add_argument('--theta', type=float, default=THETA, help=f'Stable success threshold (default {THETA})')
     args = parser.parse_args()
 
+    log_files = collect_log_files_from_paths(args.paths)
+    print(f"Using {len(log_files)} log file(s):")
+    for f in log_files:
+        print(f"  {f.name}")
+    print()
+
     run_all_plots(
-        args.log_files,
+        log_files,
         output_dir=args.output_dir,
         episodes_per_config=args.episodes_per_config,
         smoothing_window=args.smoothing_window,

@@ -14,18 +14,12 @@ This package contains multiple modelling / coordination paradigms:
     Each agent plans using the same joint model (joint actions), but executes only its own
     component of the joint action. Coordination can emerge without explicit communication.
 
-- `ObservablePartner` (decentralised, optional extra):
-    Each agent represents the partner position (`other_pos`) explicitly but still selects
-    only its own action (6 actions).
-
-Backwards compatibility:
-This module re-exports the `ObservablePartner` variant by default so existing imports like:
-`from generative_models.MA_ActiveInference.RedBlueButton import A_fn, ...`
-continue to work.
+Default export: `FullyCollective`. For other paradigms, import explicitly from the
+subpackage, e.g. `from ...RedBlueButton.Independent import A_fn, ...`
 """
 
-# Default / backwards-compatible export: ObservablePartner
-from .ObservablePartner import A_fn, B_fn, C_fn, D_fn, model_init, env_utils
+# Default export: FullyCollective (centralized joint planner)
+from .FullyCollective import A_fn, B_fn, C_fn, D_fn, model_init, env_utils
 
 __all__ = [
     "A_fn",
@@ -34,14 +28,12 @@ __all__ = [
     "D_fn",
     "model_init",
     "env_utils",
-    # Variants
     "Independent",
     "FullyCollective",
     "IndividuallyCollective",
-    "ObservablePartner",
 ]
 
 # Expose subpackages for explicit imports
-from . import Independent, FullyCollective, IndividuallyCollective, ObservablePartner
+from . import Independent, FullyCollective, IndividuallyCollective
 
 

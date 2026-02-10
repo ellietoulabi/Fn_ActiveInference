@@ -55,135 +55,49 @@ def A_fn(state_indices):
     return obs
 
 
-
-
-
 # =============================================================================
-# Inference utility: Apply A to belief distributions
+# Inference utilities: apply A to belief distributions
 # =============================================================================
 
 def get_observation_likelihood(modality, state_indices):
     """
-    Get observation likelihood for a specific state configuration.
-    
-    Parameters
-    ----------
-    modality : str
-        Observation modality name (e.g., "on_red_button")
-    state_indices : dict
-        Dictionary mapping state factor names to specific indices
-        Example: {"agent_pos": 4, "red_button_pos": 2}
-    
-    Returns
-    -------
-    p_obs : array
-        p(observation | states) for this modality
+    Get observation likelihood for a specific (joint) state configuration.
     """
-    A_func = A_FUNCTIONS[modality]
-    deps = model_init.observation_state_dependencies[modality]
-    
-    # Extract relevant state indices based on dependencies
-    args = [state_indices[dep] for dep in deps]
-    
-    # Special cases for modalities with extra parameters
-    if modality == "agent_pos":
-        num_obs = len(model_init.states["agent_pos"])
-        return A_func(args[0], num_obs)
-    else:
-        return A_func(*args)
+    obs_likelihoods = A_fn(state_indices)
+    return np.array(obs_likelihoods[modality], dtype=float)
 
 
 def predict_obs_from_beliefs(modality, state_beliefs, prev_state_beliefs=None):
     """
-    Compute predicted observation distribution from uncertain state beliefs.
-    
-    This implements: q(o) = Σ_s q(s) p(o|s)
-    
-    Parameters
-    ----------
-    modality : str
-        Observation modality name
-    state_beliefs : dict
-        Dictionary mapping state factor names to belief distributions
-        Example: {"agent_pos": array([0.1, 0.2, ...]), ...}
-    prev_state_beliefs : dict, optional
-        Previous state beliefs (for button_just_pressed modality)
-    
-    Returns
-    -------
-    q_obs : array
-        Predicted observation distribution q(o)
+    Predicted observation distribution: q(o) = Σ_s q(s) p(o|s)
+    over joint state with factorized beliefs.
     """
-    deps = model_init.observation_state_dependencies[modality]
-    A_func = A_FUNCTIONS[modality]
-    
-    # Get shapes of dependent factors
-    factor_sizes = {dep: len(state_beliefs[dep]) for dep in deps}
-    
-    # Determine output size from observations dict
-    num_obs = len(model_init.observations[modality])
-    q_obs = np.zeros(num_obs)
-    
-    # Special handling for agent_pos (has noise parameter)
-    if modality == "agent_pos":
-        S = factor_sizes["agent_pos"]
-        for pos in range(S):
-            if state_beliefs["agent_pos"][pos] > 1e-10:
-                p_obs = A_func(pos, num_obs)
-                q_obs += state_beliefs["agent_pos"][pos] * p_obs
-        return q_obs / np.sum(q_obs)  # Normalize
-    
-    # For other modalities, iterate over all combinations of dependent factors
     import itertools
-    
-    # Create ranges for each dependent factor
-    factor_ranges = [range(factor_sizes[dep]) for dep in deps]
-    
-    # Iterate over all combinations
-    for state_combo in itertools.product(*factor_ranges):
-        # Create state_indices dict
-        state_indices = {dep: idx for dep, idx in zip(deps, state_combo)}
-        
-        # Compute joint probability under factorized beliefs
+    state_factors = list(model_init.states.keys())
+    factor_sizes = [len(state_beliefs[f]) for f in state_factors]
+    num_obs = len(model_init.observations[modality])
+    q_obs = np.zeros(num_obs, dtype=float)
+
+    for state_combo in itertools.product(*[range(s) for s in factor_sizes]):
+        state_indices = {f: state_combo[i] for i, f in enumerate(state_factors)}
         joint_prob = 1.0
-        for dep, idx in state_indices.items():
-            joint_prob *= state_beliefs[dep][idx]
-        
-        # Skip negligible probabilities
-        if joint_prob < 1e-10:
+        for i, f in enumerate(state_factors):
+            joint_prob *= float(state_beliefs[f][state_combo[i]])
+        if joint_prob < 1e-12:
             continue
-        
-        # Get observation likelihood for this state combination
         p_obs = get_observation_likelihood(modality, state_indices)
-        
-        # Add weighted contribution
         q_obs += joint_prob * p_obs
-    
-    return q_obs / np.sum(q_obs)  # Normalize
+
+    s = np.sum(q_obs)
+    return q_obs / s if s > 0 else q_obs
 
 
 def predict_all_obs_from_beliefs(state_beliefs, prev_state_beliefs=None):
-    """
-    Predict observation distributions for ALL modalities from state beliefs.
-    
-    Parameters
-    ----------
-    state_beliefs : dict
-        Belief distributions over all state factors
-    prev_state_beliefs : dict, optional
-        Previous state beliefs
-    
-    Returns
-    -------
-    obs_predictions : dict
-        Dictionary mapping modality names to predicted observation distributions
-    """
+    """Predict observation distributions for all modalities from joint state beliefs."""
     obs_predictions = {}
-    
     for modality in model_init.observation_state_dependencies.keys():
         obs_predictions[modality] = predict_obs_from_beliefs(
             modality, state_beliefs, prev_state_beliefs
         )
-    
     return obs_predictions
 
