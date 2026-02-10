@@ -33,6 +33,7 @@ SCRIPTS = {
 def run_paradigm(
     script_path: Path,
     seeds: int,
+    seed: int | None,
     episodes: int,
     episodes_per_config: int,
     max_steps: int,
@@ -41,11 +42,12 @@ def run_paradigm(
     episode_progress: bool = False,
 ) -> dict:
     """Run one paradigm script and return parsed stats JSON."""
-    cmd = [
-        sys.executable,
-        str(script_path),
-        "--seeds",
-        str(seeds),
+    cmd = [sys.executable, str(script_path)]
+    if seed is not None:
+        cmd += ["--seed", str(seed)]
+    else:
+        cmd += ["--seeds", str(seeds)]
+    cmd += [
         "--episodes",
         str(episodes),
         "--episodes-per-config",
@@ -79,6 +81,12 @@ def main():
         )
     )
     parser.add_argument("--seeds", type=int, default=3, help="Number of seeds (default: 3)")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="If set, run only this seed (pass --seed to each paradigm)",
+    )
     parser.add_argument("--episodes", type=int, default=200, help="Episodes per seed (default: 200)")
     parser.add_argument(
         "--episodes-per-config",
@@ -125,10 +133,16 @@ def main():
         print("=" * 80)
         print("COMPARING THREE TWO-AGENT AIF PAIRINGS + PPO (same seeds, episodes, env settings)")
         print("=" * 80)
-        print(
-            f"  Seeds: {args.seeds}  Episodes per seed: {args.episodes}  "
-            f"Episodes per config: {args.episodes_per_config}  Max steps: {args.max_steps}"
-        )
+        if args.seed is not None:
+            print(
+                f"  Seed: {args.seed}  Episodes per seed: {args.episodes}  "
+                f"Episodes per config: {args.episodes_per_config}  Max steps: {args.max_steps}"
+            )
+        else:
+            print(
+                f"  Seeds: {args.seeds}  Episodes per seed: {args.episodes}  "
+                f"Episodes per config: {args.episodes_per_config}  Max steps: {args.max_steps}"
+            )
         print()
 
         for name, script_path in SCRIPTS.items():
@@ -139,6 +153,7 @@ def main():
             run_paradigm(
                 script_path,
                 seeds=args.seeds,
+                seed=args.seed,
                 episodes=args.episodes,
                 episodes_per_config=args.episodes_per_config,
                 max_steps=args.max_steps,

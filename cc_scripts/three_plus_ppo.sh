@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
 #SBATCH --job-name=three_plus_ppo
+#SBATCH --array=0-4              # seeds 0..4 as separate jobs
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
 #SBATCH --time=0-8:59
@@ -41,11 +42,13 @@ grep -v 'opencv-python' requirements.txt > requirements_cc.txt
 pip install --no-input -r requirements_cc.txt
 echo "Dependencies installed."
 
-echo "---- Starting compare_three_pairings_plus_ppo ----"
+SEED_IDX=${SLURM_ARRAY_TASK_ID}
+echo "---- Starting compare_three_pairings_plus_ppo for seed index ${SEED_IDX} ----"
 
 export PYTHONHASHSEED=0
 python -u run_scripts_red_blue_doors/compare_agents/compare_three_pairings_plus_ppo.py \
-  --seeds 5 \
+  --seeds 1 \
+  --seed "${SEED_IDX}" \
   --episodes 200 \
   --episodes-per-config 25 \
   --max-steps 30
@@ -65,5 +68,5 @@ cp logs/compare_three_pairings_plus_ppo_*/comparison.csv "${DEST_BASE}/" 2>/dev/
 cp logs/compare_three_pairings_plus_ppo_*/comparison_summary.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: comparison summary JSON not found"
 
 echo "Copy done"
-echo "---- three_plus_ppo job complete ----"
+echo "---- three_plus_ppo seed index ${SEED_IDX} complete ----"
 
