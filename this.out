@@ -1,0 +1,1136 @@
+========================================================================
+  Scenario 1: Cramped room, 20 steps (seed=42)
+========================================================================
+
+  --- Step 1 ---
+    Env state:  A0@0 held=none | A1@5 held=none | pot=empty
+    Map (before action):
+      XXPXX
+      O1  O
+      X  2X
+      XDXSX
+    Obs (model) A0: pos_obs=0 ori_obs=0 held_obs=0 pot_obs=0 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=5 ori_obs=0 held_obs=0 pot_obs=0 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          0 (p=1.00, H=0.00)           5 (p=1.00, H=0.00)          
+      agent_orientation  0 (p=1.00, H=0.00)           0 (p=1.00, H=0.00)          
+      agent_held         0 (p=1.00, H=0.00)           0 (p=1.00, H=0.00)          
+      pot_state          0 (p=1.00, H=0.00)           0 (p=1.00, H=0.00)          
+      ck_put1            0 (p=1.00, H=0.00)           0 (p=1.00, H=0.00)          
+      ck_put2            0 (p=1.00, H=0.00)           0 (p=1.00, H=0.00)          
+      ck_put3            0 (p=1.00, H=0.00)           0 (p=1.00, H=0.00)          
+      ck_plated          0 (p=1.00, H=0.00)           0 (p=1.00, H=0.00)          
+      ck_delivered       0 (p=1.00, H=0.00)           0 (p=1.00, H=0.00)          
+    Policy beliefs:
+      Agent 0 (entropy 5.021):
+        #1 [   S→I→S]                      0.037
+        #2 [   W→I→S]                      0.037
+        #3 [   S→I→E]                      0.023
+      Agent 1 (entropy 5.328):
+        #1 [   N→E→I]                      0.012
+        #2 [   W→I→I]                      0.010
+        #3 [   W→I→S]                      0.009
+    Actions:    A0 -> WEST [3]  |  A1 -> NORTH [0]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 2 ---
+    Env state:  A0@0 held=none | A1@2 held=none | pot=empty
+    Map (before action):
+      XXPXX
+      O1 2O
+      X   X
+      XDXSX
+    Obs (model) A0: pos_obs=0 ori_obs=3 held_obs=0 pot_obs=0 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=0 pot_obs=0 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          0 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  3 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      pot_state          0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      ck_put1            0 (p=0.99, H=0.08)           0 (p=0.99, H=0.08)          
+      ck_put2            0 (p=0.99, H=0.08)           0 (p=0.99, H=0.08)          
+      ck_put3            0 (p=0.99, H=0.08)           0 (p=0.99, H=0.08)          
+      ck_plated          0 (p=0.99, H=0.08)           0 (p=0.99, H=0.08)          
+      ck_delivered       0 (p=0.99, H=0.08)           0 (p=0.99, H=0.08)          
+    Policy beliefs:
+      Agent 0 (entropy 4.846):
+        #1 [   I→S→S]                      0.029
+        #2 [   I→E→I]                      0.021
+        #3 [   S→I→S]                      0.019
+      Agent 1 (entropy 5.132):
+        #1 [   E→I→S]                      0.043
+        #2 [   E→I→W]                      0.027
+        #3 [   E→I→E]                      0.025
+    Actions:    A0 -> INTERACT [5]  |  A1 -> EAST [2]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 3 ---
+    Env state:  A0@0 held=onion | A1@2 held=none | pot=empty
+    Map (before action):
+      XXPXX
+      O1 2O
+      X   X
+      XDXSX
+    Obs (model) A0: pos_obs=0 ori_obs=3 held_obs=1 pot_obs=0 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          0 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  3 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_held         1 (p=0.99, H=0.03)           0 (p=1.00, H=0.01)          
+      pot_state          0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      ck_put1            0 (p=0.97, H=0.14)           0 (p=0.97, H=0.14)          
+      ck_put2            0 (p=0.97, H=0.14)           0 (p=0.97, H=0.14)          
+      ck_put3            0 (p=0.97, H=0.13)           0 (p=0.97, H=0.13)          
+      ck_plated          0 (p=0.97, H=0.13)           0 (p=0.97, H=0.13)          
+      ck_delivered       0 (p=0.97, H=0.13)           0 (p=0.97, H=0.13)          
+    Policy beliefs:
+      Agent 0 (entropy 5.191):
+        #1 [   N→I→S]                      0.030
+        #2 [   E→N→I]                      0.030
+        #3 [   N→I→E]                      0.019
+      Agent 1 (entropy 4.826):
+        #1 [   I→S→S]                      0.032
+        #2 [   I→W→I]                      0.023
+        #3 [   S→I→S]                      0.021
+    Actions:    A0 -> NORTH [0]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 4 ---
+    Env state:  A0@0 held=onion | A1@2 held=onion | pot=empty
+    Map (before action):
+      XXPXX
+      O1 2O
+      X   X
+      XDXSX
+    Obs (model) A0: pos_obs=0 ori_obs=0 held_obs=1 pot_obs=0 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=1 pot_obs=0 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          0 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  0 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_held         1 (p=1.00, H=0.01)           1 (p=0.99, H=0.03)          
+      pot_state          0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      ck_put1            0 (p=0.95, H=0.18)           0 (p=0.95, H=0.18)          
+      ck_put2            0 (p=0.96, H=0.18)           0 (p=0.96, H=0.18)          
+      ck_put3            0 (p=0.96, H=0.18)           0 (p=0.96, H=0.18)          
+      ck_plated          0 (p=0.96, H=0.18)           0 (p=0.96, H=0.18)          
+      ck_delivered       0 (p=0.96, H=0.18)           0 (p=0.96, H=0.18)          
+    Policy beliefs:
+      Agent 0 (entropy 4.845):
+        #1 [   I→S→I]                      0.040
+        #2 [   I→S→S]                      0.032
+        #3 [   I→E→I]                      0.021
+      Agent 1 (entropy 5.191):
+        #1 [   N→I→S]                      0.030
+        #2 [   W→N→I]                      0.030
+        #3 [   N→I→W]                      0.019
+    Actions:    A0 -> INTERACT [5]  |  A1 -> NORTH [0]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 5 ---
+    Env state:  A0@0 held=none | A1@2 held=onion | pot=empty
+    Map (before action):
+      XXPXX
+      O1 2O
+      X   X
+      XDXSX
+    Obs (model) A0: pos_obs=0 ori_obs=0 held_obs=0 pot_obs=0 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=1 pot_obs=0 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          0 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         0 (p=0.99, H=0.03)           1 (p=1.00, H=0.01)          
+      pot_state          0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      ck_put1            0 (p=0.94, H=0.23)           0 (p=0.94, H=0.23)          
+      ck_put2            0 (p=0.94, H=0.22)           0 (p=0.94, H=0.22)          
+      ck_put3            0 (p=0.94, H=0.22)           0 (p=0.94, H=0.22)          
+      ck_plated          0 (p=0.94, H=0.22)           0 (p=0.94, H=0.22)          
+      ck_delivered       0 (p=0.94, H=0.22)           0 (p=0.94, H=0.22)          
+    Policy beliefs:
+      Agent 0 (entropy 5.030):
+        #1 [   S→I→S]                      0.037
+        #2 [   W→I→S]                      0.035
+        #3 [   S→I→E]                      0.024
+      Agent 1 (entropy 4.875):
+        #1 [   I→S→S]                      0.033
+        #2 [   I→W→I]                      0.022
+        #3 [   I→E→I]                      0.022
+    Actions:    A0 -> SOUTH [1]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 6 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty
+    Map (before action):
+      XXPXX
+      O  2O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=0 pot_obs=0 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  1 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         0 (p=1.00, H=0.01)           0 (p=0.99, H=0.03)          
+      pot_state          0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      ck_put1            0 (p=0.93, H=0.26)           0 (p=0.93, H=0.26)          
+      ck_put2            0 (p=0.93, H=0.26)           0 (p=0.93, H=0.26)          
+      ck_put3            0 (p=0.93, H=0.26)           0 (p=0.93, H=0.26)          
+      ck_plated          0 (p=0.93, H=0.26)           0 (p=0.93, H=0.26)          
+      ck_delivered       0 (p=0.93, H=0.26)           0 (p=0.93, H=0.26)          
+    Policy beliefs:
+      Agent 0 (entropy 4.824):
+        #1 [   I→S→S]                      0.032
+        #2 [   I→E→I]                      0.022
+        #3 [   S→I→S]                      0.021
+      Agent 1 (entropy 5.147):
+        #1 [   E→I→S]                      0.041
+        #2 [   E→I→W]                      0.026
+        #3 [   E→I→E]                      0.024
+    Actions:    A0 -> INTERACT [5]  |  A1 -> EAST [2]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 7 ---
+    Env state:  A0@3 held=dish | A1@2 held=none | pot=empty
+    Map (before action):
+      XXPXX
+      O  2O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=2 pot_obs=0 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  1 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.99, H=0.03)           0 (p=1.00, H=0.01)          
+      pot_state          0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      ck_put1            0 (p=0.91, H=0.30)           0 (p=0.91, H=0.30)          
+      ck_put2            0 (p=0.91, H=0.29)           0 (p=0.91, H=0.29)          
+      ck_put3            0 (p=0.92, H=0.29)           0 (p=0.92, H=0.29)          
+      ck_plated          0 (p=0.92, H=0.29)           0 (p=0.92, H=0.29)          
+      ck_delivered       0 (p=0.92, H=0.29)           0 (p=0.92, H=0.29)          
+    Policy beliefs:
+      Agent 0 (entropy 5.159):
+        #1 [   W→I→S]                      0.029
+        #2 [   N→I→S]                      0.027
+        #3 [   W→I→E]                      0.018
+      Agent 1 (entropy 4.827):
+        #1 [   I→S→S]                      0.032
+        #2 [   I→W→I]                      0.023
+        #3 [   S→I→S]                      0.021
+    Actions:    A0 -> WEST [3]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 8 ---
+    Env state:  A0@3 held=dish | A1@2 held=onion | pot=empty
+    Map (before action):
+      XXPXX
+      O  2O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=3 held_obs=2 pot_obs=0 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=1 pot_obs=0 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  3 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_held         2 (p=1.00, H=0.01)           1 (p=0.99, H=0.03)          
+      pot_state          0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      ck_put1            0 (p=0.90, H=0.33)           0 (p=0.90, H=0.33)          
+      ck_put2            0 (p=0.90, H=0.32)           0 (p=0.90, H=0.32)          
+      ck_put3            0 (p=0.90, H=0.32)           0 (p=0.90, H=0.32)          
+      ck_plated          0 (p=0.90, H=0.32)           0 (p=0.90, H=0.32)          
+      ck_delivered       0 (p=0.90, H=0.32)           0 (p=0.90, H=0.32)          
+    Policy beliefs:
+      Agent 0 (entropy 4.891):
+        #1 [   I→S→S]                      0.032
+        #2 [   I→E→I]                      0.022
+        #3 [   I→S→I]                      0.021
+      Agent 1 (entropy 5.191):
+        #1 [   N→I→S]                      0.030
+        #2 [   W→N→I]                      0.030
+        #3 [   N→I→W]                      0.019
+    Actions:    A0 -> INTERACT [5]  |  A1 -> WEST [3]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 9 ---
+    Env state:  A0@3 held=none | A1@1 held=onion | pot=empty
+    Map (before action):
+      XXPXX
+      O 2 O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=3 held_obs=0 pot_obs=0 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=1 ori_obs=3 held_obs=1 pot_obs=0 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      agent_orientation  3 (p=1.00, H=0.01)           3 (p=1.00, H=0.01)          
+      agent_held         0 (p=0.99, H=0.03)           1 (p=1.00, H=0.01)          
+      pot_state          0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      ck_put1            0 (p=0.89, H=0.35)           0 (p=0.89, H=0.35)          
+      ck_put2            0 (p=0.89, H=0.35)           0 (p=0.89, H=0.35)          
+      ck_put3            0 (p=0.89, H=0.35)           0 (p=0.89, H=0.35)          
+      ck_plated          0 (p=0.89, H=0.34)           0 (p=0.89, H=0.34)          
+      ck_delivered       0 (p=0.89, H=0.34)           0 (p=0.89, H=0.34)          
+    Policy beliefs:
+      Agent 0 (entropy 5.146):
+        #1 [   S→I→S]                      0.041
+        #2 [   S→I→E]                      0.026
+        #3 [   S→I→W]                      0.024
+      Agent 1 (entropy 3.897):
+        #1 [   N→I→S] ██                   0.136
+        #2 [   N→I→I] ██                   0.108
+        #3 [   N→I→E] █                    0.077
+    Actions:    A0 -> SOUTH [1]  |  A1 -> NORTH [0]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 10 ---
+    Env state:  A0@3 held=none | A1@1 held=onion | pot=empty
+    Map (before action):
+      XXPXX
+      O 2 O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=1 ori_obs=0 held_obs=1 pot_obs=0 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      agent_orientation  1 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         0 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      pot_state          0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      ck_put1            0 (p=0.87, H=0.38)           0 (p=0.87, H=0.38)          
+      ck_put2            0 (p=0.88, H=0.37)           0 (p=0.88, H=0.37)          
+      ck_put3            0 (p=0.88, H=0.37)           0 (p=0.88, H=0.37)          
+      ck_plated          0 (p=0.88, H=0.37)           0 (p=0.88, H=0.37)          
+      ck_delivered       0 (p=0.88, H=0.37)           0 (p=0.88, H=0.37)          
+    Policy beliefs:
+      Agent 0 (entropy 4.826):
+        #1 [   I→S→S]                      0.032
+        #2 [   I→E→I]                      0.022
+        #3 [   S→I→S]                      0.021
+      Agent 1 (entropy 4.106):
+        #1 [   I→S→S]                      0.042
+        #2 [   I→S→I]                      0.036
+        #3 [   I→I→S]                      0.032
+    Actions:    A0 -> INTERACT [5]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 11 ---
+    Env state:  A0@3 held=dish | A1@1 held=none | pot=1onion
+    Map (before action):
+      XXPXX
+      O 2 O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=2 pot_obs=1 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=1 ori_obs=0 held_obs=0 pot_obs=1 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      agent_orientation  1 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.99, H=0.03)           0 (p=0.99, H=0.03)          
+      pot_state          0 (p=0.81, H=0.54)           1 (p=0.99, H=0.03)          
+      ck_put1            0 (p=0.86, H=0.40)           0 (p=0.86, H=0.40)          
+      ck_put2            0 (p=0.86, H=0.40)           0 (p=0.86, H=0.40)          
+      ck_put3            0 (p=0.87, H=0.39)           0 (p=0.87, H=0.39)          
+      ck_plated          0 (p=0.87, H=0.39)           0 (p=0.87, H=0.39)          
+      ck_delivered       0 (p=0.87, H=0.39)           0 (p=0.87, H=0.39)          
+    Policy beliefs:
+      Agent 0 (entropy 5.159):
+        #1 [   W→I→S]                      0.029
+        #2 [   N→I→S]                      0.027
+        #3 [   W→I→E]                      0.018
+      Agent 1 (entropy 5.047):
+        #1 [   W→I→S]                      0.035
+        #2 [   E→I→S]                      0.035
+        #3 [   W→I→E]                      0.022
+    Actions:    A0 -> WEST [3]  |  A1 -> EAST [2]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 12 ---
+    Env state:  A0@3 held=dish | A1@2 held=none | pot=1onion
+    Map (before action):
+      XXPXX
+      O  2O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=3 held_obs=2 pot_obs=1 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=1 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  3 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_held         2 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      pot_state          1 (p=0.85, H=0.44)           1 (p=1.00, H=0.01)          
+      ck_put1            0 (p=0.69, H=0.62)           1 (p=0.98, H=0.09)          
+      ck_put2            0 (p=0.84, H=0.44)           0 (p=0.85, H=0.42)          
+      ck_put3            0 (p=0.85, H=0.42)           0 (p=0.86, H=0.41)          
+      ck_plated          0 (p=0.86, H=0.41)           0 (p=0.86, H=0.41)          
+      ck_delivered       0 (p=0.86, H=0.41)           0 (p=0.86, H=0.41)          
+    Policy beliefs:
+      Agent 0 (entropy 4.891):
+        #1 [   I→S→S]                      0.032
+        #2 [   I→E→I]                      0.022
+        #3 [   I→S→I]                      0.021
+      Agent 1 (entropy 4.827):
+        #1 [   I→S→S]                      0.032
+        #2 [   I→W→I]                      0.023
+        #3 [   S→I→S]                      0.021
+    Actions:    A0 -> INTERACT [5]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 13 ---
+    Env state:  A0@3 held=dish | A1@2 held=onion | pot=1onion
+    Map (before action):
+      XXPXX
+      O  2O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=3 held_obs=2 pot_obs=1 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=1 pot_obs=1 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  3 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.76, H=0.57)           1 (p=0.99, H=0.03)          
+      pot_state          1 (p=0.99, H=0.05)           1 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.89, H=0.35)           1 (p=0.98, H=0.08)          
+      ck_put2            0 (p=0.83, H=0.46)           0 (p=0.84, H=0.44)          
+      ck_put3            0 (p=0.84, H=0.44)           0 (p=0.84, H=0.43)          
+      ck_plated          0 (p=0.85, H=0.43)           0 (p=0.85, H=0.43)          
+      ck_delivered       0 (p=0.85, H=0.43)           0 (p=0.85, H=0.43)          
+    Policy beliefs:
+      Agent 0 (entropy 5.157):
+        #1 [   E→I→I]                      0.014
+        #2 [   E→I→S]                      0.013
+        #3 [   E→S→I]                      0.013
+      Agent 1 (entropy 5.194):
+        #1 [   N→I→S]                      0.030
+        #2 [   W→N→I]                      0.028
+        #3 [   N→I→W]                      0.019
+    Actions:    A0 -> EAST [2]  |  A1 -> NORTH [0]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 14 ---
+    Env state:  A0@4 held=dish | A1@2 held=onion | pot=1onion
+    Map (before action):
+      XXPXX
+      O  2O
+      X 1 X
+      XDXSX
+    Obs (model) A0: pos_obs=4 ori_obs=2 held_obs=2 pot_obs=1 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=1 pot_obs=1 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          4 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  2 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.99, H=0.07)           1 (p=1.00, H=0.01)          
+      pot_state          1 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            0 (p=0.82, H=0.47)           0 (p=0.83, H=0.45)          
+      ck_put3            0 (p=0.83, H=0.46)           0 (p=0.83, H=0.45)          
+      ck_plated          0 (p=0.84, H=0.45)           0 (p=0.84, H=0.45)          
+      ck_delivered       0 (p=0.84, H=0.45)           0 (p=0.84, H=0.45)          
+    Policy beliefs:
+      Agent 0 (entropy 5.149):
+        #1 [   W→I→S]                      0.023
+        #2 [   E→I→S]                      0.023
+        #3 [   S→I→S]                      0.023
+      Agent 1 (entropy 4.875):
+        #1 [   I→S→S]                      0.033
+        #2 [   I→W→I]                      0.022
+        #3 [   I→E→I]                      0.022
+    Actions:    A0 -> WEST [3]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 15 ---
+    Env state:  A0@3 held=dish | A1@2 held=onion | pot=1onion
+    Map (before action):
+      XXPXX
+      O  2O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=3 held_obs=2 pot_obs=1 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=1 pot_obs=1 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  3 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=1.00, H=0.01)           1 (p=0.76, H=0.57)          
+      pot_state          1 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            0 (p=0.81, H=0.49)           0 (p=0.82, H=0.47)          
+      ck_put3            0 (p=0.82, H=0.48)           0 (p=0.82, H=0.47)          
+      ck_plated          0 (p=0.83, H=0.46)           0 (p=0.83, H=0.46)          
+      ck_delivered       0 (p=0.83, H=0.46)           0 (p=0.83, H=0.46)          
+    Policy beliefs:
+      Agent 0 (entropy 4.894):
+        #1 [   I→S→S]                      0.031
+        #2 [   I→E→I]                      0.021
+        #3 [   I→S→I]                      0.021
+      Agent 1 (entropy 5.150):
+        #1 [   W→N→I]                      0.018
+        #2 [   W→I→I]                      0.015
+        #3 [   W→I→S]                      0.013
+    Actions:    A0 -> INTERACT [5]  |  A1 -> WEST [3]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 16 ---
+    Env state:  A0@3 held=dish | A1@1 held=onion | pot=1onion
+    Map (before action):
+      XXPXX
+      O 2 O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=3 held_obs=2 pot_obs=1 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=1 ori_obs=3 held_obs=1 pot_obs=1 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      agent_orientation  3 (p=1.00, H=0.01)           3 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.76, H=0.57)           1 (p=0.99, H=0.07)          
+      pot_state          1 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            0 (p=0.80, H=0.50)           0 (p=0.81, H=0.49)          
+      ck_put3            0 (p=0.81, H=0.49)           0 (p=0.81, H=0.48)          
+      ck_plated          0 (p=0.82, H=0.48)           0 (p=0.82, H=0.48)          
+      ck_delivered       0 (p=0.82, H=0.48)           0 (p=0.82, H=0.48)          
+    Policy beliefs:
+      Agent 0 (entropy 5.157):
+        #1 [   E→I→I]                      0.014
+        #2 [   E→I→S]                      0.013
+        #3 [   E→S→I]                      0.013
+      Agent 1 (entropy 4.030):
+        #1 [   N→I→S] ██                   0.129
+        #2 [   N→I→I] █                    0.099
+        #3 [   N→I→E] █                    0.073
+    Actions:    A0 -> EAST [2]  |  A1 -> NORTH [0]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 17 ---
+    Env state:  A0@4 held=dish | A1@1 held=onion | pot=1onion
+    Map (before action):
+      XXPXX
+      O 2 O
+      X 1 X
+      XDXSX
+    Obs (model) A0: pos_obs=4 ori_obs=2 held_obs=2 pot_obs=1 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=1 ori_obs=0 held_obs=1 pot_obs=1 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          4 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      agent_orientation  2 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.99, H=0.07)           1 (p=1.00, H=0.01)          
+      pot_state          1 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            0 (p=0.79, H=0.52)           0 (p=0.80, H=0.50)          
+      ck_put3            0 (p=0.80, H=0.50)           0 (p=0.80, H=0.49)          
+      ck_plated          0 (p=0.81, H=0.49)           0 (p=0.81, H=0.49)          
+      ck_delivered       0 (p=0.81, H=0.49)           0 (p=0.81, H=0.49)          
+    Policy beliefs:
+      Agent 0 (entropy 5.149):
+        #1 [   W→I→S]                      0.023
+        #2 [   E→I→S]                      0.023
+        #3 [   S→I→S]                      0.023
+      Agent 1 (entropy 4.106):
+        #1 [   I→S→S]                      0.042
+        #2 [   I→S→I]                      0.036
+        #3 [   I→I→S]                      0.033
+    Actions:    A0 -> SOUTH [1]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 18 ---
+    Env state:  A0@4 held=dish | A1@1 held=none | pot=2onion
+    Map (before action):
+      XXPXX
+      O 2 O
+      X 1 X
+      XDXSX
+    Obs (model) A0: pos_obs=4 ori_obs=1 held_obs=2 pot_obs=2 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=1 ori_obs=0 held_obs=0 pot_obs=2 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          4 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      agent_orientation  1 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=1.00, H=0.01)           0 (p=0.99, H=0.03)          
+      pot_state          1 (p=0.81, H=0.54)           2 (p=0.99, H=0.03)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            0 (p=0.78, H=0.53)           0 (p=0.79, H=0.51)          
+      ck_put3            0 (p=0.79, H=0.52)           0 (p=0.79, H=0.51)          
+      ck_plated          0 (p=0.80, H=0.50)           0 (p=0.80, H=0.50)          
+      ck_delivered       0 (p=0.80, H=0.50)           0 (p=0.80, H=0.50)          
+    Policy beliefs:
+      Agent 0 (entropy 4.926):
+        #1 [   I→S→S]                      0.031
+        #2 [   I→S→W]                      0.018
+        #3 [   I→S→E]                      0.018
+      Agent 1 (entropy 5.047):
+        #1 [   W→I→S]                      0.035
+        #2 [   E→I→S]                      0.035
+        #3 [   W→I→E]                      0.022
+    Actions:    A0 -> INTERACT [5]  |  A1 -> WEST [3]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 19 ---
+    Env state:  A0@4 held=none | A1@0 held=none | pot=2onion
+    Map (before action):
+      XXPXX
+      O2  O
+      X 1 X
+      XDXSX
+    Obs (model) A0: pos_obs=4 ori_obs=1 held_obs=0 pot_obs=2 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=0 ori_obs=3 held_obs=0 pot_obs=2 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          4 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_orientation  1 (p=1.00, H=0.01)           3 (p=1.00, H=0.01)          
+      agent_held         0 (p=0.99, H=0.03)           0 (p=1.00, H=0.01)          
+      pot_state          2 (p=0.85, H=0.44)           2 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            0 (p=0.63, H=0.66)           1 (p=0.98, H=0.09)          
+      ck_put3            0 (p=0.78, H=0.53)           0 (p=0.79, H=0.52)          
+      ck_plated          0 (p=0.79, H=0.52)           0 (p=0.79, H=0.52)          
+      ck_delivered       0 (p=0.79, H=0.52)           0 (p=0.79, H=0.52)          
+    Policy beliefs:
+      Agent 0 (entropy 5.325):
+        #1 [   N→W→I]                      0.013
+        #2 [   N→E→I]                      0.013
+        #3 [   W→S→I]                      0.013
+      Agent 1 (entropy 4.848):
+        #1 [   I→S→S]                      0.029
+        #2 [   I→E→I]                      0.021
+        #3 [   S→I→S]                      0.019
+    Actions:    A0 -> WEST [3]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 20 ---
+    Env state:  A0@3 held=none | A1@0 held=onion | pot=2onion
+    Map (before action):
+      XXPXX
+      O2  O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=3 held_obs=0 pot_obs=2 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=0 ori_obs=3 held_obs=1 pot_obs=2 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_orientation  3 (p=1.00, H=0.01)           3 (p=1.00, H=0.01)          
+      agent_held         0 (p=1.00, H=0.01)           1 (p=0.99, H=0.03)          
+      pot_state          2 (p=0.99, H=0.05)           2 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.90, H=0.33)           1 (p=0.98, H=0.08)          
+      ck_put3            0 (p=0.77, H=0.55)           0 (p=0.78, H=0.53)          
+      ck_plated          0 (p=0.78, H=0.53)           0 (p=0.78, H=0.53)          
+      ck_delivered       0 (p=0.78, H=0.53)           0 (p=0.78, H=0.53)          
+    Policy beliefs:
+      Agent 0 (entropy 5.132):
+        #1 [   S→I→S]                      0.043
+        #2 [   S→I→E]                      0.027
+        #3 [   S→I→W]                      0.025
+      Agent 1 (entropy 5.198):
+        #1 [   N→I→S]                      0.030
+        #2 [   E→N→I]                      0.026
+        #3 [   N→I→E]                      0.019
+    Actions:    A0 -> SOUTH [1]  |  A1 -> NORTH [0]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 21 ---
+    Env state:  A0@3 held=none | A1@0 held=onion | pot=2onion
+    Map (before action):
+      XXPXX
+      O2  O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=2 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=0 ori_obs=0 held_obs=1 pot_obs=2 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_orientation  1 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         0 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      pot_state          2 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put3            0 (p=0.76, H=0.55)           0 (p=0.77, H=0.54)          
+      ck_plated          0 (p=0.77, H=0.54)           0 (p=0.77, H=0.54)          
+      ck_delivered       0 (p=0.77, H=0.54)           0 (p=0.77, H=0.54)          
+    Policy beliefs:
+      Agent 0 (entropy 4.824):
+        #1 [   I→S→S]                      0.032
+        #2 [   I→E→I]                      0.022
+        #3 [   S→I→S]                      0.021
+      Agent 1 (entropy 4.847):
+        #1 [   I→S→I]                      0.040
+        #2 [   I→S→S]                      0.032
+        #3 [   I→E→I]                      0.021
+    Actions:    A0 -> INTERACT [5]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 22 ---
+    Env state:  A0@3 held=dish | A1@0 held=onion | pot=2onion
+    Map (before action):
+      XXPXX
+      O2  O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=2 pot_obs=2 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=0 ori_obs=0 held_obs=1 pot_obs=2 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_orientation  1 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.99, H=0.03)           1 (p=0.76, H=0.57)          
+      pot_state          2 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put3            0 (p=0.75, H=0.56)           0 (p=0.76, H=0.55)          
+      ck_plated          0 (p=0.76, H=0.55)           0 (p=0.76, H=0.55)          
+      ck_delivered       0 (p=0.76, H=0.55)           0 (p=0.76, H=0.55)          
+    Policy beliefs:
+      Agent 0 (entropy 5.159):
+        #1 [   W→I→S]                      0.029
+        #2 [   N→I→S]                      0.027
+        #3 [   W→I→E]                      0.018
+      Agent 1 (entropy 5.139):
+        #1 [   E→N→I]                      0.016
+        #2 [   S→I→S]                      0.015
+        #3 [   S→I→I]                      0.015
+    Actions:    A0 -> WEST [3]  |  A1 -> EAST [2]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 23 ---
+    Env state:  A0@3 held=dish | A1@1 held=onion | pot=2onion
+    Map (before action):
+      XXPXX
+      O 2 O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=3 held_obs=2 pot_obs=2 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=1 ori_obs=2 held_obs=1 pot_obs=2 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      agent_orientation  3 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_held         2 (p=1.00, H=0.01)           1 (p=0.99, H=0.07)          
+      pot_state          2 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put3            0 (p=0.74, H=0.57)           0 (p=0.75, H=0.56)          
+      ck_plated          0 (p=0.76, H=0.56)           0 (p=0.76, H=0.56)          
+      ck_delivered       0 (p=0.76, H=0.56)           0 (p=0.76, H=0.56)          
+    Policy beliefs:
+      Agent 0 (entropy 4.891):
+        #1 [   I→S→S]                      0.032
+        #2 [   I→E→I]                      0.022
+        #3 [   I→S→I]                      0.021
+      Agent 1 (entropy 4.103):
+        #1 [   N→I→S] ██                   0.121
+        #2 [   N→I→I] ██                   0.104
+        #3 [   N→I→W] █                    0.069
+    Actions:    A0 -> INTERACT [5]  |  A1 -> NORTH [0]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 24 ---
+    Env state:  A0@3 held=dish | A1@1 held=onion | pot=2onion
+    Map (before action):
+      XXPXX
+      O 2 O
+      X1  X
+      XDXSX
+    Obs (model) A0: pos_obs=3 ori_obs=3 held_obs=2 pot_obs=2 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=1 ori_obs=0 held_obs=1 pot_obs=2 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          3 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      agent_orientation  3 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.76, H=0.57)           1 (p=1.00, H=0.01)          
+      pot_state          2 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put3            0 (p=0.73, H=0.58)           0 (p=0.74, H=0.57)          
+      ck_plated          0 (p=0.75, H=0.56)           0 (p=0.75, H=0.56)          
+      ck_delivered       0 (p=0.75, H=0.56)           0 (p=0.75, H=0.56)          
+    Policy beliefs:
+      Agent 0 (entropy 5.157):
+        #1 [   E→I→I]                      0.014
+        #2 [   E→I→S]                      0.013
+        #3 [   E→S→I]                      0.013
+      Agent 1 (entropy 4.094):
+        #1 [   I→S→S]                      0.042
+        #2 [   I→S→I]                      0.040
+        #3 [   I→I→S]                      0.036
+    Actions:    A0 -> EAST [2]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 25 ---
+    Env state:  A0@4 held=dish | A1@1 held=none | pot=3onion
+    Map (before action):
+      XXPXX
+      O 2 O
+      X 1 X
+      XDXSX
+    Obs (model) A0: pos_obs=4 ori_obs=2 held_obs=2 pot_obs=3 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=1 ori_obs=0 held_obs=0 pot_obs=3 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          4 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      agent_orientation  2 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.99, H=0.07)           0 (p=0.99, H=0.03)          
+      pot_state          2 (p=0.81, H=0.54)           3 (p=0.99, H=0.03)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put3            0 (p=0.73, H=0.59)           0 (p=0.74, H=0.58)          
+      ck_plated          0 (p=0.74, H=0.57)           0 (p=0.74, H=0.57)          
+      ck_delivered       0 (p=0.74, H=0.57)           0 (p=0.74, H=0.57)          
+    Policy beliefs:
+      Agent 0 (entropy 4.906):
+        #1 [   N→I→I] █                    0.056
+        #2 [   N→I→S]                      0.047
+        #3 [   N→I→W]                      0.027
+      Agent 1 (entropy 5.052):
+        #1 [   W→I→S]                      0.035
+        #2 [   E→I→S]                      0.035
+        #3 [   W→I→E]                      0.022
+    Actions:    A0 -> NORTH [0]  |  A1 -> EAST [2]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 26 ---
+    Env state:  A0@1 held=dish | A1@2 held=none | pot=3onion
+    Map (before action):
+      XXPXX
+      O 12O
+      X   X
+      XDXSX
+    Obs (model) A0: pos_obs=1 ori_obs=0 held_obs=2 pot_obs=3 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=3 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          1 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  0 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_held         2 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      pot_state          3 (p=0.85, H=0.44)           3 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put3            0 (p=0.60, H=0.67)           1 (p=0.98, H=0.09)          
+      ck_plated          0 (p=0.73, H=0.58)           0 (p=0.73, H=0.58)          
+      ck_delivered       0 (p=0.73, H=0.58)           0 (p=0.73, H=0.58)          
+    Policy beliefs:
+      Agent 0 (entropy 3.876):
+        #1 [   I→S→I]                      0.047
+        #2 [   I→S→S]                      0.046
+        #3 [   I→I→I]                      0.040
+      Agent 1 (entropy 4.830):
+        #1 [   I→S→S]                      0.032
+        #2 [   I→W→I]                      0.021
+        #3 [   S→I→S]                      0.021
+    Actions:    A0 -> INTERACT [5]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 27 ---
+    Env state:  A0@1 held=dish | A1@2 held=onion | pot=3onion
+    Map (before action):
+      XXPXX
+      O 12O
+      X   X
+      XDXSX
+    Obs (model) A0: pos_obs=1 ori_obs=0 held_obs=2 pot_obs=3 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=1 pot_obs=3 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          1 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  0 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.89, H=0.36)           1 (p=0.99, H=0.03)          
+      pot_state          3 (p=0.73, H=0.71)           3 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put3            1 (p=0.90, H=0.32)           1 (p=0.98, H=0.08)          
+      ck_plated          1 (p=0.88, H=0.37)           0 (p=0.73, H=0.59)          
+      ck_delivered       0 (p=0.73, H=0.59)           0 (p=0.73, H=0.59)          
+    Policy beliefs:
+      Agent 0 (entropy 5.077):
+        #1 [   S→I→S]                      0.021
+        #2 [   N→I→S]                      0.021
+        #3 [   I→S→S]                      0.020
+      Agent 1 (entropy 5.228):
+        #1 [   N→I→S]                      0.030
+        #2 [   N→I→W]                      0.019
+        #3 [   N→I→E]                      0.017
+    Actions:    A0 -> NORTH [0]  |  A1 -> NORTH [0]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 28 ---
+    Env state:  A0@1 held=dish | A1@2 held=onion | pot=3onion
+    Map (before action):
+      XXPXX
+      O 12O
+      X   X
+      XDXSX
+    Obs (model) A0: pos_obs=1 ori_obs=0 held_obs=2 pot_obs=3 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=1 pot_obs=3 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          1 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.99, H=0.04)           1 (p=1.00, H=0.01)          
+      pot_state          3 (p=0.99, H=0.08)           3 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.09)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.09)           1 (p=0.98, H=0.08)          
+      ck_put3            1 (p=0.96, H=0.17)           1 (p=0.98, H=0.08)          
+      ck_plated          1 (p=0.87, H=0.39)           0 (p=0.72, H=0.59)          
+      ck_delivered       0 (p=0.72, H=0.59)           0 (p=0.72, H=0.59)          
+    Policy beliefs:
+      Agent 0 (entropy 4.118):
+        #1 [   I→S→I]                      0.040
+        #2 [   I→I→I]                      0.038
+        #3 [   I→S→S]                      0.037
+      Agent 1 (entropy 4.872):
+        #1 [   I→S→S]                      0.033
+        #2 [   I→W→I]                      0.022
+        #3 [   I→E→I]                      0.022
+    Actions:    A0 -> INTERACT [5]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 29 ---
+    Env state:  A0@1 held=dish | A1@2 held=onion | pot=3onion
+    Map (before action):
+      XXPXX
+      O 12O
+      X   X
+      XDXSX
+    Obs (model) A0: pos_obs=1 ori_obs=0 held_obs=2 pot_obs=3 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=1 pot_obs=3 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          1 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.78, H=0.55)           1 (p=0.76, H=0.57)          
+      pot_state          3 (p=0.77, H=0.57)           3 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put3            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_plated          1 (p=0.98, H=0.09)           0 (p=0.71, H=0.60)          
+      ck_delivered       0 (p=0.71, H=0.60)           0 (p=0.71, H=0.60)          
+    Policy beliefs:
+      Agent 0 (entropy 5.270):
+        #1 [   S→I→S]                      0.016
+        #2 [   N→I→S]                      0.015
+        #3 [   S→S→I]                      0.013
+      Agent 1 (entropy 5.163):
+        #1 [   W→I→I]                      0.012
+        #2 [   S→S→S]                      0.012
+        #3 [   W→I→S]                      0.012
+    Actions:    A0 -> STAY [4]  |  A1 -> SOUTH [1]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 30 ---
+    Env state:  A0@1 held=dish | A1@5 held=onion | pot=3onion
+    Map (before action):
+      XXPXX
+      O 1 O
+      X  2X
+      XDXSX
+    Obs (model) A0: pos_obs=1 ori_obs=0 held_obs=2 pot_obs=3 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=5 ori_obs=1 held_obs=1 pot_obs=3 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          1 (p=1.00, H=0.01)           5 (p=1.00, H=0.01)          
+      agent_orientation  0 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.99, H=0.07)           1 (p=0.99, H=0.07)          
+      pot_state          3 (p=0.99, H=0.07)           3 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.09)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.09)           1 (p=0.98, H=0.08)          
+      ck_put3            1 (p=0.98, H=0.09)           1 (p=0.98, H=0.08)          
+      ck_plated          1 (p=0.97, H=0.14)           0 (p=0.71, H=0.61)          
+      ck_delivered       0 (p=0.71, H=0.61)           0 (p=0.71, H=0.61)          
+    Policy beliefs:
+      Agent 0 (entropy 4.136):
+        #1 [   I→S→I]                      0.040
+        #2 [   I→I→I]                      0.038
+        #3 [   I→S→S]                      0.037
+      Agent 1 (entropy 5.197):
+        #1 [   E→I→S]                      0.025
+        #2 [   N→I→S]                      0.024
+        #3 [   E→I→W]                      0.016
+    Actions:    A0 -> INTERACT [5]  |  A1 -> NORTH [0]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 31 ---
+    Env state:  A0@1 held=dish | A1@2 held=onion | pot=3onion
+    Map (before action):
+      XXPXX
+      O 12O
+      X   X
+      XDXSX
+    Obs (model) A0: pos_obs=1 ori_obs=0 held_obs=2 pot_obs=3 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=1 pot_obs=3 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          1 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.78, H=0.55)           1 (p=1.00, H=0.01)          
+      pot_state          3 (p=0.78, H=0.55)           3 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put3            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_plated          1 (p=0.98, H=0.08)           0 (p=0.70, H=0.61)          
+      ck_delivered       0 (p=0.70, H=0.61)           0 (p=0.70, H=0.61)          
+    Policy beliefs:
+      Agent 0 (entropy 5.267):
+        #1 [   S→I→S]                      0.016
+        #2 [   N→I→S]                      0.015
+        #3 [   S→S→I]                      0.013
+      Agent 1 (entropy 4.875):
+        #1 [   I→S→S]                      0.033
+        #2 [   I→W→I]                      0.022
+        #3 [   I→E→I]                      0.022
+    Actions:    A0 -> NORTH [0]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 32 ---
+    Env state:  A0@1 held=dish | A1@2 held=onion | pot=3onion
+    Map (before action):
+      XXPXX
+      O 12O
+      X   X
+      XDXSX
+    Obs (model) A0: pos_obs=1 ori_obs=0 held_obs=2 pot_obs=3 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=1 pot_obs=3 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          1 (p=1.00, H=0.01)           2 (p=1.00, H=0.01)          
+      agent_orientation  0 (p=1.00, H=0.01)           0 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.99, H=0.07)           1 (p=0.76, H=0.57)          
+      pot_state          3 (p=0.99, H=0.07)           3 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.09)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.09)           1 (p=0.98, H=0.08)          
+      ck_put3            1 (p=0.98, H=0.09)           1 (p=0.98, H=0.08)          
+      ck_plated          1 (p=0.97, H=0.14)           0 (p=0.69, H=0.62)          
+      ck_delivered       0 (p=0.69, H=0.62)           0 (p=0.69, H=0.62)          
+    Policy beliefs:
+      Agent 0 (entropy 4.136):
+        #1 [   I→S→I]                      0.040
+        #2 [   I→I→I]                      0.038
+        #3 [   I→S→S]                      0.037
+      Agent 1 (entropy 5.163):
+        #1 [   W→I→I]                      0.012
+        #2 [   S→S→S]                      0.012
+        #3 [   W→I→S]                      0.012
+    Actions:    A0 -> INTERACT [5]  |  A1 -> WEST [3]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 33 ---
+    Env state:  A0@1 held=dish | A1@2 held=onion | pot=3onion
+    Map (before action):
+      XXPXX
+      O 12O
+      X   X
+      XDXSX
+    Obs (model) A0: pos_obs=1 ori_obs=0 held_obs=2 pot_obs=3 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=2 ori_obs=3 held_obs=1 pot_obs=3 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          1 (p=1.00, H=0.01)           1 (p=0.80, H=0.58)          
+      agent_orientation  0 (p=1.00, H=0.01)           3 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.78, H=0.55)           1 (p=0.99, H=0.07)          
+      pot_state          3 (p=0.78, H=0.55)           3 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_put3            1 (p=0.98, H=0.08)           1 (p=0.98, H=0.08)          
+      ck_plated          1 (p=0.98, H=0.08)           0 (p=0.69, H=0.62)          
+      ck_delivered       0 (p=0.69, H=0.62)           0 (p=0.69, H=0.62)          
+    Policy beliefs:
+      Agent 0 (entropy 5.267):
+        #1 [   S→I→S]                      0.016
+        #2 [   N→I→S]                      0.015
+        #3 [   S→S→I]                      0.013
+      Agent 1 (entropy 4.319):
+        #1 [   S→I→S] █                    0.077
+        #2 [   N→I→I] █                    0.073
+        #3 [   N→I→S] █                    0.051
+    Actions:    A0 -> NORTH [0]  |  A1 -> SOUTH [1]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 34 ---
+    Env state:  A0@1 held=dish | A1@5 held=onion | pot=3onion
+    Map (before action):
+      XXPXX
+      O 1 O
+      X  2X
+      XDXSX
+    Obs (model) A0: pos_obs=1 ori_obs=0 held_obs=2 pot_obs=3 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=5 ori_obs=1 held_obs=1 pot_obs=3 soup_delivered_obs=0
+    Beliefs over states:
+      Factor             Agent 0                      Agent 1                     
+      ------------------ ---------------------------- ----------------------------
+      agent_pos          1 (p=1.00, H=0.01)           5 (p=0.91, H=0.31)          
+      agent_orientation  0 (p=1.00, H=0.01)           1 (p=1.00, H=0.01)          
+      agent_held         2 (p=0.99, H=0.07)           1 (p=1.00, H=0.01)          
+      pot_state          3 (p=0.99, H=0.07)           3 (p=1.00, H=0.01)          
+      ck_put1            1 (p=0.98, H=0.09)           1 (p=0.98, H=0.08)          
+      ck_put2            1 (p=0.98, H=0.09)           1 (p=0.98, H=0.08)          
+      ck_put3            1 (p=0.98, H=0.09)           1 (p=0.98, H=0.08)          
+      ck_plated          1 (p=0.97, H=0.14)           0 (p=0.68, H=0.62)          
+      ck_delivered       0 (p=0.68, H=0.62)           0 (p=0.68, H=0.62)          
+    Policy beliefs:
+      Agent 0 (entropy 4.136):
+        #1 [   I→S→I]                      0.040
+        #2 [   I→I→I]                      0.038
+        #3 [   I→S→S]                      0.037
+      Agent 1 (entropy 4.552):
+        #1 [   I→I→I] █                    0.062
+        #2 [   I→I→S]                      0.048
+        #3 [   I→S→I]                      0.032
+    Actions:    A0 -> INTERACT [5]  |  A1 -> INTERACT [5]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 35 ---
+    Env state:  A0@1 held=dish | A1@5 held=onion | pot=3onion
+    Map (before action):
+      XXPXX
+      O 1 O
+      X  2X
+      XDXSX
+    Obs (model) A0: pos_obs=1 ori_obs=0 held_obs=2 pot_obs=3 soup_delivered_obs=0
+    Obs (model) A1: pos_obs=5 ori_obs=1 held_obs=1 pot_obs=3 soup_delivered_obs=0
+ 

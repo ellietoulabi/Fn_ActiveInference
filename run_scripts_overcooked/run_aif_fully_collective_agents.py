@@ -137,11 +137,11 @@ def create_fully_collective_agent(seed=None):
         env_params=env_params,
         observation_state_dependencies=model_init.observation_state_dependencies,
         actions=list(range(model_init.N_JOINT_ACTIONS)),  # Joint actions: 0-35
-        gamma=4.0,  # Policy precision
-        alpha=4.0,  # Action precision
-        policy_len=4,
-        inference_horizon=4,
-        action_selection="deterministic",
+        gamma=2.0,  # Policy precision
+        alpha=1.0,  # Action precision
+        policy_len=2,
+        inference_horizon=2,
+        action_selection="stochastic",
         sampling_mode="full",
         inference_algorithm="VANILLA",
         num_iter=16,
@@ -204,36 +204,72 @@ def run_episode(env, agent, episode_num, max_steps, csv_writer=None, seed=None):
             print(f"  EPISODE {episode_num} │ STEP {step}")
             print(f"{'═'*80}")
             
-            # Print observations compactly
+            # Print observations compactly (same style as IC)
             print(f"\n📥 OBSERVATIONS:")
-            obs_str = ", ".join([f"{k}={v}" for k, v in obs_model.items()])
-            print(f"   Joint: {obs_str}")
+            joint_str = ", ".join([f"{k}={v}" for k, v in obs_model.items()])
+            print(f"   Joint (env frame): {joint_str}")
             
-            # Print state factor beliefs in a compact table format
+            # Print grid map showing agent positions (same as IC)
+            def _render_grid(agent1_pos_idx, agent2_pos_idx):
+                """Render the cramped_room grid with agent positions (1 and 2)."""
+                from FullyCollective.model_init import (
+                    GRID_WIDTH, GRID_HEIGHT, index_to_xy, POT_INDICES, SERVING_INDICES,
+                    ONION_DISPENSER_INDICES, WALL_INDICES
+                )
+                DISH_DISPENSER_INDICES = {16}
+                grid_chars = [[' ' for _ in range(GRID_WIDTH)] for _ in range(GRID_HEIGHT)]
+                for y in range(GRID_HEIGHT):
+                    for x in range(GRID_WIDTH):
+                        idx = y * GRID_WIDTH + x
+                        if idx in POT_INDICES:
+                            grid_chars[y][x] = 'P'
+                        elif idx in SERVING_INDICES:
+                            grid_chars[y][x] = 'S'
+                        elif idx in ONION_DISPENSER_INDICES:
+                            grid_chars[y][x] = 'O'
+                        elif idx in DISH_DISPENSER_INDICES:
+                            grid_chars[y][x] = 'D'
+                        elif idx in WALL_INDICES:
+                            grid_chars[y][x] = 'X'
+                a1_x, a1_y = index_to_xy(agent1_pos_idx)
+                a2_x, a2_y = index_to_xy(agent2_pos_idx)
+                if agent1_pos_idx == agent2_pos_idx:
+                    grid_chars[a1_y][a1_x] = 'B'
+                else:
+                    grid_chars[a1_y][a1_x] = '1'
+                    grid_chars[a2_y][a2_x] = '2'
+                return '\n'.join([''.join(row) for row in grid_chars])
+            
+            print(f"\n🗺️  GRID MAP:")
+            grid_map = _render_grid(obs_model["agent1_pos"], obs_model["agent2_pos"])
+            for line in grid_map.split('\n'):
+                print(f"   {line}")
+            print(f"   Legend: 1=Agent 0, 2=Agent 1, B=both, X=wall, P=pot, O=onion, D=dish, S=serve")
+            
+            # Print state factor beliefs in a compact table format (same style as IC)
             print(f"\n🧠 STATE BELIEFS:")
             print(f"   {'Factor':<25} {'Belief':<30}")
             print(f"   {'─'*25} {'─'*30}")
             
             qs = agent.get_state_beliefs()
-            
             for factor in agent.state_factors:
                 probs = qs[factor]
                 map_state = int(np.argmax(probs))
                 max_prob = float(np.max(probs))
                 entropy = -np.sum(probs * np.log(probs + 1e-16))
                 belief_str = f"{map_state} ({max_prob:.2f}) H={entropy:.2f}"
-                
                 print(f"   {factor:<25} {belief_str:<30}")
             
-            # Print policy beliefs in a compact format
+            # Print policy beliefs: H(q_π) = entropy of policy posterior; per-policy utility & info_gain
             print(f"\n🎯 POLICY BELIEFS:")
             q_pi = agent.get_policy_posterior()
             top_policies = agent.get_top_policies(top_k=3)
             policy_entropy = -np.sum(q_pi * np.log(q_pi + 1e-16))
-            
-            print(f"   Centralized Agent (entropy: {policy_entropy:.3f}):")
+            details = agent.get_last_policy_details()
+            details_by_idx = {d["policy_idx"]: d for d in details} if details else {}
+            print(f"   Centralized Agent  H(q_π)={policy_entropy:.3f}  (entropy of policy posterior)")
+            print(f"   Per-policy: util=expected utility, IG=info gain, G=EFE.  #rank  [policy]  prob    util    IG     G")
             for rank, (pol, prob, idx) in enumerate(top_policies, 1):
-                # Decode first action of policy to show joint action
                 if len(pol) > 0:
                     ja1, ja2 = env_utils.decode_joint_action(int(pol[0]))
                     pol_str = f"{ACTION_NAMES.get(ja1, str(ja1))[:1]}+{ACTION_NAMES.get(ja2, str(ja2))[:1]}"
@@ -242,12 +278,18 @@ def run_episode(env, agent, episode_num, max_steps, csv_writer=None, seed=None):
                         pol_str += f"→{ACTION_NAMES.get(ja1_2, str(ja1_2))[:1]}+{ACTION_NAMES.get(ja2_2, str(ja2_2))[:1]}"
                 else:
                     pol_str = "N/A"
-                bar = "█" * int(prob * 20)  # Visual bar
-                print(f"      #{rank} [{pol_str:>10}] {bar:<20} {prob:.3f}")
+                bar = "█" * int(prob * 20)
+                d = details_by_idx.get(int(idx), {})
+                util = d.get("utility", float("nan"))
+                ig = d.get("info_gain", float("nan"))
+                g = d.get("G", float("nan"))
+                print(f"      #{rank} [{pol_str:>10}] {bar:<20} {prob:.3f}   {util:6.3f}  {ig:5.3f}  {g:5.2f}")
             
-            # Print selected joint action prominently
-            print(f"\n⚡ JOINT ACTION:")
-            print(f"   Joint action index: {joint_action_idx}")
+            # Print selected joint action and executed actions (same style as IC)
+            print(f"\n⚡ JOINT ACTION SELECTED:")
+            ja1, ja2 = env_utils.decode_joint_action(joint_action_idx)
+            print(f"   Joint action: {joint_action_idx} → ({ACTION_NAMES.get(ja1, 'UNKNOWN')}, {ACTION_NAMES.get(ja2, 'UNKNOWN')})")
+            print(f"\n⚡ ACTIONS EXECUTED:")
             print(f"   Agent 0 → {ACTION_NAMES.get(a1_idx, 'UNKNOWN'):<10} [{a1_idx}]")
             print(f"   Agent 1 → {ACTION_NAMES.get(a2_idx, 'UNKNOWN'):<10} [{a2_idx}]")
             print(f"{'─'*80}")

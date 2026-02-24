@@ -79,7 +79,16 @@ class OvercookedMultiAgentEnv(MultiAgentEnv):
         self.num_pots = num_pots
         
         # Create MDP and base environment
-        self.mdp = OvercookedGridworld.from_layout_name(layout_name=layout)
+        #
+        # Important: Use "old_dynamics" so pots start cooking automatically once full.
+        # Otherwise (new dynamics), an extra INTERACT with empty hands is required to
+        # begin cooking, and dish→pot INTERACT will not pick up soup until cooking
+        # has been started and completed.
+        #
+        self.mdp = OvercookedGridworld.from_layout_name(
+            layout_name=layout,
+            old_dynamics=True,
+        )
         self.base_env = OvercookedEnv.from_mdp(
             self.mdp,
             horizon=horizon,

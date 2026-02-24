@@ -21,11 +21,17 @@ sys.path.insert(0, str(project_root))
 
 # Import Active Inference agent
 from agents.ActiveInference.agent import Agent
+from agents.ActiveInference import control
 
-# Import FullyCollective paradigm model (IndividuallyCollective uses the same model)
-fully_collective_dir = Path(__file__).parent.parent / "generative_models" / "MA_ActiveInference" / "Overcooked" / "cramped_room" / "FullyCollective"
-sys.path.insert(0, str(fully_collective_dir.parent))
-from FullyCollective import A_fn, B_fn, C_fn, D_fn, model_init, env_utils
+# Import IndividuallyCollective Overcooked model (reuses FullyCollective joint model)
+from generative_models.MA_ActiveInference.Overcooked.cramped_room.IndividuallyCollective import (
+    A_fn,
+    B_fn,
+    C_fn,
+    D_fn,
+    model_init,
+    env_utils as ic_env_utils,
+)
 
 # Initialize pygame and patch image loading if PNG support is missing
 import os
@@ -140,11 +146,11 @@ def create_individually_collective_agent(agent_idx, seed=None):
         env_params=env_params,
         observation_state_dependencies=model_init.observation_state_dependencies,
         actions=list(range(model_init.N_JOINT_ACTIONS)),  # Joint actions: 0-35
-        gamma=4.0,  # Policy precision
-        alpha=4.0,  # Action precision
-        policy_len=4,
-        inference_horizon=4,
-        action_selection="deterministic",
+        gamma=2.0,  # Policy precision
+        alpha=1.0,  # Action precision
+        policy_len=2,
+        inference_horizon=2,
+        action_selection="stochastic",  # Stochastic for exploration (especially if q_pi is uniform)
         sampling_mode="full",
         inference_algorithm="VANILLA",
         num_iter=16,
@@ -177,7 +183,7 @@ def run_episode(env, agent0, agent1, episode_num, max_steps, csv_writer=None, se
     state = infos["agent_0"]["state"]
     
     # Reset agents with initial configuration (same config for both)
-    config = env_utils.get_D_config_from_mdp(env.mdp, state)
+    config = ic_env_utils.get_D_config_from_mdp(env.mdp, state)
     agent0.reset(config=config)
     agent1.reset(config=config)
     
@@ -190,21 +196,41 @@ def run_episode(env, agent0, agent1, episode_num, max_steps, csv_writer=None, se
     prev_pos1 = None
     
     for step in range(1, max_steps + 1):
-        # Convert environment observations to joint model observations
-        # Both agents see the same full joint observation
-        obs_model = env_utils.env_obs_to_model_obs(state, reward_info=prev_reward_info)
+        # Base joint observation (for logging / collision detection)
+        joint_obs = ic_env_utils.env_obs_to_model_obs(state, reward_info=prev_reward_info)
+
+        # Agent-specific perspectives: (agent1_pos, agent2_pos) = (my_pos, other_pos)
+        obs_model0 = ic_env_utils.env_obs_to_model_obs_for_agent(
+            state, reward_info=prev_reward_info, agent_id=1
+        )
+        obs_model1 = ic_env_utils.env_obs_to_model_obs_for_agent(
+            state, reward_info=prev_reward_info, agent_id=2
+        )
+
+        # Store current positions before actions (in env / joint coordinates)
+        curr_pos0 = joint_obs["agent1_pos"]
+        curr_pos1 = joint_obs["agent2_pos"]
         
-        # Store current positions before actions
-        curr_pos0 = obs_model["agent1_pos"]
-        curr_pos1 = obs_model["agent2_pos"]
+        # Get joint actions from both agents (each sees their own perspective)
+        joint_action0_idx = int(agent0.step(obs_model0))
+        joint_action1_idx = int(agent1.step(obs_model1))
         
-        # Get joint actions from both agents
-        joint_action0_idx = int(agent0.step(obs_model))
-        joint_action1_idx = int(agent1.step(obs_model))
+        # Clamp state beliefs to the observation for directly-observed factors.
+        # This ensures (1) displayed beliefs match the observation, and (2) next step's
+        # prior (B propagation) uses the correct state. Without this, inference can
+        # leave beliefs out of sync with observations (e.g. Agent 1's perspective).
+        for agent, obs_model in [(agent0, obs_model0), (agent1, obs_model1)]:
+            for factor in agent.state_factors:
+                if factor in obs_model:
+                    idx = int(obs_model[factor])
+                    size = len(agent.qs[factor])
+                    if 0 <= idx < size:
+                        agent.qs[factor] = np.zeros(size, dtype=float)
+                        agent.qs[factor][idx] = 1.0
         
         # Decode joint actions - each agent executes its own component
-        a0_from_agent0, _ = env_utils.decode_joint_action(joint_action0_idx)  # Agent 0 executes a1
-        _, a1_from_agent1 = env_utils.decode_joint_action(joint_action1_idx)  # Agent 1 executes a2
+        a0_from_agent0, _ = ic_env_utils.decode_joint_action(joint_action0_idx)  # Agent 0 executes a1
+        _, a1_from_agent1 = ic_env_utils.decode_joint_action(joint_action1_idx)  # Agent 1 executes a2
         
         # Print beliefs to terminal if verbose
         if hasattr(env, "_verbose") and env._verbose:
@@ -212,10 +238,81 @@ def run_episode(env, agent0, agent1, episode_num, max_steps, csv_writer=None, se
             print(f"  EPISODE {episode_num} │ STEP {step}")
             print(f"{'═'*80}")
             
-            # Print observations compactly
+            # Print observations compactly (joint + per-agent perspectives)
             print(f"\n📥 OBSERVATIONS:")
-            obs_str = ", ".join([f"{k}={v}" for k, v in obs_model.items()])
-            print(f"   Joint: {obs_str}")
+            joint_str = ", ".join([f"{k}={v}" for k, v in joint_obs.items()])
+
+            # For each agent, relabel their egocentric view as self/other for readability
+            def _format_ego_obs(obs_dict, agent_label):
+                return (
+                    f"{agent_label} frame: "
+                    f"self_pos={obs_dict['agent1_pos']}, "
+                    f"other_pos={obs_dict['agent2_pos']}, "
+                    f"self_orient={obs_dict['agent1_orientation']}, "
+                    f"other_orient={obs_dict['agent2_orientation']}, "
+                    f"self_held={obs_dict['agent1_held']}, "
+                    f"other_held={obs_dict['agent2_held']}, "
+                    f"pot_state={obs_dict['pot_state']}, "
+                    f"soup_delivered={obs_dict['soup_delivered']}"
+                )
+
+            print(f"   Joint (env frame): {joint_str}")
+            print(f"   Agent 0 ({_format_ego_obs(obs_model0, 'self')})")
+            print(f"   Agent 1 ({_format_ego_obs(obs_model1, 'self')})")
+            
+            # Print grid map showing agent positions
+            def _render_grid(agent1_pos_idx, agent2_pos_idx):
+                """Render the cramped_room grid with agent positions (1 and 2)."""
+                from generative_models.MA_ActiveInference.Overcooked.cramped_room.FullyCollective.model_init import (
+                    GRID_WIDTH, GRID_HEIGHT, index_to_xy, POT_INDICES, SERVING_INDICES,
+                    ONION_DISPENSER_INDICES, WALL_INDICES
+                )
+                
+                # Dish dispenser location (from layout: XDXSX row 3, col 1 = index 16)
+                DISH_DISPENSER_INDICES = {16}
+                
+                # Base layout characters
+                grid_chars = [[' ' for _ in range(GRID_WIDTH)] for _ in range(GRID_HEIGHT)]
+                
+                # Set terrain (order matters - check more specific first)
+                for y in range(GRID_HEIGHT):
+                    for x in range(GRID_WIDTH):
+                        idx = y * GRID_WIDTH + x
+                        if idx in POT_INDICES:
+                            grid_chars[y][x] = 'P'
+                        elif idx in SERVING_INDICES:
+                            grid_chars[y][x] = 'S'
+                        elif idx in ONION_DISPENSER_INDICES:
+                            grid_chars[y][x] = 'O'
+                        elif idx in DISH_DISPENSER_INDICES:
+                            grid_chars[y][x] = 'D'
+                        elif idx in WALL_INDICES:
+                            grid_chars[y][x] = 'X'
+                
+                # Add agents: show agent numbers 1 and 2 (env frame: 1=agent_0, 2=agent_1)
+                a1_x, a1_y = index_to_xy(agent1_pos_idx)
+                a2_x, a2_y = index_to_xy(agent2_pos_idx)
+                
+                if agent1_pos_idx == agent2_pos_idx:
+                    grid_chars[a1_y][a1_x] = 'B'  # Both
+                else:
+                    grid_chars[a1_y][a1_x] = '1'  # Agent 1 (env's agent_0)
+                    grid_chars[a2_y][a2_x] = '2'  # Agent 2 (env's agent_1)
+                
+                # Build string representation
+                lines = []
+                for y in range(GRID_HEIGHT):
+                    lines.append(''.join(grid_chars[y]))
+                return '\n'.join(lines)
+            
+            print(f"\n🗺️  GRID MAP:")
+            grid_map = _render_grid(
+                joint_obs["agent1_pos"],
+                joint_obs["agent2_pos"]
+            )
+            for line in grid_map.split('\n'):
+                print(f"   {line}")
+            print(f"   Legend: 1=Agent 0, 2=Agent 1, B=both, X=wall, P=pot, O=onion, D=dish, S=serve")
             
             # Print state factor beliefs for both agents
             print(f"\n🧠 STATE BELIEFS:")
@@ -240,32 +337,36 @@ def run_episode(env, agent0, agent1, episode_num, max_steps, csv_writer=None, se
                 
                 print(f"   {factor:<25} {belief0_str:<30} {belief1_str:<30}")
             
-            # Print policy beliefs in a compact format
+            # Print policy beliefs: H(q_π)=entropy of policy posterior; per-policy utility & info_gain
             print(f"\n🎯 POLICY BELIEFS:")
-            
             for agent_idx, agent in enumerate([agent0, agent1]):
                 q_pi = agent.get_policy_posterior()
                 top_policies = agent.get_top_policies(top_k=3)
                 policy_entropy = -np.sum(q_pi * np.log(q_pi + 1e-16))
-                
-                print(f"   Agent {agent_idx} (entropy: {policy_entropy:.3f}):")
+                details = agent.get_last_policy_details()
+                details_by_idx = {d["policy_idx"]: d for d in details} if details else {}
+                print(f"   Agent {agent_idx}  H(q_π)={policy_entropy:.3f}  (entropy of policy posterior)")
+                print(f"   Per-policy: util=expected utility, IG=info gain, G=EFE.  #rank  [policy]  prob    util    IG     G")
                 for rank, (pol, prob, idx) in enumerate(top_policies, 1):
-                    # Decode first action of policy to show joint action
                     if len(pol) > 0:
-                        ja1, ja2 = env_utils.decode_joint_action(int(pol[0]))
+                        ja1, ja2 = ic_env_utils.decode_joint_action(int(pol[0]))
                         pol_str = f"{ACTION_NAMES.get(ja1, str(ja1))[:1]}+{ACTION_NAMES.get(ja2, str(ja2))[:1]}"
                         if len(pol) > 1:
-                            ja1_2, ja2_2 = env_utils.decode_joint_action(int(pol[1]))
+                            ja1_2, ja2_2 = ic_env_utils.decode_joint_action(int(pol[1]))
                             pol_str += f"→{ACTION_NAMES.get(ja1_2, str(ja1_2))[:1]}+{ACTION_NAMES.get(ja2_2, str(ja2_2))[:1]}"
                     else:
                         pol_str = "N/A"
-                    bar = "█" * int(prob * 20)  # Visual bar
-                    print(f"      #{rank} [{pol_str:>10}] {bar:<20} {prob:.3f}")
+                    bar = "█" * int(prob * 20)
+                    d = details_by_idx.get(int(idx), {})
+                    util = d.get("utility", float("nan"))
+                    ig = d.get("info_gain", float("nan"))
+                    g = d.get("G", float("nan"))
+                    print(f"      #{rank} [{pol_str:>10}] {bar:<20} {prob:.3f}   {util:6.3f}  {ig:5.3f}  {g:5.2f}")
             
             # Print selected joint actions and executed actions
             print(f"\n⚡ JOINT ACTIONS SELECTED:")
-            ja0_1, ja0_2 = env_utils.decode_joint_action(joint_action0_idx)
-            ja1_1, ja1_2 = env_utils.decode_joint_action(joint_action1_idx)
+            ja0_1, ja0_2 = ic_env_utils.decode_joint_action(joint_action0_idx)
+            ja1_1, ja1_2 = ic_env_utils.decode_joint_action(joint_action1_idx)
             print(f"   Agent 0 joint action: {joint_action0_idx} → ({ACTION_NAMES.get(ja0_1, 'UNKNOWN')}, {ACTION_NAMES.get(ja0_2, 'UNKNOWN')})")
             print(f"   Agent 1 joint action: {joint_action1_idx} → ({ACTION_NAMES.get(ja1_1, 'UNKNOWN')}, {ACTION_NAMES.get(ja1_2, 'UNKNOWN')})")
             print(f"\n⚡ ACTIONS EXECUTED:")
@@ -281,7 +382,7 @@ def run_episode(env, agent0, agent1, episode_num, max_steps, csv_writer=None, se
                     {
                         "policy_idx": int(idx),
                         "policy": [int(a) for a in pol],
-                        "joint_actions": [env_utils.decode_joint_action(int(a)) for a in pol],
+                        "joint_actions": [ic_env_utils.decode_joint_action(int(a)) for a in pol],
                         "prob": float(prob)
                     }
                     for (pol, prob, idx) in top
@@ -307,7 +408,7 @@ def run_episode(env, agent0, agent1, episode_num, max_steps, csv_writer=None, se
                 "episode": int(episode_num),
                 "step": int(step),
                 "agent": 0,
-                "obs": {k: int(v) for k, v in obs_model.items()},
+                "obs": {k: int(v) for k, v in obs_model0.items()},
                 "joint_action": int(joint_action0_idx),
                 "executed_action": int(a0_from_agent0),
                 "executed_action_name": ACTION_NAMES.get(a0_from_agent0, str(a0_from_agent0)),
@@ -318,7 +419,7 @@ def run_episode(env, agent0, agent1, episode_num, max_steps, csv_writer=None, se
                 "episode": int(episode_num),
                 "step": int(step),
                 "agent": 1,
-                "obs": {k: int(v) for k, v in obs_model.items()},
+                "obs": {k: int(v) for k, v in obs_model1.items()},
                 "joint_action": int(joint_action1_idx),
                 "executed_action": int(a1_from_agent1),
                 "executed_action_name": ACTION_NAMES.get(a1_from_agent1, str(a1_from_agent1)),
@@ -350,8 +451,8 @@ def run_episode(env, agent0, agent1, episode_num, max_steps, csv_writer=None, se
         # Update state for next iteration
         state = infos["agent_0"]["state"]
         
-        # Get new positions after step
-        new_obs = env_utils.env_obs_to_model_obs(state, reward_info=prev_reward_info)
+        # Get new positions after step (joint frame)
+        new_obs = ic_env_utils.env_obs_to_model_obs(state, reward_info=prev_reward_info)
         new_pos0 = new_obs["agent1_pos"]
         new_pos1 = new_obs["agent2_pos"]
         

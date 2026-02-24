@@ -148,7 +148,7 @@ def create_independent_agent(agent_idx, seed=None):
         observation_state_dependencies=model_init.observation_state_dependencies,
         actions=list(range(model_init.N_ACTIONS)),
         gamma=4.0,  # Policy precision (higher = sharper q_pi)
-        alpha=4.0,  # Action precision (higher = more decisive actions)
+        alpha=2.0,  # Action precision (higher = more decisive actions)
         policy_len=2,
         inference_horizon=2,
         action_selection="stochastic",
