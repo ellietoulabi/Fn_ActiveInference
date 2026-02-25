@@ -22,6 +22,12 @@ if overcooked_src.exists():
 # Agent vs environment: run Monotonic Independent agent in real Overcooked
 # -----------------------------------------------------------------------------
 
+from utils.visualization.overcooked_terminal_map import (
+    render_overcooked_grid,
+    orientation_str,
+)
+
+
 ACTION_NAMES = {
     0: "NORTH", 1: "SOUTH", 2: "EAST", 3: "WEST", 4: "STAY", 5: "INTERACT",
 }
@@ -82,47 +88,20 @@ def _state_summary(state, model_init):
     return " | ".join(parts) + " | pot={}".format(pot)
 
 
-def _render_ascii_map(state, model_init):
-    """
-    Render a simple ASCII map for cramped_room with current agent positions overlaid.
-
-    Legend:
-      X = counter / wall
-      P = pot
-      S = serving
-      O = onion dispenser
-      D = dish dispenser
-      1,2 = agent positions
-      ' ' = walkable floor
-    """
-    w, h = model_init.GRID_WIDTH, model_init.GRID_HEIGHT
-    grid = [[" " for _ in range(w)] for _ in range(h)]
-
-    # Static terrain from model_init
-    for idx in model_init.COUNTER_INDICES:
-        x, y = model_init.index_to_xy(idx)
-        grid[y][x] = "X"
-    for idx in model_init.POT_INDICES:
-        x, y = model_init.index_to_xy(idx)
-        grid[y][x] = "P"
-    for idx in model_init.SERVING_INDICES:
-        x, y = model_init.index_to_xy(idx)
-        grid[y][x] = "S"
-    for idx in model_init.ONION_DISPENSER_INDICES:
-        x, y = model_init.index_to_xy(idx)
-        grid[y][x] = "O"
-    for idx in model_init.DISH_DISPENSER_INDICES:
-        x, y = model_init.index_to_xy(idx)
-        grid[y][x] = "D"
-
-    # Overlay agents
+def _agent_summary_lines(state, model_init):
+    """Return list of lines: per-agent position (walkable), holding, facing."""
+    lines = []
     for i, p in enumerate(state.players):
-        x, y = p.position
-        ch = "1" if i == 0 else "2"
-        if 0 <= x < w and 0 <= y < h:
-            grid[y][x] = ch
-
-    return ["".join(row) for row in grid]
+        pos = p.position
+        grid_idx = model_init.xy_to_index(pos[0], pos[1])
+        w = model_init.grid_idx_to_walkable_idx(grid_idx)
+        w = w if w is not None else -1
+        held = "none"
+        if p.has_object() and p.held_object:
+            held = getattr(p.held_object, "name", str(p.held_object))
+        facing, _ = orientation_str(p)
+        lines.append("    A{}: pos(walkable)={}  holding={}  facing={}".format(i, w, held, facing))
+    return lines
 
 
 def run_agent_vs_env_scenarios():
@@ -211,8 +190,11 @@ def run_agent_vs_env_scenarios():
             print("\n  --- Step {} ---".format(step))
             print("    Env state:  {}".format(state_str))
             print("    Map (before action):")
-            for row in _render_ascii_map(state, model_init_agent):
+            
+            for row in render_overcooked_grid(state, model_init_agent):
                 print("      " + row)
+            for line in _agent_summary_lines(state, model_init_agent):
+                print(line)
             print("    Obs (model) A0: pos_obs={} ori_obs={} held_obs={} pot_obs={} soup_delivered_obs={}".format(
                 obs0_display["agent_pos_obs"], obs0_display["agent_orientation_obs"], obs0_display["agent_held_obs"],
                 obs0_display["pot_state_obs"], obs0_display["soup_delivered_obs"]))

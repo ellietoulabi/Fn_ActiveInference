@@ -1,16 +1,4 @@
-# model_init.py
-"""
-Independent paradigm with binary checkbox model init for Overcooked - Cramped Room layout (Stage 1).
 
-Each agent uses a single-agent model and selects only its own action.
-The other agent is treated as part of the environment.
-
-Stage 1:
-- Known map (no map latent factor).
-- Strong affordance observation: front_tile_type (deterministic from pos+orientation+other_pos+layout).
-- soup_delivered is OBSERVATION-ONLY (event), NOT a hidden state factor.
-- Recipe requires 3 onions (per your config), cook_time = 1.
-"""
 
 GRID_WIDTH = 5
 GRID_HEIGHT = 4
@@ -73,15 +61,7 @@ POT_2 = 2          # 2 onions
 POT_3 = 3      # cooked soup ready
 N_POT_STATES = 4
 
-# -------------------------------------------------
-# Front tile type (for B transition logic; env is fully observable)
-# What the agent sees in front given (pos, orientation) — deterministic from layout.
-#
-# IMPORTANT: The agent does NOT need to step onto an object to interact with it.
-# INTERACT applies to the adjacent cell in the direction the agent is facing (the
-# "front" tile). The agent stays on a walkable cell and interacts with pot/serve/
-# dispensers/counter in front of them.
-# -------------------------------------------------
+
 FRONT_WALL = 0
 FRONT_EMPTY = 1    # walkable cell
 FRONT_ONION = 2    # onion dispenser
@@ -93,23 +73,7 @@ N_FRONT_TYPES = 7
 
 
 def compute_front_tile_type(walkable_idx: int, orientation_idx: int) -> int:
-    """
-    Return the tile type in the cell in front of the agent (adjacent in facing direction).
-    The agent never steps onto this cell for interaction — INTERACT affects this front cell
-    while the agent remains on the current walkable cell. Used by B for INTERACT.
-
-    Parameters
-    ----------
-    walkable_idx : int
-        Agent position as walkable index 0..5.
-    orientation_idx : int
-        Agent orientation 0..3 (NORTH, SOUTH, EAST, WEST).
-
-    Returns
-    -------
-    int
-        One of FRONT_WALL, FRONT_EMPTY, FRONT_ONION, FRONT_DISH, FRONT_POT, FRONT_SERVE, FRONT_COUNTER.
-    """
+    
     grid_idx = walkable_idx_to_grid_idx(walkable_idx)
     x, y = index_to_xy(grid_idx)
     dx, dy = DIRECTIONS[orientation_idx]
@@ -159,8 +123,9 @@ observation_state_dependencies = {
     "agent_orientation_obs": ["agent_orientation"],
     "agent_held_obs": ["agent_held"],
     "pot_state_obs": ["pot_state"],
-    # soup_delivered_obs was originally conditioned on local state, with the
-    # actual delivery event passed as an observation-only flag (not a state factor).
+    # soup_delivered_obs is driven by an observation-only event flag (soup_delivered),
+    # not by a latent checkbox. During planning that flag is always 0, so this
+    # modality does not influence policy evaluation under horizon=3.
     "soup_delivered_obs": ["agent_pos", "agent_orientation", "agent_held"],
 }
 
