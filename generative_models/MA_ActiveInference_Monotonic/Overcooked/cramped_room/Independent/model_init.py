@@ -123,12 +123,11 @@ observation_state_dependencies = {
     "agent_orientation_obs": ["agent_orientation"],
     "agent_held_obs": ["agent_held"],
     "pot_state_obs": ["pot_state"],
-    # soup_delivered_obs is driven by an observation-only event flag (soup_delivered),
-    # not by a latent checkbox. During planning that flag is always 0, so this
-    # modality does not influence policy evaluation under horizon=3.
+    # soup_delivered_obs is an observation-only event flag (from env sparse reward),
+    # not a stable latent state. We keep formal state deps for A_fn's interface,
+    # but the event itself is passed separately (and is 0 during planning rollouts).
     "soup_delivered_obs": ["agent_pos", "agent_orientation", "agent_held"],
 }
-
 
 state_state_dependencies = {
     "agent_pos": ["agent_pos"],

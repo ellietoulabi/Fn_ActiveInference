@@ -113,10 +113,8 @@ def A_fn(state_indices: dict) -> dict[str, np.ndarray]:
             pot = dep_vals["pot_state"]
             obs[modality] = _noisy_categorical(pot, n, A_NOISE_LEVEL)
         elif modality == "soup_delivered_obs":
-            # Deps: [agent_pos, agent_orientation, agent_held]; also event soup_delivered
-            # Likelihood is determined by the event flag; pos/ori/held are the formal state deps
-            # (e.g. for factorised belief propagation). Here p(obs | pos, ori, held, event)
-            # is a noisy-categorical centered on the event value.
+            # Deps: [agent_pos, agent_orientation, agent_held]; also observation-only event soup_delivered.
+            # Likelihood is determined by the event flag; pos/ori/held are the formal state deps.
             obs[modality] = _noisy_categorical(soup_delivered, n, A_NOISE_LEVEL)
         else:
             raise KeyError("A_fn: unknown modality {}".format(modality))
