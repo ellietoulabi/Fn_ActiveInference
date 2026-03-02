@@ -152,9 +152,9 @@ def run_agent_vs_env_scenarios():
             actions=list(range(model_init_agent.N_ACTIONS)),
             gamma=4.0,
             alpha=16.0,
-            policy_len=3,
-            inference_horizon=3,
-            action_selection="stochastic",
+            policy_len=2,
+            inference_horizon=2,
+            action_selection="stochastic",#stochastic better
             sampling_mode="full",
             inference_algorithm="VANILLA",
             num_iter=16,
@@ -166,7 +166,7 @@ def run_agent_vs_env_scenarios():
 
     env = OvercookedMultiAgentEnv(config={"layout": "cramped_room", "horizon": horizon})
     agent0 = create_agent(0, seed=42)
-    agent1 = create_agent(1, seed=43)
+    agent1 = create_agent(1, seed=85)
 
     def run_one_episode(episode_name, seed=None):
         obs, infos = env.reset(seed=seed)

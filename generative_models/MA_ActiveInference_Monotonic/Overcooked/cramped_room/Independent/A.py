@@ -1,42 +1,20 @@
 # A.py
 """
-Observation model (A) for Independent paradigm — Cramped Room (Stage 1, checkbox model).
-
-Each observation modality is p(observation | state). A_fn takes specific state indices
-(not belief distributions) and returns a dict of observation likelihood vectors keyed
-by model_init.observations.
-
-State-factor dependencies (from model_init.observation_state_dependencies):
-- agent_pos_obs         depends on: agent_pos
-- agent_orientation_obs depends on: agent_orientation
-- agent_held_obs        depends on: agent_held
-- pot_state_obs         depends on: pot_state
-- soup_delivered_obs    depends on: agent_pos, agent_orientation, agent_held
-  (and observation-only event soup_delivered 0/1; the event is not a state factor)
-
-IMPORTANT CONVENTIONS (aligned with RedBlueButton A):
-- Observation keys must exactly match model_init.observations.
-- Binary soup_delivered_obs uses [no_event, event]: index 0 = no delivery, 1 = delivery.
-- All returned arrays are float probability vectors (sum to 1).
-- agent_pos is walkable index 0..N_WALKABLE-1 (6 positions); not grid index.
-
-DESIGN:
-- soup_delivered is OBSERVATION-ONLY (event), NOT a hidden state factor; it is passed
-  in state_indices when the event occurs (e.g. from env reward_info).
-- No other_agent_pos; no front_tile_type (per model_init.observations).
-- Checkbox state (ck_put1, ...) may appear in state_indices but A does not use it.
+Observation likelihood model (A = P (o | s)) for Independent paradigm — Cramped Room (monotonic model).
 """
 
 import numpy as np
 from . import model_init
 
 # Noise for position observations (same role as RedBlueButton A_NOISE_LEVEL)
-A_NOISE_LEVEL = 0.1
+A_NOISE_LEVEL = 0.03
+# Counters are observable but not perfectly (avoid absolute certainty)
+COUNTER_OBS_NOISE_LEVEL = 0.1
 
 
 def _noisy_categorical(idx: int, n: int, noise_level: float = A_NOISE_LEVEL) -> np.ndarray:
     """
-    p(observe each of n outcomes | true index is idx).
+    p(observe each of n outcomes | true state is idx).
     Off-diagonal mass = noise_level / (n-1), diagonal = 1 - noise_level.
     Returns float array of length n that sums to 1.
     """
@@ -45,78 +23,110 @@ def _noisy_categorical(idx: int, n: int, noise_level: float = A_NOISE_LEVEL) -> 
     p = np.full(n, noise_level / max(1, n - 1), dtype=float)
     if 0 <= idx < n:
         p[idx] = 1.0 - noise_level
-    return p
+    # If idx is ever out-of-range, p would not sum to 1; normalize.
+    s = float(p.sum())
+    return p / max(s, 1e-12)
 
 
-def _one_hot(idx: int, n: int) -> np.ndarray:
+
+
+def A_agent_pos_obs(state_indices: dict) -> np.ndarray:
+    """p(agent_pos_obs | agent_pos)."""
+    n = len(model_init.observations["agent_pos_obs"])
+    return _noisy_categorical(int(state_indices["agent_pos"]), n, A_NOISE_LEVEL)
+
+
+def A_agent_orientation_obs(state_indices: dict) -> np.ndarray:
+    """p(agent_orientation_obs | agent_orientation)."""
+    n = len(model_init.observations["agent_orientation_obs"])
+    return _noisy_categorical(int(state_indices["agent_orientation"]), n, A_NOISE_LEVEL)
+
+
+def A_agent_held_obs(state_indices: dict) -> np.ndarray:
+    """p(agent_held_obs | agent_held)."""
+    n = len(model_init.observations["agent_held_obs"])
+    return _noisy_categorical(int(state_indices["agent_held"]), n, A_NOISE_LEVEL)
+
+
+def A_pot_state_obs(state_indices: dict) -> np.ndarray:
+    """p(pot_state_obs | pot_state)."""
+    pot = int(state_indices.get("pot_state", model_init.POT_0))
+    n = len(model_init.observations["pot_state_obs"])
+    return _noisy_categorical(pot, n, A_NOISE_LEVEL)
+
+
+def A_soup_delivered_obs(state_indices: dict) -> np.ndarray:
     """
-    Deterministic observation: p(observe k | true index idx) = 1 if k==idx else 0.
-    Returns float array of length n.
+    p(soup_delivered_obs | agent_pos, agent_orientation, agent_held).
     """
-    p = np.zeros(n, dtype=float)
-    if 0 <= idx < n:
-        p[idx] = 1.0
-    return p
+    agent_pos = int(state_indices["agent_pos"])
+    agent_orientation = int(state_indices["agent_orientation"])
+    agent_held = int(state_indices["agent_held"])
 
+    delivered = 1 if (
+        agent_pos == 5
+        and agent_orientation == model_init.SOUTH
+        and agent_held == model_init.HELD_SOUP
+    ) else 0
+    n = len(model_init.observations["soup_delivered_obs"])
+    return _noisy_categorical(delivered, n, 0.7)
+
+def A_counter_0_obs(state_indices: dict) -> np.ndarray:
+    """p(counter_0_obs | counter_0)."""
+    n = len(model_init.observations["counter_0_obs"])
+    s = int(state_indices.get("counter_0", model_init.HELD_NONE))
+    return _noisy_categorical(s, n, COUNTER_OBS_NOISE_LEVEL)
+
+
+def A_counter_1_obs(state_indices: dict) -> np.ndarray:
+    """p(counter_1_obs | counter_1)."""
+    n = len(model_init.observations["counter_1_obs"])
+    s = int(state_indices.get("counter_1", model_init.HELD_NONE))
+    return _noisy_categorical(s, n, COUNTER_OBS_NOISE_LEVEL)
+
+
+def A_counter_2_obs(state_indices: dict) -> np.ndarray:
+    """p(counter_2_obs | counter_2)."""
+    n = len(model_init.observations["counter_2_obs"])
+    s = int(state_indices.get("counter_2", model_init.HELD_NONE))
+    return _noisy_categorical(s, n, COUNTER_OBS_NOISE_LEVEL)
+
+
+def A_counter_3_obs(state_indices: dict) -> np.ndarray:
+    """p(counter_3_obs | counter_3)."""
+    n = len(model_init.observations["counter_3_obs"])
+    s = int(state_indices.get("counter_3", model_init.HELD_NONE))
+    return _noisy_categorical(s, n, COUNTER_OBS_NOISE_LEVEL)
+
+
+def A_counter_4_obs(state_indices: dict) -> np.ndarray:
+    """p(counter_4_obs | counter_4)."""
+    n = len(model_init.observations["counter_4_obs"])
+    s = int(state_indices.get("counter_4", model_init.HELD_NONE))
+    return _noisy_categorical(s, n, COUNTER_OBS_NOISE_LEVEL)
 
 def A_fn(state_indices: dict) -> dict[str, np.ndarray]:
     """
     Observation likelihoods p(o | state) for all modalities in model_init.observations.
-    Each observation is computed from exactly the state factors in
-    model_init.observation_state_dependencies[modality].
-
-    Parameters
-    ----------
-    state_indices : dict
-        Must contain all keys required by observation_state_dependencies:
-          - agent_pos         : int, walkable index 0..5 (N_WALKABLE)
-          - agent_orientation : int, 0..3 (N_DIRECTIONS)
-          - agent_held        : int, 0..3 (N_HELD_TYPES)
-        Optional:
-          - pot_state         : int, 0..3 (default POT_0)
-          - soup_delivered    : int, 0 or 1 (observation-only event; default 0)
-        Ignored if present: ck_put1, ck_put2, ck_put3, ck_plated, ck_delivered.
-
-    Returns
-    -------
-    obs : dict[str, np.ndarray]
-        Keys exactly model_init.observations. Each value is a 1D float array
-        (probability distribution) with length len(model_init.observations[key]).
+    Each modality is computed by its corresponding function above.
     """
-    # Optional state-factor defaults (required deps must be in state_indices)
-    _optional_defaults = {"pot_state": model_init.POT_0}
-    # Observation-only event (not a state factor): 0 = no delivery, 1 = delivery this step
-    soup_delivered = 1 if int(state_indices.get("soup_delivered", 0)) > 0 else 0
+    obs = {
+        "agent_pos_obs": A_agent_pos_obs(state_indices),
+        "agent_orientation_obs": A_agent_orientation_obs(state_indices),
+        "agent_held_obs": A_agent_held_obs(state_indices),
+        "pot_state_obs": A_pot_state_obs(state_indices),
+        "soup_delivered_obs": A_soup_delivered_obs(state_indices),
+        "counter_0_obs": A_counter_0_obs(state_indices),
+        "counter_1_obs": A_counter_1_obs(state_indices),
+        "counter_2_obs": A_counter_2_obs(state_indices),
+        "counter_3_obs": A_counter_3_obs(state_indices),
+        "counter_4_obs": A_counter_4_obs(state_indices),
+    }
 
-    obs: dict[str, np.ndarray] = {}
-
-    for modality, deps in model_init.observation_state_dependencies.items():
-        n = len(model_init.observations[modality])
-        dep_vals = {}
-        for d in deps:
-            if d in _optional_defaults:
-                dep_vals[d] = int(state_indices.get(d, _optional_defaults[d]))
-            else:
-                dep_vals[d] = int(state_indices[d])
-
-        if modality == "agent_pos_obs":
-            # Deps: [agent_pos]
-            obs[modality] = _noisy_categorical(dep_vals["agent_pos"], n, A_NOISE_LEVEL)
-        elif modality == "agent_orientation_obs":
-            # Deps: [agent_orientation]
-            obs[modality] = _noisy_categorical(dep_vals["agent_orientation"], n, A_NOISE_LEVEL)
-        elif modality == "agent_held_obs":
-            # Deps: [agent_held]
-            obs[modality] = _noisy_categorical(dep_vals["agent_held"], n, A_NOISE_LEVEL)
-        elif modality == "pot_state_obs":
-            # Deps: [pot_state]
-            pot = dep_vals["pot_state"]
-            obs[modality] = _noisy_categorical(pot, n, A_NOISE_LEVEL)
-        elif modality == "soup_delivered_obs":
-            # Deps: [agent_pos, agent_orientation, agent_held]; also observation-only event soup_delivered.
-            # Likelihood is determined by the event flag; pos/ori/held are the formal state deps.
-            obs[modality] = _noisy_categorical(soup_delivered, n, A_NOISE_LEVEL)
-        else:
-            raise KeyError("A_fn: unknown modality {}".format(modality))
+    if set(obs.keys()) != set(model_init.observations.keys()):
+        missing = set(model_init.observations.keys()) - set(obs.keys())
+        extra = set(obs.keys()) - set(model_init.observations.keys())
+        raise KeyError(f"A_fn modalities mismatch. missing={sorted(missing)} extra={sorted(extra)}")
 
     return obs
+

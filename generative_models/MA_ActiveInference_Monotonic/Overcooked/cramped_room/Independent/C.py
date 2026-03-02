@@ -10,6 +10,7 @@ Interface expected by agents/ActiveInference/control.py:
 
 Observation modalities for this model (see model_init.observations):
   - agent_pos_obs, agent_orientation_obs, agent_held_obs, pot_state_obs, soup_delivered_obs
+  - counter_0_obs .. counter_4_obs
 
 Sparse objective: strongly prefer a soup delivery event:
   - soup_delivered_obs == 1  → +20 utility

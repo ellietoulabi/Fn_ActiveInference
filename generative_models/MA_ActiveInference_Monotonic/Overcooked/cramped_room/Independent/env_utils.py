@@ -5,7 +5,7 @@ Converts Overcooked env state to single-agent model observations.
 - Agent position uses walkable indices 0..5 (not grid 0..19).
 - Pot state uses 4 values: POT_0, POT_1, POT_2, POT_3 (ready); cook_time=0.
 - Observation keys match model_init.observations: agent_pos_obs, agent_orientation_obs,
-  agent_held_obs, pot_state_obs, soup_delivered_obs.
+  agent_held_obs, pot_state_obs, soup_delivered_obs, counter_0_obs..counter_4_obs.
 """
 
 from . import model_init
@@ -55,12 +55,31 @@ def _extract_pot_state_from_env(env_state):
     return pot_state
 
 
+def _extract_counter_slots_from_env(env_state):
+    """
+    Map Overcooked env counter objects to our 5 modeled counter slots.
+
+    Each slot value is in HELD_* space: {NONE, ONION, DISH, SOUP}.
+    """
+    slots = []
+    for grid_idx in getattr(model_init, "COUNTER_SLOT_GRID_IDXS", []):
+        x, y = model_init.index_to_xy(int(grid_idx))
+        obj = env_state.objects.get((x, y), None)
+        obj_name = getattr(obj, "name", None) if obj is not None else None
+        slots.append(model_init.object_name_to_held_type(obj_name))
+    # Backward-compatible fallback if COUNTER_SLOT_GRID_IDXS missing
+    while len(slots) < 5:
+        slots.append(model_init.HELD_NONE)
+    return slots[:5]
+
+
 def env_obs_to_model_obs(env_state, agent_idx, reward_info=None):
     """
     Convert OvercookedState to single-agent model observation indices.
 
     Returns dict with keys matching model_init.observations:
-    agent_pos_obs, agent_orientation_obs, agent_held_obs, pot_state_obs, soup_delivered_obs.
+    agent_pos_obs, agent_orientation_obs, agent_held_obs, pot_state_obs, soup_delivered_obs,
+    counter_0_obs..counter_4_obs.
     Agent position is in walkable index space (0..5).
     """
     this_agent = env_state.players[agent_idx]
@@ -90,12 +109,19 @@ def env_obs_to_model_obs(env_state, agent_idx, reward_info=None):
             r = reward_info.get("sparse_reward", 0)
             soup_delivered = 1 if r > 0 else 0
 
+    cslots = _extract_counter_slots_from_env(env_state)
+
     return {
         "agent_pos_obs": this_pos_walkable,
         "agent_orientation_obs": this_ori_idx,
         "agent_held_obs": this_held,
         "pot_state_obs": pot_state,
         "soup_delivered_obs": soup_delivered,
+        "counter_0_obs": int(cslots[0]),
+        "counter_1_obs": int(cslots[1]),
+        "counter_2_obs": int(cslots[2]),
+        "counter_3_obs": int(cslots[3]),
+        "counter_4_obs": int(cslots[4]),
     }
 
 

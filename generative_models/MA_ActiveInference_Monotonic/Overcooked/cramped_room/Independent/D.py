@@ -9,6 +9,7 @@ State factors (model_init.states):
   - agent_held        : {NONE, ONION, DISH, SOUP}
   - pot_state         : POT_0..POT_3   (4 states, cook_time=0)
   - ck_put1, ck_put2, ck_put3, ck_plated, ck_delivered : binary memory (0/1)
+  - counter_0..counter_4 : {NONE, ONION, DISH, SOUP} (counter slot contents)
 
 Defaults:
   - agent_pos         : start at agent 1's layout position (1,1) mapped into walkable index
@@ -16,6 +17,7 @@ Defaults:
   - agent_held        : HELD_NONE
   - pot_state         : POT_0
   - all checkboxes    : 0 (no progress yet)
+  - all counters      : HELD_NONE (empty)
 """
 
 import numpy as np
@@ -76,6 +78,24 @@ def build_D(agent_start_pos=None, agent_start_ori: int = 0):
     for ck in ("ck_put1", "ck_put2", "ck_put3", "ck_plated", "ck_delivered"):
         D[ck] = np.zeros(2, dtype=float)
         D[ck][0] = 1.0
+
+    # Counter slots: assume empty at start
+    for i in range(getattr(model_init, "N_COUNTERS", 5)):
+        key = f"counter_{i}"
+        D[key] = np.zeros(model_init.N_HELD_TYPES, dtype=float)
+        D[key][model_init.HELD_NONE] = 1.0
+
+    # Safety: ensure we return a prior for every declared state factor.
+    # If a new factor is added to model_init.states and not handled above,
+    # default to a uniform prior rather than crashing downstream.
+    for factor, values in model_init.states.items():
+        if factor in D:
+            continue
+        n = len(values)
+        if n <= 0:
+            D[factor] = np.array([], dtype=float)
+        else:
+            D[factor] = np.ones(n, dtype=float) / float(n)
 
     return D
 

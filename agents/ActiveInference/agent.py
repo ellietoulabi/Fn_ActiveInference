@@ -202,17 +202,65 @@ class Agent:
             # First observation - use current beliefs (set by reset/config)
             prior_dict = {factor: self.qs[factor].copy() for factor in self.state_factors}
 
-        # Run variational inference
-        self.qs = inference.vanilla_fpi_update_posterior_states(
-            self.A_fn,
-            obs_dict,
-            prior_dict,
-            self.state_factors,
-            self.state_sizes,
-            num_iter=16,  # Allow sufficient iterations for convergence
-            dF_tol=self.dF_tol,
-            debug=False,  # Disable debug output
-        )
+        # Fast path: clamp directly observed factors without full VI.
+        #
+        # If a modality is named "{factor}_obs" and it has the same cardinality as the factor,
+        # then we can compute the exact 1-factor posterior:
+        #   q(factor) ∝ prior(factor) * p(obs | factor)
+        # while leaving unrelated hidden factors (e.g. memory checkboxes) unchanged.
+        #
+        # This avoids combinatorial slowdowns when many factors are directly observed (e.g. counters).
+        map_idx = {f: int(np.argmax(prior_dict[f])) for f in self.state_factors}
+        qs_fast = {f: prior_dict[f].copy() for f in self.state_factors}
+
+        # Determine which observed modalities correspond to state factors
+        direct_modalities = []
+        for modality in obs_dict.keys():
+            if not modality.endswith("_obs"):
+                continue
+            factor = modality[: -len("_obs")]
+            if factor in self.state_sizes and modality in self.observation_labels:
+                if len(self.observation_labels[modality]) == self.state_sizes[factor]:
+                    direct_modalities.append((factor, modality))
+
+        # Update each directly observed factor by Bayes rule using A_fn likelihoods
+        for factor, modality in direct_modalities:
+            obs_idx = int(obs_dict[modality])
+            S = self.state_sizes[factor]
+            like = np.zeros(S, dtype=float)
+            s_idx = map_idx.copy()
+            for v in range(S):
+                s_idx[factor] = int(v)
+                p_o = self.A_fn(s_idx)[modality]
+                if 0 <= obs_idx < len(p_o):
+                    like[v] = float(p_o[obs_idx])
+            post = qs_fast[factor] * like
+            z = float(post.sum())
+            qs_fast[factor] = post / (z if z > 0 else 1.0)
+
+        # Decide whether we still need full VI.
+        # If all informative modalities are direct-factor observations, skip VI.
+        # (e.g. soup_delivered_obs is an event modality; it doesn't correspond to a factor.)
+        informative_modalities = []
+        for m in obs_dict.keys():
+            if m.endswith("_obs") and m[: -len("_obs")] in self.state_sizes:
+                informative_modalities.append(m)
+        if informative_modalities and all(
+            any(m == dm for _, dm in direct_modalities) for m in informative_modalities
+        ):
+            self.qs = qs_fast
+        else:
+            # Run variational inference for remaining coupled / latent factors
+            self.qs = inference.vanilla_fpi_update_posterior_states(
+                self.A_fn,
+                obs_dict,
+                prior_dict,
+                self.state_factors,
+                self.state_sizes,
+                num_iter=16,  # Allow sufficient iterations for convergence
+                dF_tol=self.dF_tol,
+                debug=False,  # Disable debug output
+            )
         
         return self.qs
 

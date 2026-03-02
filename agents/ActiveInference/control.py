@@ -101,6 +101,11 @@ def get_expected_obs_from_beliefs(A_fn, qs_dict, state_factors, state_sizes,
     
     map_indices = {f: int(np.argmax(qs_dict_np[f])) for f in state_factors}
     SKIP_MODALITIES = {'button_just_pressed'}
+    # Performance: counter modalities can add 4^5 combinations when uncertain.
+    # They don't contribute to utility in this task, so skip them in expected-observation
+    # marginalization to avoid combinatorial blow-up.
+    if observation_state_dependencies is not None:
+        SKIP_MODALITIES |= {m for m in observation_state_dependencies.keys() if m.startswith("counter_")}
     
     # Adaptive entropy threshold based on belief concentration
     max_entropy_observed = max(
@@ -248,6 +253,8 @@ def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_siz
         
         # Find dynamic deps
         SKIP_MODALITIES = {'button_just_pressed'}
+        if observation_state_dependencies is not None:
+            SKIP_MODALITIES |= {m for m in observation_state_dependencies.keys() if m.startswith("counter_")}
         all_deps = set()
         for modality, deps in observation_state_dependencies.items():
             if modality not in SKIP_MODALITIES:

@@ -1,10 +1,8 @@
 import copy
 import time
 
-import cv2
 import gymnasium
 import numpy as np
-import pygame
 import tqdm
 
 from overcooked_ai_py.mdp.actions import Action
@@ -23,7 +21,6 @@ from overcooked_ai_py.planning.planners import (
     MotionPlanner,
 )
 from overcooked_ai_py.utils import append_dictionaries, mean_and_std_err
-from overcooked_ai_py.visualization.state_visualizer import StateVisualizer
 
 DEFAULT_ENV_PARAMS = {"horizon": 400}
 
@@ -831,6 +828,9 @@ class Overcooked(gymnasium.Env):
         self.observation_space = self._setup_observation_space()
         self.action_space = gymnasium.spaces.Discrete(len(Action.ALL_ACTIONS))
         self.reset()
+        # Lazy import visualization stack to avoid importing pygame/cv2 unless needed.
+        from overcooked_ai_py.visualization.state_visualizer import StateVisualizer
+
         self.visualizer = StateVisualizer()
 
     def _setup_observation_space(self):
@@ -909,6 +909,11 @@ class Overcooked(gymnasium.Env):
         }
 
     def render(self):
+        # Lazy import visualization deps (pygame/cv2) only when rendering.
+        import cv2
+        import pygame
+        from overcooked_ai_py.visualization.state_visualizer import StateVisualizer
+
         rewards_dict = {}  # dictionary of details you want rendered in the UI
         for key, value in self.base_env.game_stats.items():
             if key in [

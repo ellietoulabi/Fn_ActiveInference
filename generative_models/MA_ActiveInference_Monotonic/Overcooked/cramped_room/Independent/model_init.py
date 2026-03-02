@@ -72,6 +72,20 @@ FRONT_COUNTER = 6  # counter (can drop objects)
 N_FRONT_TYPES = 7
 
 
+def compute_front_grid_idx(walkable_idx: int, orientation_idx: int) -> int | None:
+    """
+    Return the grid cell index directly in front of (walkable_idx, orientation_idx),
+    or None if out of bounds.
+    """
+    grid_idx = walkable_idx_to_grid_idx(walkable_idx)
+    x, y = index_to_xy(grid_idx)
+    dx, dy = DIRECTIONS[orientation_idx]
+    fx, fy = x + dx, y + dy
+    if fx < 0 or fx >= GRID_WIDTH or fy < 0 or fy >= GRID_HEIGHT:
+        return None
+    return xy_to_index(fx, fy)
+
+
 def compute_front_tile_type(walkable_idx: int, orientation_idx: int) -> int:
     
     grid_idx = walkable_idx_to_grid_idx(walkable_idx)
@@ -96,6 +110,21 @@ def compute_front_tile_type(walkable_idx: int, orientation_idx: int) -> int:
     return FRONT_WALL
 
 
+# Five counters are adjacent to the 6 walkable cells in this reduced model.
+# These are the only counters the agent can interact with (via FRONT_COUNTER).
+COUNTER_SLOT_GRID_IDXS = [1, 3, 10, 14, 17]
+COUNTER_SLOT_BY_GRID = {g: i for i, g in enumerate(COUNTER_SLOT_GRID_IDXS)}
+N_COUNTERS = len(COUNTER_SLOT_GRID_IDXS)
+
+
+def front_counter_slot(walkable_idx: int, orientation_idx: int) -> int | None:
+    """If the front tile is one of the modeled counters, return its slot index 0..4."""
+    fidx = compute_front_grid_idx(walkable_idx, orientation_idx)
+    if fidx is None:
+        return None
+    return COUNTER_SLOT_BY_GRID.get(int(fidx))
+
+
 states = {
     "agent_pos": list(range(6)),
     "agent_orientation": list(range(N_DIRECTIONS)),
@@ -106,6 +135,11 @@ states = {
     "ck_put3": list(range(2)),
     "ck_plated": list(range(2)),
     "ck_delivered": list(range(2)),
+    "counter_0": list(range(N_HELD_TYPES)),
+    "counter_1": list(range(N_HELD_TYPES)),
+    "counter_2": list(range(N_HELD_TYPES)),
+    "counter_3": list(range(N_HELD_TYPES)),
+    "counter_4": list(range(N_HELD_TYPES)),
 }
 
 
@@ -115,6 +149,11 @@ observations = {
     "agent_held_obs": list(range(N_HELD_TYPES)),
     "pot_state_obs": list(range(N_POT_STATES)),
     "soup_delivered_obs": [0, 1],
+    "counter_0_obs": list(range(N_HELD_TYPES)),
+    "counter_1_obs": list(range(N_HELD_TYPES)),
+    "counter_2_obs": list(range(N_HELD_TYPES)),
+    "counter_3_obs": list(range(N_HELD_TYPES)),
+    "counter_4_obs": list(range(N_HELD_TYPES)),
 }
 
 
@@ -127,12 +166,28 @@ observation_state_dependencies = {
     # not a stable latent state. We keep formal state deps for A_fn's interface,
     # but the event itself is passed separately (and is 0 during planning rollouts).
     "soup_delivered_obs": ["agent_pos", "agent_orientation", "agent_held"],
+    "counter_0_obs": ["counter_0"],
+    "counter_1_obs": ["counter_1"],
+    "counter_2_obs": ["counter_2"],
+    "counter_3_obs": ["counter_3"],
+    "counter_4_obs": ["counter_4"],
 }
 
 state_state_dependencies = {
     "agent_pos": ["agent_pos"],
     "agent_orientation": ["agent_orientation"],
-    "agent_held": ["agent_pos", "agent_orientation", "agent_held", "pot_state"],
+    # agent_held can change due to counter pickup/drop as well as pot/dispensers/serve.
+    "agent_held": [
+        "agent_pos",
+        "agent_orientation",
+        "agent_held",
+        "pot_state",
+        "counter_0",
+        "counter_1",
+        "counter_2",
+        "counter_3",
+        "counter_4",
+    ],
     "pot_state": ["agent_pos", "agent_orientation", "agent_held", "pot_state"],
     # Checkbox memory:
     # Each checkbox flips based on the same local interaction context that causes the milestone.
@@ -142,6 +197,12 @@ state_state_dependencies = {
     "ck_put3":     ["ck_put3", "agent_pos", "agent_orientation", "agent_held", "pot_state"],
     "ck_plated":   ["ck_plated", "agent_pos", "agent_orientation", "agent_held", "pot_state"],
     "ck_delivered":["ck_delivered", "agent_pos", "agent_orientation", "agent_held"],
+    # Counters can change on INTERACT depending on agent_pos/orientation/held.
+    "counter_0": ["counter_0", "agent_pos", "agent_orientation", "agent_held"],
+    "counter_1": ["counter_1", "agent_pos", "agent_orientation", "agent_held"],
+    "counter_2": ["counter_2", "agent_pos", "agent_orientation", "agent_held"],
+    "counter_3": ["counter_3", "agent_pos", "agent_orientation", "agent_held"],
+    "counter_4": ["counter_4", "agent_pos", "agent_orientation", "agent_held"],
 }
 
 # -------------------------------------------------
