@@ -34,10 +34,10 @@ NORTH, SOUTH, EAST, WEST, STAY, INTERACT = 0, 1, 2, 3, 4, 5
 N_ACTIONS = 6
 # INTERACT: use the adjacent cell in front (facing direction); agent does not step onto pot/serve/etc.
 
-# INTERACT outcome noise: with this probability the intended transition happens;
-# with (1 - INTERACT_SUCCESS_PROB) "nothing happens" (held state unchanged).
-# Slightly stochastic INTERACT increases expected info gain so the agent may prefer it over movement.
-INTERACT_SUCCESS_PROB = 0.9  # 0.9 = 10% chance interact "fails" (no change)
+# INTERACT success probability.
+# The real Overcooked environment dynamics are deterministic; setting this to 1.0
+# avoids agents getting stuck in epistemic loops that exploit stochastic INTERACT.
+INTERACT_SUCCESS_PROB = 1.0
 
 
 DIR_NORTH = (0, -1)

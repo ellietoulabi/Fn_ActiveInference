@@ -106,6 +106,9 @@ def get_expected_obs_from_beliefs(A_fn, qs_dict, state_factors, state_sizes,
     # marginalization to avoid combinatorial blow-up.
     if observation_state_dependencies is not None:
         SKIP_MODALITIES |= {m for m in observation_state_dependencies.keys() if m.startswith("counter_")}
+    # Prevent epistemic loops where agents toggle held items to generate predictable observations.
+    # (We still use held observations for state inference, just not for EFE scoring computations here.)
+    SKIP_MODALITIES.add("agent_held_obs")
     
     # Adaptive entropy threshold based on belief concentration
     max_entropy_observed = max(
@@ -255,6 +258,7 @@ def get_expected_obs_and_info_gain_unified(A_fn, qs_pi, state_factors, state_siz
         SKIP_MODALITIES = {'button_just_pressed'}
         if observation_state_dependencies is not None:
             SKIP_MODALITIES |= {m for m in observation_state_dependencies.keys() if m.startswith("counter_")}
+        SKIP_MODALITIES.add("agent_held_obs")
         all_deps = set()
         for modality, deps in observation_state_dependencies.items():
             if modality not in SKIP_MODALITIES:

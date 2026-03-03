@@ -9,7 +9,7 @@ from . import model_init
 # Noise for position observations (same role as RedBlueButton A_NOISE_LEVEL)
 A_NOISE_LEVEL = 0.03
 # Counters are observable but not perfectly (avoid absolute certainty)
-COUNTER_OBS_NOISE_LEVEL = 0.1
+COUNTER_OBS_NOISE_LEVEL = 0.01
 
 
 def _noisy_categorical(idx: int, n: int, noise_level: float = A_NOISE_LEVEL) -> np.ndarray:

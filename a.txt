@@ -28,101 +28,259 @@
     A1: pos(walkable)=2  holding=none  facing=NORTH
     Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
     Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
-    Actions:    A0 -> INTERACT [5]  |  A1 -> EAST [2]
+    Actions:    A0 -> SOUTH [1]  |  A1 -> EAST [2]
     Reward:    0.0  (cumulative: 0.0)
 
   --- Step 3 ---
-    Env state:  A0@3 held=dish | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
     Map (before action):
       🅲 🅲 ⓪ 🅲 🅲 
       🄾     [38;5;208m▶ [0m🄾 
       🅲 [93m▼ [0m    🅲 
       🅲 🄳 🅲 🅂 🅲 
-    A0: pos(walkable)=3  holding=dish  facing=SOUTH
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
     A1: pos(walkable)=2  holding=none  facing=EAST
-    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=2 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
     Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
-    Actions:    A0 -> NORTH [0]  |  A1 -> INTERACT [5]
+    Actions:    A0 -> SOUTH [1]  |  A1 -> STAY [4]
     Reward:    0.0  (cumulative: 0.0)
 
   --- Step 4 ---
-    Env state:  A0@0 held=dish | A1@2 held=onion | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
     Map (before action):
       🅲 🅲 ⓪ 🅲 🅲 
-      🄾 [93m▲ [0m  [38;5;208m▶ [0m🄾 
-      🅲       🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
       🅲 🄳 🅲 🅂 🅲 
-    A0: pos(walkable)=0  holding=dish  facing=NORTH
-    A1: pos(walkable)=2  holding=onion  facing=EAST
-    Obs (model) A0: pos_obs=0 ori_obs=0 held_obs=2 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
-    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=1 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
-    Actions:    A0 -> INTERACT [5]  |  A1 -> NORTH [0]
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> STAY [4]  |  A1 -> STAY [4]
     Reward:    0.0  (cumulative: 0.0)
 
   --- Step 5 ---
-    Env state:  A0@0 held=none | A1@2 held=onion | pot=empty | c0@(1,0)=dish | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
     Map (before action):
-      🅲 🅿 ⓪ 🅲 🅲 
-      🄾 [93m▲ [0m  [38;5;208m▲ [0m🄾 
-      🅲       🅲 
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
       🅲 🄳 🅲 🅂 🅲 
-    A0: pos(walkable)=0  holding=none  facing=NORTH
-    A1: pos(walkable)=2  holding=onion  facing=NORTH
-    Obs (model) A0: pos_obs=0 ori_obs=0 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[2, 0, 0, 0, 0]
-    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=1 pot_obs=0 soup_delivered_obs=0 counters=[2, 0, 0, 0, 0]
-    Actions:    A0 -> INTERACT [5]  |  A1 -> INTERACT [5]
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> STAY [4]  |  A1 -> STAY [4]
     Reward:    0.0  (cumulative: 0.0)
 
   --- Step 6 ---
-    Env state:  A0@0 held=dish | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=onion | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
     Map (before action):
-      🅲 🅲 ⓪ 🅾 🅲 
-      🄾 [93m▲ [0m  [38;5;208m▲ [0m🄾 
-      🅲       🅲 
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
       🅲 🄳 🅲 🅂 🅲 
-    A0: pos(walkable)=0  holding=dish  facing=NORTH
-    A1: pos(walkable)=2  holding=none  facing=NORTH
-    Obs (model) A0: pos_obs=0 ori_obs=0 held_obs=2 pot_obs=0 soup_delivered_obs=0 counters=[0, 1, 0, 0, 0]
-    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 1, 0, 0, 0]
-    Actions:    A0 -> INTERACT [5]  |  A1 -> INTERACT [5]
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> SOUTH [1]  |  A1 -> STAY [4]
     Reward:    0.0  (cumulative: 0.0)
 
   --- Step 7 ---
-    Env state:  A0@0 held=none | A1@2 held=onion | pot=empty | c0@(1,0)=dish | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
     Map (before action):
-      🅲 🅿 ⓪ 🅲 🅲 
-      🄾 [93m▲ [0m  [38;5;208m▲ [0m🄾 
-      🅲       🅲 
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
       🅲 🄳 🅲 🅂 🅲 
-    A0: pos(walkable)=0  holding=none  facing=NORTH
-    A1: pos(walkable)=2  holding=onion  facing=NORTH
-    Obs (model) A0: pos_obs=0 ori_obs=0 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[2, 0, 0, 0, 0]
-    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=1 pot_obs=0 soup_delivered_obs=0 counters=[2, 0, 0, 0, 0]
-    Actions:    A0 -> INTERACT [5]  |  A1 -> INTERACT [5]
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> STAY [4]  |  A1 -> STAY [4]
     Reward:    0.0  (cumulative: 0.0)
 
   --- Step 8 ---
-    Env state:  A0@0 held=dish | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=onion | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
     Map (before action):
-      🅲 🅲 ⓪ 🅾 🅲 
-      🄾 [93m▲ [0m  [38;5;208m▲ [0m🄾 
-      🅲       🅲 
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
       🅲 🄳 🅲 🅂 🅲 
-    A0: pos(walkable)=0  holding=dish  facing=NORTH
-    A1: pos(walkable)=2  holding=none  facing=NORTH
-    Obs (model) A0: pos_obs=0 ori_obs=0 held_obs=2 pot_obs=0 soup_delivered_obs=0 counters=[0, 1, 0, 0, 0]
-    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 1, 0, 0, 0]
-    Actions:    A0 -> INTERACT [5]  |  A1 -> INTERACT [5]
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> STAY [4]  |  A1 -> EAST [2]
     Reward:    0.0  (cumulative: 0.0)
 
   --- Step 9 ---
-    Env state:  A0@0 held=none | A1@2 held=onion | pot=empty | c0@(1,0)=dish | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
     Map (before action):
-      🅲 🅿 ⓪ 🅲 🅲 
-      🄾 [93m▲ [0m  [38;5;208m▲ [0m🄾 
-      🅲       🅲 
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
       🅲 🄳 🅲 🅂 🅲 
-    A0: pos(walkable)=0  holding=none  facing=NORTH
-    A1: pos(walkable)=2  holding=onion  facing=NORTH
-    Obs (model) A0: pos_obs=0 ori_obs=0 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[2, 0, 0, 0, 0]
-    Obs (model) A1: pos_obs=2 ori_obs=0 held_obs=1 pot_obs=0 soup_delivered_obs=0 counters=[2, 0, 0, 0, 0]
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> SOUTH [1]  |  A1 -> EAST [2]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 10 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> SOUTH [1]  |  A1 -> STAY [4]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 11 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> SOUTH [1]  |  A1 -> STAY [4]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 12 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> STAY [4]  |  A1 -> EAST [2]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 13 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> STAY [4]  |  A1 -> STAY [4]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 14 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> SOUTH [1]  |  A1 -> STAY [4]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 15 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> STAY [4]  |  A1 -> EAST [2]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 16 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> SOUTH [1]  |  A1 -> STAY [4]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 17 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> SOUTH [1]  |  A1 -> EAST [2]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 18 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> STAY [4]  |  A1 -> EAST [2]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 19 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> STAY [4]  |  A1 -> STAY [4]
+    Reward:    0.0  (cumulative: 0.0)
+
+  --- Step 20 ---
+    Env state:  A0@3 held=none | A1@2 held=none | pot=empty | c0@(1,0)=none | c1@(3,0)=none | c2@(0,2)=none | c3@(4,2)=none | c4@(2,3)=none
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾     [38;5;208m▶ [0m🄾 
+      🅲 [93m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=2  holding=none  facing=EAST
+    Obs (model) A0: pos_obs=3 ori_obs=1 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Obs (model) A1: pos_obs=2 ori_obs=2 held_obs=0 pot_obs=0 soup_delivered_obs=0 counters=[0, 0, 0, 0, 0]
+    Actions:    A0 -> STAY [4]  |  A1 -> EAST [2]
+    Reward:    0.0  (cumulative: 0.0)
+
+  Scenario total reward: 0.0
