@@ -336,7 +336,7 @@ def B_checkboxes(parents: dict, action: int) -> dict[str, np.ndarray]:
 
 
 
-def B_fn(qs: dict, action: int, B_NOISE_LEVEL: float = 0.03, **kwargs) -> dict:
+def B_fn(qs: dict, action: int, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
     """
     Main transition model p(s' | s, a) for all hidden state factors.
     """

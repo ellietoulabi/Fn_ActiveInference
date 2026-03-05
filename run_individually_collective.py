@@ -161,7 +161,7 @@ def run_agent_vs_env_scenarios():
             dF_tol=0.001,
         )
 
-    max_steps_per_scenario = 50
+    max_steps_per_scenario = 100
     horizon = max_steps_per_scenario + 10
 
     if SingleAgentEnv is not None and single_agent_layout is not None:

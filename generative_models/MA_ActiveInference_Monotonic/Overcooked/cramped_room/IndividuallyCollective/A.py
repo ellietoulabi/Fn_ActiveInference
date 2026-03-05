@@ -5,7 +5,7 @@ Observation likelihoods p(o | state) model (A) for IndividuallyCollective paradi
 import numpy as np
 from . import model_init
 
-A_NOISE_LEVEL = 0.1
+A_NOISE_LEVEL = 0.01
 
 
 def _noisy_categorical(idx: int, n: int, noise_level: float = A_NOISE_LEVEL) -> np.ndarray:
@@ -76,39 +76,3 @@ def A_fn(state_indices: dict) -> dict[str, np.ndarray]:
 
     return obs
 
-
-# if __name__ == "__main__":
-#     # Simple sanity tests for A functions
-#     print("=== Testing A_self_pos_obs ===")
-#     p_pos = A_self_pos_obs(0)
-#     print("self_pos=0 ->", p_pos, "sum=", float(p_pos.sum()))
-
-#     print("\n=== Testing A_self_orientation_obs ===")
-#     p_ori = A_self_orientation_obs(1)
-#     print("self_orientation=1 ->", p_ori, "sum=", float(p_ori.sum()))
-
-#     print("\n=== Testing A_self_held_obs ===")
-#     p_held = A_self_held_obs(2)
-#     print("self_held=2 ->", p_held, "sum=", float(p_held.sum()))
-
-#     print("\n=== Testing A_pot_state_obs ===")
-#     p_pot = A_pot_state_obs(3)
-#     print("pot_state=3 ->", p_pot, "sum=", float(p_pot.sum()))
-
-#     print("\n=== Testing A_soup_delivered_obs ===")
-#     p_sd0 = A_soup_delivered_obs(0)
-#     p_sd1 = A_soup_delivered_obs(1)
-#     print("soup_delivered=0 ->", p_sd0, "sum=", float(p_sd0.sum()))
-#     print("soup_delivered=1 ->", p_sd1, "sum=", float(p_sd1.sum()))
-
-#     print("\n=== Testing A_fn ===")
-#     example_state = {
-#         "self_pos": 0,
-#         "self_orientation": 0,
-#         "self_held": 0,
-#         "pot_state": model_init.POT_0,
-#         "ck_delivered": 0,
-#     }
-#     obs_all = A_fn(example_state)
-#     for k, v in obs_all.items():
-#         print(f"{k}: {v}, sum={float(v.sum())}")
