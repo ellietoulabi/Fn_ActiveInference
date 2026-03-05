@@ -1,79 +1,65 @@
 """
-IndividuallyCollective paradigm model init for Overcooked - Cramped Room layout.
-
-This reimplements the JOINT generative model locally for the
-IndividuallyCollective paradigm, mirroring the FullyCollective geometry and
-state/observation definitions.
+IndividuallyCollective paradigm model init for Overcooked - Cramped Room layout (Monotonic)
+Layout:
+  XXPXX
+  O1  O
+  X  2X
+  XDXSX
 """
 
-# -------------------------------------------------
-# Grid size (cramped_room specific)
-# -------------------------------------------------
+
 GRID_WIDTH = 5
 GRID_HEIGHT = 4
-GRID_SIZE = GRID_WIDTH * GRID_HEIGHT  # 20 cells
+GRID_SIZE = GRID_WIDTH * GRID_HEIGHT 
 
-# -------------------------------------------------
-# Recipe / timing (kept consistent with Independent checkbox model)
-# -------------------------------------------------
+
 RECIPE_ONIONS = 3
 COOK_TIME = 0
 
-# -------------------------------------------------
-# Layout-specific locations
-# -------------------------------------------------
-POT_LOCATIONS = [(2, 0)]  # Single pot
-SERVING_LOCATIONS = [(3, 3)]  # Delivery counter
+
+POT_LOCATIONS = [(2, 0)]
+SERVING_LOCATIONS = [(3, 3)]
 ONION_DISPENSERS = [(0, 1), (4, 1)]
-TOMATO_DISPENSERS = []  # None in cramped_room
+DISH_DISPENSERS = [(1, 3)]
 
-"""
-Model geometry and state/observation definitions for the IndividuallyCollective
-paradigm on cramped_room. Note: movement constraints (which cells are
-walkable) must match the true Overcooked environment, where only " "
-cells are valid player positions and counters / pot / dispensers / serve
-are non-walkable.
-"""
 
-# Convert to indices
 POT_INDICES = [y * GRID_WIDTH + x for x, y in POT_LOCATIONS]
 SERVING_INDICES = [y * GRID_WIDTH + x for x, y in SERVING_LOCATIONS]
 ONION_DISPENSER_INDICES = [y * GRID_WIDTH + x for x, y in ONION_DISPENSERS]
+DISH_DISPENSER_INDICES = [y * GRID_WIDTH + x for x, y in DISH_DISPENSERS]
 
-# -------------------------------------------------
-# Walls and non-walkable terrain (fixed cramped-room layout)
-# In Overcooked env, get_valid_player_positions() = terrain_pos_dict[" "]
-# only. So only " " (empty) is walkable; X (counter), P, O, D, S are NOT.
-# Layout (see layout.txt):
-#   XXPXX
-#   O1  O
-#   X  2X
-#   XDXSX
-# -------------------------------------------------
-WALL_INDICES = {
+COUNTER_INDICES = {
     0, 1, 3, 4,        # row 0: X, X, P, X, X
     10, 14,            # row 2: X, _, _, _, X
     15, 17, 19,        # row 3: X, D, X, S, X
 }
 
-# All cells that are not " " (empty) — agents cannot step here (matches env).
-BLOCKED_MOVEMENT_INDICES = (
-    WALL_INDICES
-    | set(POT_INDICES)
-    | set(ONION_DISPENSER_INDICES)
-    | set(SERVING_INDICES)
-)
 
-# -------------------------------------------------
-# Primitive actions (per-agent)
-# -------------------------------------------------
+WALKABLE_INDICES = [6, 7, 8, 11, 12, 13]
+N_WALKABLE = len(WALKABLE_INDICES)
+
+# # Non-walkable cells (for movement / position_in_front)
+# WALL_INDICES = {
+#     0, 1, 3, 4, 10, 14, 15, 17, 19,
+# }
+# BLOCKED_MOVEMENT_INDICES = (
+#     WALL_INDICES
+#     | set(POT_INDICES)
+#     | set(ONION_DISPENSER_INDICES)
+#     | set(DISH_DISPENSER_INDICES)
+#     | set(SERVING_INDICES)
+# )
+
+
+
+# Actions (per-agent)
 NORTH, SOUTH, EAST, WEST, STAY, INTERACT = 0, 1, 2, 3, 4, 5
 N_ACTIONS = 6
-N_JOINT_ACTIONS = N_ACTIONS * N_ACTIONS  # 36
+# N_JOINT_ACTIONS = N_ACTIONS * N_ACTIONS  # 36
 
-# -------------------------------------------------
+INTERACT_SUCCESS_PROB = 0.9  # 0.9 = 10% chance interact "fails" (no change)
+
 # Directions
-# -------------------------------------------------
 DIR_NORTH = (0, -1)
 DIR_SOUTH = (0, 1)
 DIR_EAST = (1, 0)
@@ -81,181 +67,192 @@ DIR_WEST = (-1, 0)
 DIRECTIONS = [DIR_NORTH, DIR_SOUTH, DIR_EAST, DIR_WEST]
 N_DIRECTIONS = 4
 
-# -------------------------------------------------
-# Held object types (cramped_room only has onions, no tomatoes)
-# -------------------------------------------------
+# Held object types
 HELD_NONE = 0
 HELD_ONION = 1
 HELD_DISH = 2
 HELD_SOUP = 3
 N_HELD_TYPES = 4
 
-# -------------------------------------------------
-# Pot states (for the single pot)
-# -------------------------------------------------
-POT_IDLE = 0      # Empty pot
-POT_COOKING = 1   # Pot has ingredients and is cooking
-POT_READY = 2     # Soup is ready to be picked up
-N_POT_STATES = 3
+POT_0 = 0          # 0 onions; idle
+POT_1 = 1          # 1 onion
+POT_2 = 2          # 2 onions
+POT_3 = 3      # cooked soup ready
+N_POT_STATES = 4
 
-# -------------------------------------------------
-# States (JOINT)
-# -------------------------------------------------
+
+FRONT_WALL = 0
+FRONT_EMPTY = 1    # walkable cell
+FRONT_ONION = 2    # onion dispenser
+FRONT_DISH = 3     # dish dispenser
+FRONT_POT = 4
+FRONT_SERVE = 5
+FRONT_COUNTER = 6  # counter (can drop objects)
+N_FRONT_TYPES = 7
+
+
+# States
 states = {
-    "self_pos": list(range(GRID_SIZE)),  # Flattened position index (0-19)
-    "other_pos": list(range(GRID_SIZE)),
-    "self_orientation": list(range(N_DIRECTIONS)),  # 0=NORTH, 1=SOUTH, 2=EAST, 3=WEST
-    "other_orientation": list(range(N_DIRECTIONS)),
-    "self_held": list(range(N_HELD_TYPES)),  # 0=none, 1=onion, 2=dish, 3=soup
-    "other_held": list(range(N_HELD_TYPES)),
-    "pot_state": list(range(N_POT_STATES)),  # 0=idle, 1=cooking, 2=ready
-    # Checkbox-style task memory (adapted from Independent model):
-    # ck_put1/2/3: onions added to pot; ck_plated: soup plated; ck_delivered: soup delivered.
-    "ck_put1": [0, 1],
-    "ck_put2": [0, 1],
-    "ck_put3": [0, 1],
-    "ck_plated": [0, 1],
-    "ck_delivered": [0, 1],
-    # Optional explicit event-state for compatibility with existing code:
-    "soup_delivered": [0, 1],  # 0=no, 1=yes (resets each step)
+
+    "self_pos": list(range(N_WALKABLE)),
+    "self_orientation": list(range(N_DIRECTIONS)),  
+    "self_held": list(range(N_HELD_TYPES)),  
+
+    "pot_state": list(range(N_POT_STATES)),
+
+    "ck_put1": list(range(2)),
+    "ck_put2": list(range(2)),
+    "ck_put3": list(range(2)),
+    "ck_plated": list(range(2)),
+    "ck_delivered": list(range(2)),
+
+    # --- multi-agent (commented for single-agent run) ---
+    # "other_pos": list(range(N_WALKABLE)),
+    # "other_held": list(range(N_HELD_TYPES)),
+
 }
 
-# -------------------------------------------------
-# Observations (full joint observation)
-# -------------------------------------------------
+# Observations 
 observations = {
-    "self_pos": list(range(GRID_SIZE)),
-    "other_pos": list(range(GRID_SIZE)),
-    "self_orientation": list(range(N_DIRECTIONS)),
-    "self_held": list(range(N_HELD_TYPES)),
-    "other_held": list(range(N_HELD_TYPES)),
-    "pot_state": list(range(N_POT_STATES)),
-    "soup_delivered": [0, 1],
+    "self_pos_obs": list(range(N_WALKABLE)),
+    "self_orientation_obs": list(range(N_DIRECTIONS)),
+    "self_held_obs": list(range(N_HELD_TYPES)),
+
+    "pot_state_obs": list(range(N_POT_STATES)),
+    "soup_delivered_obs": [0, 1],
+
+    # --- multi-agent (commented for single-agent run) ---
+    # "other_pos_obs": list(range(N_WALKABLE)),
+    # "other_held_obs": list(range(N_HELD_TYPES)),
 }
 
 observation_state_dependencies = {
-    "self_pos": ["self_pos"],
-    "other_pos": ["other_pos"],
-    "self_orientation": ["self_orientation"],
-    "other_orientation": ["other_orientation"],
-    "self_held": ["self_held"],
-    "other_held": ["other_held"],
-    "pot_state": ["pot_state"],
-    "soup_delivered": ["soup_delivered"],
+    "self_pos_obs": ["self_pos"],
+    "self_orientation_obs": ["self_orientation"],
+    "self_held_obs": ["self_held"],
+
+    "pot_state_obs": ["pot_state"],
+
+    "soup_delivered_obs": ["self_pos", "self_orientation", "self_held"],
+    
+    # --- multi-agent (commented for single-agent run) ---
+    # "other_pos_obs": ["other_pos"],
+    # "other_held_obs": ["other_held"],
 }
 
 state_state_dependencies = {
-    # Positions depend on previous positions, orientations, and joint action
-    "self_pos": ["self_pos", "self_orientation", "other_pos"],
-    "other_pos": ["other_pos", "other_orientation", "self_pos"],
-    # Orientations change when moving
+    "self_pos": ["self_pos"],  # single-agent: no other_pos collision
+    # "self_pos": ["self_pos", "other_pos"],  # multi-agent: collision with other
     "self_orientation": ["self_orientation"],
-    "other_orientation": ["other_orientation"],
-    # Held objects depend on positions, pot state, and interactions
-    "self_held": ["self_pos", "self_held", "other_pos", "pot_state"],
-    "other_held": ["other_pos", "other_held", "self_pos", "pot_state"],
-    # Pot state depends on agent positions, held objects, and interactions
-    "pot_state": ["self_pos", "other_pos", "self_held", "other_held", "pot_state"],
-    # Checkbox memory over joint context (adapted from Independent model):
-    "ck_put1": ["ck_put1", "self_pos", "other_pos", "self_orientation", "other_orientation", "self_held", "other_held", "pot_state"],
-    "ck_put2": ["ck_put2", "self_pos", "other_pos", "self_orientation", "other_orientation", "self_held", "other_held", "pot_state"],
-    "ck_put3": ["ck_put3", "self_pos", "other_pos", "self_orientation", "other_orientation", "self_held", "other_held", "pot_state"],
-    "ck_plated": ["ck_plated", "self_pos", "other_pos", "self_orientation", "other_orientation", "self_held", "other_held", "pot_state"],
-    "ck_delivered": ["ck_delivered", "self_pos", "other_pos", "self_orientation", "other_orientation", "self_held", "other_held"],
-    # Soup delivery event (state) depends on joint positions and held objects
-    "soup_delivered": ["self_pos", "other_pos", "self_held", "other_held"],
+    "self_held": ["self_pos", "self_orientation", "self_held", "pot_state"],
+
+    "pot_state": ["self_pos", "self_orientation", "self_held", "pot_state"],
+
+    # --- multi-agent (commented for single-agent run) ---
+    # "other_pos": ["other_pos"],
+    # "other_held": ["other_held", "other_pos"],
+
+    # Checkbox memory: each flips from local interaction context; no ck_delivered dep (can jump between them).
+    "ck_put1":     ["ck_put1", "self_pos", "self_orientation", "self_held", "pot_state"],
+    "ck_put2":     ["ck_put2", "self_pos", "self_orientation", "self_held", "pot_state"],
+    "ck_put3":     ["ck_put3", "self_pos", "self_orientation", "self_held", "pot_state"],
+    "ck_plated":   ["ck_plated", "self_pos", "self_orientation", "self_held", "pot_state"],
+    "ck_delivered":["ck_delivered", "self_pos", "self_orientation", "self_held"],
 }
 
 # -------------------------------------------------
 # Utility functions
 # -------------------------------------------------
+def compute_front_tile_type(walkable_idx: int, orientation_idx: int) -> int:
+    
+    grid_idx = walkable_idx_to_grid_idx(walkable_idx)
+    x, y = index_to_xy(grid_idx)
+    dx, dy = DIRECTIONS[orientation_idx]
+    fx, fy = x + dx, y + dy
+    if fx < 0 or fx >= GRID_WIDTH or fy < 0 or fy >= GRID_HEIGHT:
+        return FRONT_WALL
+    fidx = xy_to_index(fx, fy)
+    if fidx in POT_INDICES:
+        return FRONT_POT
+    if fidx in SERVING_INDICES:
+        return FRONT_SERVE
+    if fidx in ONION_DISPENSER_INDICES:
+        return FRONT_ONION
+    if fidx in DISH_DISPENSER_INDICES:
+        return FRONT_DISH
+    if fidx in COUNTER_INDICES:
+        return FRONT_COUNTER
+    if fidx in WALKABLE_INDICES:
+        return FRONT_EMPTY
+    return FRONT_WALL
 
-def xy_to_index(x, y, width=GRID_WIDTH):
-    """Convert (x, y) coordinates to flattened index."""
+def xy_to_index(x: int, y: int, width: int = GRID_WIDTH) -> int:
     return y * width + x
 
-
-def index_to_xy(index, width=GRID_WIDTH):
-    """Convert flattened index to (x, y) coordinates."""
+def index_to_xy(index: int, width: int = GRID_WIDTH):
     y = index // width
     x = index % width
     return x, y
 
 
 def direction_to_index(direction):
-    """Convert direction tuple to index."""
-    if direction == DIR_NORTH:
-        return 0
-    elif direction == DIR_SOUTH:
-        return 1
-    elif direction == DIR_EAST:
-        return 2
-    elif direction == DIR_WEST:
-        return 3
-    return 0  # Default to NORTH
-
-
-def index_to_direction(idx):
-    """Convert index to direction tuple."""
-    return DIRECTIONS[idx]
+    """Map (dx, dy) tuple to orientation index 0..3 (NORTH, SOUTH, EAST, WEST)."""
+    for i, d in enumerate(DIRECTIONS):
+        if d == direction:
+            return i
+    return 0  # fallback to NORTH
 
 
 def object_name_to_held_type(obj_name):
-    """Convert object name to held type index."""
     if obj_name is None:
         return HELD_NONE
-    obj_map = {
-        "onion": HELD_ONION,
-        "dish": HELD_DISH,
-        "soup": HELD_SOUP,
-    }
+    obj_map = {"onion": HELD_ONION, "dish": HELD_DISH, "soup": HELD_SOUP}
     return obj_map.get(obj_name, HELD_NONE)
 
 
-def held_type_to_object_name(held_type):
-    """Convert held type index to object name."""
-    type_map = {
-        HELD_NONE: None,
-        HELD_ONION: "onion",
-        HELD_DISH: "dish",
-        HELD_SOUP: "soup",
-    }
-    return type_map.get(held_type, None)
+def walkable_idx_to_grid_idx(walkable_idx: int) -> int:
+    """Convert walkable position index (0..5) to grid cell index (0..19)."""
+    if 0 <= walkable_idx < N_WALKABLE:
+        return WALKABLE_INDICES[walkable_idx]
+    return WALKABLE_INDICES[0]  # fallback
 
 
-def is_at_location(pos_idx, location_indices):
-    """Check if position index is at any of the given location indices."""
-    return pos_idx in location_indices
+def grid_idx_to_walkable_idx(grid_idx: int):
+    """Convert grid cell index (0..19) to walkable index (0..5). Returns None if cell is not walkable."""
+    for w in range(N_WALKABLE):
+        if WALKABLE_INDICES[w] == grid_idx:
+            return w
+    return None
 
 
-def is_at_pot(pos_idx):
-    """Check if position is at the pot."""
-    return is_at_location(pos_idx, POT_INDICES)
-
-
-def is_at_serving(pos_idx):
-    """Check if position is at the serving location."""
-    return is_at_location(pos_idx, SERVING_INDICES)
-
-
-def is_at_onion_dispenser(pos_idx):
-    """Check if position is at an onion dispenser."""
-    return is_at_location(pos_idx, ONION_DISPENSER_INDICES)
-
-
-def position_in_front(pos_idx, orientation_idx, width=GRID_WIDTH, height=GRID_HEIGHT):
-    """
-    Return the grid index of the cell in front of an agent at pos_idx facing orientation_idx.
-    Matches env: INTERACT acts on the cell in the direction the agent is facing.
-    Returns None if the cell in front is out of bounds.
-    """
-    x, y = index_to_xy(pos_idx, width)
+def position_in_front(walkable_idx: int, orientation_idx: int, width: int = GRID_WIDTH, height: int = GRID_HEIGHT):
+    """Grid index of the cell in front of (walkable_idx, orientation_idx), or None if out of bounds."""
+    grid_idx = walkable_idx_to_grid_idx(walkable_idx)
+    x, y = index_to_xy(grid_idx, width)
     if 0 <= orientation_idx < N_DIRECTIONS:
         dx, dy = DIRECTIONS[orientation_idx]
     else:
         dx, dy = 0, 0
     fx, fy = x + dx, y + dy
     if 0 <= fx < width and 0 <= fy < height:
-        return fy * width + fx
+        return xy_to_index(fx, fy, width)
     return None
 
+
+def is_at_location(grid_idx: int, location_indices) -> bool:
+    return grid_idx in location_indices
+
+
+def is_at_pot(grid_idx: int) -> bool:
+    return is_at_location(grid_idx, POT_INDICES)
+
+
+def is_at_serving(grid_idx: int) -> bool:
+    return is_at_location(grid_idx, SERVING_INDICES)
+
+
+def is_at_onion_dispenser(grid_idx: int) -> bool:
+    return is_at_location(grid_idx, ONION_DISPENSER_INDICES)
+
+
+# -------------------------------------------------

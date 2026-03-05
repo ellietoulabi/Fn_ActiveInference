@@ -1,0 +1,138 @@
+
+# def _milestone_this_step(pos_w: int, ori: int, held: int, pot: int, action: int):
+#     """
+#     Given (pos, ori, held, pot) and action, return which milestones occur this step.
+#     Returns (did_put1, did_put2, did_put3, did_plated, did_deliver) as booleans
+#     for the deterministic outcome; belief-level will marginalize over (pos, ori, held, pot).
+#     """
+#     front = _get_front(pos_w, ori)
+#     did_put1 = (
+#         action == model_init.INTERACT
+#         and front == model_init.FRONT_POT
+#         and held == model_init.HELD_ONION
+#         and pot == model_init.POT_0
+#     )
+#     did_put2 = (
+#         action == model_init.INTERACT
+#         and front == model_init.FRONT_POT
+#         and held == model_init.HELD_ONION
+#         and pot == model_init.POT_1
+#     )
+#     did_put3 = (
+#         action == model_init.INTERACT
+#         and front == model_init.FRONT_POT
+#         and held == model_init.HELD_ONION
+#         and pot == model_init.POT_2
+#     )
+#     did_plated = (
+#         action == model_init.INTERACT
+#         and front == model_init.FRONT_POT
+#         and held == model_init.HELD_DISH
+#         and pot == model_init.POT_3
+#     )
+#     did_deliver = (
+#         action == model_init.INTERACT
+#         and front == model_init.FRONT_SERVE
+#         and held == model_init.HELD_SOUP
+#     )
+#     return did_put1, did_put2, did_put3, did_plated, did_deliver
+
+
+# def B_checkboxes(parents: dict, action: int) -> dict[str, np.ndarray]:
+#     """
+#     B for all five checkboxes. Monotonic progress within a cycle; reset on delivery.
+#     Chain implicit (no intermediate rewards): put1 then put2 then put3.
+
+#     - ck_put1=1 only when first onion put (pot POT_0->POT_1).
+#     - ck_put2=1 only when second onion put (pot POT_1->POT_2); requires put1 done.
+#     - ck_put3=1 only when third onion put (pot POT_2->POT_3); requires put1, put2 done.
+#     - ck_plated=1 when picked up soup (dish at pot POT_3 -> held SOUP).
+#     - ck_delivered=1 when delivered (soup at serve -> held NONE).
+#     - On delivery, all checkboxes reset to 0 for the next cycle.
+#     """
+#     q_pos = np.array(parents["self_pos"], dtype=float)
+#     q_ori = np.array(parents["self_orientation"], dtype=float)
+#     q_held = np.array(parents["self_held"], dtype=float)
+#     q_pot = np.array(parents["pot_state"], dtype=float)
+#     q_ck1 = np.array(parents["ck_put1"], dtype=float)
+#     q_ck2 = np.array(parents["ck_put2"], dtype=float)
+#     q_ck3 = np.array(parents["ck_put3"], dtype=float)
+#     q_plat = np.array(parents["ck_plated"], dtype=float)
+#     q_del = np.array(parents["ck_delivered"], dtype=float)
+
+#     next_ck1 = np.zeros(2, dtype=float)
+#     next_ck2 = np.zeros(2, dtype=float)
+#     next_ck3 = np.zeros(2, dtype=float)
+#     next_plat = np.zeros(2, dtype=float)
+#     next_del = np.zeros(2, dtype=float)
+
+#     for pos_w in range(model_init.N_WALKABLE):
+#         for ori in range(model_init.N_DIRECTIONS):
+#             for held in range(model_init.N_HELD_TYPES):
+#                 for pot in range(model_init.N_POT_STATES):
+#                     w = q_pos[pos_w] * q_ori[ori] * q_held[held] * q_pot[pot]
+#                     if w <= 1e-16:
+#                         continue
+#                     did_put1, did_put2, did_put3, did_plated, did_deliver = _milestone_this_step(
+#                         pos_w, ori, held, pot, action
+#                     )
+#                     for c1 in range(2):
+#                         for c2 in range(2):
+#                             for c3 in range(2):
+#                                 for cp in range(2):
+#                                     for cd in range(2):
+#                                         jw = (
+#                                             w
+#                                             * q_ck1[c1]
+#                                             * q_ck2[c2]
+#                                             * q_ck3[c3]
+#                                             * q_plat[cp]
+#                                             * q_del[cd]
+#                                         )
+#                                         if jw <= 1e-16:
+#                                             continue
+#                                         if did_deliver:
+#                                             # Global reset on delivery (for this agent's memory)
+#                                             next_ck1[0] += jw
+#                                             next_ck2[0] += jw
+#                                             next_ck3[0] += jw
+#                                             next_plat[0] += jw
+#                                             next_del[1] += jw
+#                                         else:
+#                                             # Monotonic progress driven by pot_state only:
+#                                             # pot>=1 -> ck_put1, pot>=2 -> ck_put2, pot==3 -> ck_put3
+#                                             has_put1 = pot in (
+#                                                 model_init.POT_1,
+#                                                 model_init.POT_2,
+#                                                 model_init.POT_3,
+#                                             )
+#                                             has_put2 = pot in (
+#                                                 model_init.POT_2,
+#                                                 model_init.POT_3,
+#                                             )
+#                                             has_put3 = pot == model_init.POT_3
+
+#                                             n1 = 1 if has_put1 or c1 == 1 else 0
+#                                             n2 = 1 if has_put2 or c2 == 1 else 0
+#                                             n3 = 1 if has_put3 or c3 == 1 else 0
+
+#                                             # Plate and delivered remain event-based as before
+#                                             np_ = 1 if did_plated or cp == 1 else 0
+#                                             nd = cd  # keep delivered flag until we deliver (then reset above)
+
+#                                             next_ck1[n1] += jw
+#                                             next_ck2[n2] += jw
+#                                             next_ck3[n3] += jw
+#                                             next_plat[np_] += jw
+#                                             next_del[nd] += jw
+
+#     return {
+#         "ck_put1": normalize(next_ck1),
+#         "ck_put2": normalize(next_ck2),
+#         "ck_put3": normalize(next_ck3),
+#         "ck_plated": normalize(next_plat),
+#         "ck_delivered": normalize(next_del),
+#     }
+
+
+

@@ -479,20 +479,16 @@ def B_checkboxes(parents: dict, action: int, noise_level: float = 0.0) -> dict[s
                                             next_plat[0] += jw
                                             next_del[1] += jw
                                         else:
-                                            # Monotonic progress driven by pot_state only:
-                                            # pot>=1 -> ck_put1, pot>=2 -> ck_put2, pot==3 -> ck_put3
+                                            # Include did_put* so checkboxes flip on the same step we perform the action
+                                            # (pot in loop is pre-transition; after did_put1 pot becomes POT_1)
                                             has_put1 = pot in (model_init.POT_1, model_init.POT_2, model_init.POT_3)
                                             has_put2 = pot in (model_init.POT_2, model_init.POT_3)
                                             has_put3 = pot == model_init.POT_3
-
-                                            n1 = 1 if has_put1 or c1 == 1 else 0
-                                            n2 = 1 if has_put2 or c2 == 1 else 0
-                                            n3 = 1 if has_put3 or c3 == 1 else 0
-
-                                            # Plate and delivered remain event-based as before
+                                            n1 = 1 if (did_put1 or did_put2 or did_put3 or has_put1 or c1 == 1) else 0
+                                            n2 = 1 if (did_put2 or did_put3 or has_put2 or c2 == 1) else 0
+                                            n3 = 1 if (did_put3 or has_put3 or c3 == 1) else 0
                                             np_ = 1 if did_plated or cp == 1 else 0
-                                            nd = cd  # keep delivered flag until we deliver (then reset above)
-
+                                            nd = cd
                                             next_ck1[n1] += jw
                                             next_ck2[n2] += jw
                                             next_ck3[n3] += jw

@@ -1,107 +1,70 @@
 """
-Prior beliefs (D) for IndividuallyCollective paradigm (JOINT state) - Cramped Room.
-
-This mirrors the FullyCollective prior over the JOINT state, but is implemented
-locally in the IndividuallyCollective folder.
+Prior beliefs (D) for IndividuallyCollective paradigm (single-agent) — Cramped Room.
 """
 
 import numpy as np
 from . import model_init
 
+# Default start cell in grid (x, y); mapped to walkable index via grid_idx_to_walkable_idx
+DEFAULT_START_GRID_XY = (1, 2)
+
+CHECKBOX_FACTORS = ("ck_put1", "ck_put2", "ck_put3", "ck_plated", "ck_delivered")
+
 
 def build_D(
-    self_start_pos=None,
-    other_start_pos=None,
-    self_start_ori=0,  # NORTH
-    other_start_ori=0,  # NORTH
-):
-    """
-    Build prior belief distribution for cramped_room layout.
-    
-    Args:
-        self_start_pos: Starting position index for self agent (default: (1, 2) = 11)
-        other_start_pos: Starting position index for other agent (default: (3, 1) = 8)
-        self_start_ori: Starting orientation index for self agent
-        other_start_ori: Starting orientation index for other agent
-    
-    Returns:
-        Dictionary mapping state factor names to prior probability arrays
-    """
-    S = model_init.GRID_SIZE
-    
-    # Default start positions for cramped_room
+    self_start_pos: int | None = None,
+    self_start_ori: int = 0,
+) -> dict[str, np.ndarray]:
+
     if self_start_pos is None:
-        self_start_pos = model_init.xy_to_index(1, 2)  # (1, 2)
-    if other_start_pos is None:
-        other_start_pos = model_init.xy_to_index(3, 1)  # (3, 1)
-    
-    D = {}
-
-    # Agent positions (deterministic at start)
-    D["self_pos"] = np.zeros(S)
-    if 0 <= self_start_pos < S:
-        D["self_pos"][self_start_pos] = 1.0
+        gx, gy = DEFAULT_START_GRID_XY
+        start_grid = model_init.xy_to_index(gx, gy)
+        start_walkable = model_init.grid_idx_to_walkable_idx(start_grid)
+        self_start_pos = int(start_walkable) if start_walkable is not None else 0
     else:
-        D["self_pos"][0] = 1.0
+        self_start_pos = int(self_start_pos)
 
-    D["other_pos"] = np.zeros(S)
-    if 0 <= other_start_pos < S:
-        D["other_pos"][other_start_pos] = 1.0
-    else:
-        D["other_pos"][0] = 1.0
+    self_start_ori = int(self_start_ori)
 
-    # Agent orientations (deterministic at start - both facing NORTH)
-    D["self_orientation"] = np.zeros(model_init.N_DIRECTIONS)
-    if 0 <= self_start_ori < model_init.N_DIRECTIONS:
-        D["self_orientation"][self_start_ori] = 1.0
-    else:
-        D["self_orientation"][0] = 1.0  # Default to NORTH
+    D: dict[str, np.ndarray] = {}
 
-    D["other_orientation"] = np.zeros(model_init.N_DIRECTIONS)
-    if 0 <= other_start_ori < model_init.N_DIRECTIONS:
-        D["other_orientation"][other_start_ori] = 1.0
-    else:
-        D["other_orientation"][0] = 1.0  # Default to NORTH
+    # self_pos
+    D["self_pos"] = np.zeros(model_init.N_WALKABLE, dtype=float)
+    idx = self_start_pos if 0 <= self_start_pos < model_init.N_WALKABLE else 0
+    D["self_pos"][idx] = 1.0
 
-    # Held objects (start with nothing)
-    D["self_held"] = np.zeros(model_init.N_HELD_TYPES)
+    # self_orientation
+    D["self_orientation"] = np.zeros(model_init.N_DIRECTIONS, dtype=float)
+    ori_idx = self_start_ori if 0 <= self_start_ori < model_init.N_DIRECTIONS else 0
+    D["self_orientation"][ori_idx] = 1.0
+
+    # self_held
+    D["self_held"] = np.zeros(model_init.N_HELD_TYPES, dtype=float)
     D["self_held"][model_init.HELD_NONE] = 1.0
 
-    D["other_held"] = np.zeros(model_init.N_HELD_TYPES)
-    D["other_held"][model_init.HELD_NONE] = 1.0
+    # pot_state
+    D["pot_state"] = np.zeros(model_init.N_POT_STATES, dtype=float)
+    D["pot_state"][model_init.POT_0] = 1.0
 
-    # Pot state (starts idle)
-    D["pot_state"] = np.zeros(model_init.N_POT_STATES)
-    D["pot_state"][model_init.POT_IDLE] = 1.0
+    # Checkboxes: all start at 0 (unchecked)
+    for ck in CHECKBOX_FACTORS:
+        D[ck] = np.array([1.0, 0.0], dtype=float)
 
-    # Checkbox memory starts with all milestones unchecked (0)
-    for ck_name in ["ck_put1", "ck_put2", "ck_put3", "ck_plated", "ck_delivered"]:
-        D[ck_name] = np.zeros(2)
-        D[ck_name][0] = 1.0
-
-    # Optional explicit soup_delivered event-state (starts at 0)
-    D["soup_delivered"] = np.array([1.0, 0.0])
+    # Any factor in model_init.states not yet in D gets uniform prior
+    for factor, values in model_init.states.items():
+        if factor in D:
+            continue
+        n = len(values)
+        D[factor] = np.ones(n, dtype=float) / float(n) if n > 0 else np.array([], dtype=float)
 
     return D
 
 
-def D_fn(config=None):
-    """
-    Prior beliefs function.
+def D_fn(config: dict | None = None) -> dict[str, np.ndarray]:
     
-    Args:
-        config: Dictionary with configuration (start positions, orientations)
-    
-    Returns:
-        Dictionary mapping state factor names to prior probability arrays
-    """
     if config is None:
         return build_D()
-    
     return build_D(
-        self_start_pos=config.get("self_start_pos", None),
-        other_start_pos=config.get("other_start_pos", None),
+        self_start_pos=config.get("self_start_pos"),
         self_start_ori=config.get("self_start_ori", 0),
-        other_start_ori=config.get("other_start_ori", 0),
     )
-

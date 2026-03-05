@@ -1,123 +1,137 @@
 """
-Env <-> model utilities for the IndividuallyCollective paradigm - Cramped Room.
+Env <-> model utilities for IndividuallyCollective paradigm - Cramped Room (Monotonic checkbox model).
 
-This paradigm uses the same JOINT model and helpers as FullyCollective, but each
-agent reasons over joint actions and then executes only its own action component.
-
-Observation perspective:
-- Each agent can receive an observation "from their perspective" so that
-  (agent1_pos, agent2_pos) in the model means (my_pos, other_pos) for that agent.
-  This allows agents to share the same joint model structure while maintaining
-  different beliefs and preferences in multi-agent experiments.
+Converts Overcooked env state to single-agent model observations.
+- Agent position uses walkable indices 0..5 (not grid 0..19).
+- Pot state uses 4 values: POT_0, POT_1, POT_2, POT_3 (ready); cook_time=0.
+- Observation keys match model_init.observations: self_pos_obs, self_orientation_obs,
+  self_held_obs, pot_state_obs, soup_delivered_obs.
 """
 
-import numpy as np
-
-from ..FullyCollective.env_utils import *  # noqa: F401,F403
 from . import model_init
 
 
-def env_obs_to_model_obs_for_agent(env_state, reward_info, agent_id):
+def _extract_pot_state_from_env(env_state):
     """
-    Convert OvercookedState to model observation indices from a specific agent's
-    perspective.
+    Map Overcooked env pot contents to our 4-state pot abstraction.
 
-    So that in the JOINT model:
-    - agent1_* corresponds to \"me\"
-    - agent2_* corresponds to \"other\"
-
-    For agent 1 (agent_id=1): keep the original mapping.
-    For agent 2 (agent_id=2): swap agent1/agent2 roles so that in the model
-    agent1_* = env's player 2, agent2_* = env's player 1.
-
-    Returns a dict in the same format as FullyCollective.env_obs_to_model_obs,
-    so the same JOINT generative model (A, B, C, D) can be used; Agent 2 just
-    receives a different perspective.
+    POT_0=idle, POT_1=1 onion, POT_2=2 onions, POT_3=ready (3 onions; cook_time=0).
     """
-    base = env_obs_to_model_obs(env_state, reward_info=reward_info)
-    if agent_id == 1:
-        return base
+    pot_state = model_init.POT_0
 
-    # Agent 2: swap so that in the model \"agent1\" = me (env player 2),
-    # and \"agent2\" = other (env player 1).
+    for (pos, obj) in env_state.objects.items():
+        idx = model_init.xy_to_index(pos[0], pos[1])
+        if idx not in model_init.POT_INDICES:
+            continue
+
+        if obj is None:
+            return model_init.POT_0
+
+        if getattr(obj, "name", None) == "soup":
+            ingredients = getattr(obj, "ingredients", None)
+            onion_count = 0
+            if ingredients is not None:
+                for ing in ingredients:
+                    ing_name = ing if isinstance(ing, str) else getattr(ing, "name", None)
+                    if ing_name == "onion":
+                        onion_count += 1
+
+            is_ready = bool(getattr(obj, "is_ready", False))
+            is_cooking = bool(getattr(obj, "is_cooking", False))
+
+            # 4 states: 0, 1, 2 onions or ready (POT_3)
+            if is_ready or is_cooking or onion_count >= 3:
+                return model_init.POT_3
+            if onion_count <= 0:
+                return model_init.POT_0
+            if onion_count == 1:
+                return model_init.POT_1
+            if onion_count == 2:
+                return model_init.POT_2
+            return model_init.POT_3
+
+        return model_init.POT_0
+
+    return pot_state
+
+
+def env_obs_to_model_obs(env_state, agent_idx, reward_info=None):
+    """
+    Convert OvercookedState to single-agent model observation indices.
+
+    Returns dict with keys matching model_init.observations:
+    self_pos_obs, self_orientation_obs, self_held_obs, pot_state_obs, soup_delivered_obs.
+    Agent position is in walkable index space (0..5).
+    """
+    this_agent = env_state.players[agent_idx]
+
+    # Overcooked position is (x, y) with x=column, y=row; same for both agents.
+    this_pos = this_agent.position
+    x, y = this_pos[0], this_pos[1]
+    this_pos_grid = model_init.xy_to_index(x, y)
+    this_pos_walkable = model_init.grid_idx_to_walkable_idx(this_pos_grid)
+    if this_pos_walkable is None:
+        this_pos_walkable = 0  # fallback if env position not on floor (should not happen)
+
+    this_ori_idx = model_init.direction_to_index(this_agent.orientation)
+
+    this_held = model_init.object_name_to_held_type(
+        this_agent.held_object.name if this_agent.has_object() else None
+    )
+
+    pot_state = _extract_pot_state_from_env(env_state)
+
+    soup_delivered = 0
+    if reward_info is not None:
+        sparse_reward = reward_info.get("sparse_reward_by_agent", None)
+        if sparse_reward is not None and len(sparse_reward) > agent_idx:
+            soup_delivered = 1 if sparse_reward[agent_idx] > 0 else 0
+        else:
+            r = reward_info.get("sparse_reward", 0)
+            soup_delivered = 1 if r > 0 else 0
+
     return {
-        "agent1_pos": base["agent2_pos"],
-        "agent2_pos": base["agent1_pos"],
-        "agent1_orientation": base["agent2_orientation"],
-        "agent2_orientation": base["agent1_orientation"],
-        "agent1_held": base["agent2_held"],
-        "agent2_held": base["agent1_held"],
-        "pot_state": base["pot_state"],
-        "soup_delivered": base["soup_delivered"],
+        "self_pos_obs": this_pos_walkable,
+        "self_orientation_obs": this_ori_idx,
+        "self_held_obs": this_held,
+        "pot_state_obs": pot_state,
+        "soup_delivered_obs": soup_delivered,
     }
 
 
-def sample_my_component(
-    q_pi,
-    policies,
-    my_agent_id,
-    n_actions: int | None = None,
-    action_selection: str = "deterministic",
-    alpha: float = 16.0,
-) -> int:
+def get_D_config_from_state(state, agent_idx):
     """
-    Marginalize the joint policy posterior to the distribution over my action
-    component and return a single primitive action index in [0, n_actions-1].
+    Extract initial position (walkable index) and orientation from env state.
 
-    Used in IndividuallyCollective: each agent has the same joint model and
-    q_pi over joint actions; this returns only \"my\" component (a1 or a2).
-
-    Args
-    ----
-    q_pi : array-like
-        1D array of policy posterior probabilities (over joint policies).
-    policies : list
-        List of policies, each policy is a list of joint action indices
-        (we use only the first timestep: policies[i][0]).
-    my_agent_id : int
-        0 for agent 1 (a1 = joint // N_ACTIONS),
-        1 for agent 2 (a2 = joint % N_ACTIONS).
-    n_actions : int, optional
-        Number of primitive actions per agent (default: model_init.N_ACTIONS).
-    action_selection : {\"deterministic\", \"stochastic\"}
-        - \"deterministic\": return argmax of the marginal.
-        - \"stochastic\": sample from a sharpened marginal (precision alpha).
-    alpha : float
-        Precision for stochastic sampling (higher -> greedier).
-
-    Returns
-    -------
-    int
-        Primitive action index in [0, n_actions-1].
+    Returns a config dict for D_fn(config). self_start_pos is in walkable space (0..5).
     """
-    if n_actions is None:
-        n_actions = model_init.N_ACTIONS
+    this_agent = state.players[agent_idx]
 
-    q_pi = np.asarray(q_pi, dtype=float)
-    marginal = np.zeros(n_actions, dtype=float)
+    this_pos = this_agent.position
+    this_pos_grid = model_init.xy_to_index(this_pos[0], this_pos[1])
+    this_pos_walkable = model_init.grid_idx_to_walkable_idx(this_pos_grid)
+    if this_pos_walkable is None:
+        this_pos_walkable = 0
 
-    for pol_idx, policy in enumerate(policies):
-        joint = int(policy[0])
-        if my_agent_id == 0:
-            a = joint // n_actions
-        else:
-            a = joint % n_actions
-        marginal[a] += q_pi[pol_idx]
+    this_ori_idx = model_init.direction_to_index(this_agent.orientation)
 
-    total = float(np.sum(marginal))
-    if total <= 0.0 or not np.isfinite(total):
-        # Fallback to uniform if something goes wrong
-        return int(np.random.randint(0, n_actions))
-
-    marginal /= total
-
-    if action_selection == "deterministic":
-        return int(np.argmax(marginal))
-
-    # Stochastic: sharpen with precision alpha and sample
-    log_m = np.log(marginal + 1e-16)
-    p = np.exp(log_m * alpha)
-    p /= np.sum(p)
-    return int(np.random.choice(n_actions, p=p))
+    return {
+        "self_start_pos": this_pos_walkable,
+        "self_start_ori": this_ori_idx,
+    }
 
 
+def model_action_to_env_action(model_action):
+    """
+    Convert model action index to Action object.
+    """
+    from overcooked_ai_py.mdp.actions import Action
+    return Action.INDEX_TO_ACTION[int(model_action)]
+
+
+def env_action_to_model_action(env_action):
+    """
+    Convert Action object to model action index.
+    """
+    from overcooked_ai_py.mdp.actions import Action
+    return Action.ACTION_TO_INDEX[env_action]
