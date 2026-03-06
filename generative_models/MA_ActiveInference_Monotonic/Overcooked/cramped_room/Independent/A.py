@@ -1,132 +1,74 @@
 # A.py
 """
-Observation likelihood model (A = P (o | s)) for Independent paradigm — Cramped Room (monotonic model).
+Observation likelihoods p(o | state) model (A) for IndividuallyCollective paradigm — Cramped Room (monotonic, single-agent).
+Includes binary counter occupancy observations for modeled counters.
 """
 
 import numpy as np
 from . import model_init
 
-# Noise for position observations (same role as RedBlueButton A_NOISE_LEVEL)
-A_NOISE_LEVEL = 0.03
-# Counters are observable but not perfectly (avoid absolute certainty)
-COUNTER_OBS_NOISE_LEVEL = 0.01
+A_NOISE_LEVEL = 0.01
 
 
 def _noisy_categorical(idx: int, n: int, noise_level: float = A_NOISE_LEVEL) -> np.ndarray:
-    """
-    p(observe each of n outcomes | true state is idx).
-    Off-diagonal mass = noise_level / (n-1), diagonal = 1 - noise_level.
-    Returns float array of length n that sums to 1.
-    """
+    """Return a noisy categorical centered on `idx` over `n` outcomes."""
     if n <= 0:
         return np.array([], dtype=float)
     p = np.full(n, noise_level / max(1, n - 1), dtype=float)
     if 0 <= idx < n:
         p[idx] = 1.0 - noise_level
-    # If idx is ever out-of-range, p would not sum to 1; normalize.
-    s = float(p.sum())
-    return p / max(s, 1e-12)
+    return p
 
 
+def A_self_pos_obs(self_pos: int) -> np.ndarray:
+    n = len(model_init.observations["self_pos_obs"])
+    return _noisy_categorical(int(self_pos), n, A_NOISE_LEVEL)
 
 
-def A_agent_pos_obs(state_indices: dict) -> np.ndarray:
-    """p(agent_pos_obs | agent_pos)."""
-    n = len(model_init.observations["agent_pos_obs"])
-    return _noisy_categorical(int(state_indices["agent_pos"]), n, A_NOISE_LEVEL)
+def A_self_orientation_obs(self_orientation: int) -> np.ndarray:
+    n = len(model_init.observations["self_orientation_obs"])
+    return _noisy_categorical(int(self_orientation), n, A_NOISE_LEVEL)
 
 
-def A_agent_orientation_obs(state_indices: dict) -> np.ndarray:
-    """p(agent_orientation_obs | agent_orientation)."""
-    n = len(model_init.observations["agent_orientation_obs"])
-    return _noisy_categorical(int(state_indices["agent_orientation"]), n, A_NOISE_LEVEL)
+def A_self_held_obs(self_held: int) -> np.ndarray:
+    n = len(model_init.observations["self_held_obs"])
+    return _noisy_categorical(int(self_held), n, A_NOISE_LEVEL)
 
 
-def A_agent_held_obs(state_indices: dict) -> np.ndarray:
-    """p(agent_held_obs | agent_held)."""
-    n = len(model_init.observations["agent_held_obs"])
-    return _noisy_categorical(int(state_indices["agent_held"]), n, A_NOISE_LEVEL)
-
-
-def A_pot_state_obs(state_indices: dict) -> np.ndarray:
-    """p(pot_state_obs | pot_state)."""
-    pot = int(state_indices.get("pot_state", model_init.POT_0))
+def A_pot_state_obs(pot_state: int) -> np.ndarray:
     n = len(model_init.observations["pot_state_obs"])
-    return _noisy_categorical(pot, n, A_NOISE_LEVEL)
+    return _noisy_categorical(int(pot_state), n, A_NOISE_LEVEL)
 
 
-def A_soup_delivered_obs(state_indices: dict) -> np.ndarray:
-    """
-    p(soup_delivered_obs | agent_pos, agent_orientation, agent_held).
-    """
-    agent_pos = int(state_indices["agent_pos"])
-    agent_orientation = int(state_indices["agent_orientation"])
-    agent_held = int(state_indices["agent_held"])
-
-    delivered = 1 if (
-        agent_pos == 5
-        and agent_orientation == model_init.SOUTH
-        and agent_held == model_init.HELD_SOUP
-    ) else 0
+def A_soup_delivered_obs(soup_delivered: int) -> np.ndarray:
     n = len(model_init.observations["soup_delivered_obs"])
-    return _noisy_categorical(delivered, n, 0.7)
-
-def A_counter_0_obs(state_indices: dict) -> np.ndarray:
-    """p(counter_0_obs | counter_0)."""
-    n = len(model_init.observations["counter_0_obs"])
-    s = int(state_indices.get("counter_0", model_init.HELD_NONE))
-    return _noisy_categorical(s, n, COUNTER_OBS_NOISE_LEVEL)
+    idx = 1 if int(soup_delivered) > 0 else 0
+    return _noisy_categorical(idx, n, A_NOISE_LEVEL)
 
 
-def A_counter_1_obs(state_indices: dict) -> np.ndarray:
-    """p(counter_1_obs | counter_1)."""
-    n = len(model_init.observations["counter_1_obs"])
-    s = int(state_indices.get("counter_1", model_init.HELD_NONE))
-    return _noisy_categorical(s, n, COUNTER_OBS_NOISE_LEVEL)
+def A_counter_occ_obs(counter_occ: int, factor_name: str) -> np.ndarray:
+    """
+    Binary counter occupancy observation for factor ctr_<grid>:
+      0 empty, 1 full
+    """
+    n = len(model_init.observations[f"{factor_name}_obs"])
+    return _noisy_categorical(int(counter_occ), n, A_NOISE_LEVEL)
 
-
-def A_counter_2_obs(state_indices: dict) -> np.ndarray:
-    """p(counter_2_obs | counter_2)."""
-    n = len(model_init.observations["counter_2_obs"])
-    s = int(state_indices.get("counter_2", model_init.HELD_NONE))
-    return _noisy_categorical(s, n, COUNTER_OBS_NOISE_LEVEL)
-
-
-def A_counter_3_obs(state_indices: dict) -> np.ndarray:
-    """p(counter_3_obs | counter_3)."""
-    n = len(model_init.observations["counter_3_obs"])
-    s = int(state_indices.get("counter_3", model_init.HELD_NONE))
-    return _noisy_categorical(s, n, COUNTER_OBS_NOISE_LEVEL)
-
-
-def A_counter_4_obs(state_indices: dict) -> np.ndarray:
-    """p(counter_4_obs | counter_4)."""
-    n = len(model_init.observations["counter_4_obs"])
-    s = int(state_indices.get("counter_4", model_init.HELD_NONE))
-    return _noisy_categorical(s, n, COUNTER_OBS_NOISE_LEVEL)
 
 def A_fn(state_indices: dict) -> dict[str, np.ndarray]:
-    """
-    Observation likelihoods p(o | state) for all modalities in model_init.observations.
-    Each modality is computed by its corresponding function above.
-    """
-    obs = {
-        "agent_pos_obs": A_agent_pos_obs(state_indices),
-        "agent_orientation_obs": A_agent_orientation_obs(state_indices),
-        "agent_held_obs": A_agent_held_obs(state_indices),
-        "pot_state_obs": A_pot_state_obs(state_indices),
-        "soup_delivered_obs": A_soup_delivered_obs(state_indices),
-        "counter_0_obs": A_counter_0_obs(state_indices),
-        "counter_1_obs": A_counter_1_obs(state_indices),
-        "counter_2_obs": A_counter_2_obs(state_indices),
-        "counter_3_obs": A_counter_3_obs(state_indices),
-        "counter_4_obs": A_counter_4_obs(state_indices),
-    }
+    pot_state = int(state_indices.get("pot_state", model_init.POT_0))
+    soup_delivered = int(state_indices.get("ck_delivered", 0))
 
-    if set(obs.keys()) != set(model_init.observations.keys()):
-        missing = set(model_init.observations.keys()) - set(obs.keys())
-        extra = set(obs.keys()) - set(model_init.observations.keys())
-        raise KeyError(f"A_fn modalities mismatch. missing={sorted(missing)} extra={sorted(extra)}")
+    obs: dict[str, np.ndarray] = {}
+    obs["self_pos_obs"] = A_self_pos_obs(state_indices["self_pos"])
+    obs["self_orientation_obs"] = A_self_orientation_obs(state_indices["self_orientation"])
+    obs["self_held_obs"] = A_self_held_obs(state_indices["self_held"])
+    obs["pot_state_obs"] = A_pot_state_obs(pot_state)
+    obs["soup_delivered_obs"] = A_soup_delivered_obs(soup_delivered)
+
+    # Counter occupancy obs
+    for grid_idx in model_init.MODELED_COUNTERS:
+        factor = f"ctr_{grid_idx}"
+        obs[f"{factor}_obs"] = A_counter_occ_obs(state_indices[factor], factor)
 
     return obs
-
