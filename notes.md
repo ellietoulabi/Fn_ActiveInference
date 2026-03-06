@@ -24,3 +24,15 @@ TODO:
 - D.py
 - Policies
 
+
+
+
+
+
+
+
+A_NOISE_LEVEL = 0.001
+
+B_NOISE_LEVEL = 0.0
+
+INTERACT_SUCCESS_PROB = 1.0

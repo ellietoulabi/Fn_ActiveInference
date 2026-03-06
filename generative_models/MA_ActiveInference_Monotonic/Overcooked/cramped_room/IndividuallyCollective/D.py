@@ -1,13 +1,13 @@
+# D.py
 """
 Prior beliefs (D) for IndividuallyCollective paradigm (single-agent) — Cramped Room.
+Includes binary counter occupancy factors (all start EMPTY).
 """
 
 import numpy as np
 from . import model_init
 
-# Default start cell in grid (x, y); mapped to walkable index via grid_idx_to_walkable_idx
 DEFAULT_START_GRID_XY = (1, 2)
-
 CHECKBOX_FACTORS = ("ck_put1", "ck_put2", "ck_put3", "ck_plated", "ck_delivered")
 
 
@@ -46,6 +46,11 @@ def build_D(
     D["pot_state"] = np.zeros(model_init.N_POT_STATES, dtype=float)
     D["pot_state"][model_init.POT_0] = 1.0
 
+    # Counters: start empty (binary)
+    for grid_idx in model_init.MODELED_COUNTERS:
+        cf = f"ctr_{grid_idx}"
+        D[cf] = np.array([1.0, 0.0], dtype=float)  # [EMPTY, FULL]
+
     # Checkboxes: all start at 0 (unchecked)
     for ck in CHECKBOX_FACTORS:
         D[ck] = np.array([1.0, 0.0], dtype=float)
@@ -61,7 +66,6 @@ def build_D(
 
 
 def D_fn(config: dict | None = None) -> dict[str, np.ndarray]:
-    
     if config is None:
         return build_D()
     return build_D(

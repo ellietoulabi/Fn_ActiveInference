@@ -136,6 +136,8 @@ def run_agent_vs_env_scenarios():
     observation_labels = model_init_agent.observations
     env_params = {"width": model_init_agent.GRID_WIDTH, "height": model_init_agent.GRID_HEIGHT}
 
+    # Agent params tuned for speed: minimal policies, few iters, skip ctr_* in EFE (see control.py).
+    # For better quality: policy_len=2–3, inference_horizon=2–3, num_iter=16, dF_tol=0.001.
     def create_agent(seed=None):
         if seed is not None:
             np.random.seed(seed)
@@ -158,7 +160,7 @@ def run_agent_vs_env_scenarios():
             sampling_mode="full",
             inference_algorithm="VANILLA",
             num_iter=16,
-            dF_tol=0.001,
+            dF_tol=0.01,
         )
 
     max_steps_per_scenario = 100

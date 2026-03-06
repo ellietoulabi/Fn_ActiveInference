@@ -1,5 +1,7 @@
+# C.py
 """
 Preference model (C) for IndividuallyCollective paradigm — Cramped Room (sparse reward).
+Counter occupancy modalities (ctr_*_obs) get 0 preference by default.
 """
 
 from . import model_init  # noqa: F401
@@ -9,7 +11,6 @@ SOUP_DELIVERED_OBS_IDX = 1  # index 1 = "delivered this step" in soup_delivered_
 
 
 def C_fn(observation_indices: dict[str, int]) -> dict[str, float]:
-
     prefs: dict[str, float] = {}
     for modality, obs_idx in observation_indices.items():
         if modality == "soup_delivered_obs" and int(obs_idx) == SOUP_DELIVERED_OBS_IDX:
