@@ -187,13 +187,13 @@ def run_agent_vs_env_scenarios():
     def run_one_episode(episode_name, seed=None):
         obs, infos = env.reset(seed=seed)
         state = infos["agent_0"]["state"]
-        # Force env player to start at walkable index 0 (so map and obs match prior)
-        grid_idx = model_init_agent.WALKABLE_INDICES[0]
+        # Force env player to start at walkable index 5 (so map and obs match prior)
+        grid_idx = model_init_agent.WALKABLE_INDICES[5]
         x, y = model_init_agent.index_to_xy(grid_idx)
         state.players[0].update_pos_and_or((x, y), state.players[0].orientation)
         config = env_utils.get_D_config_from_state(state, 0)
-        # Force agent prior to start at walkable index 0
-        config["self_start_pos"] = 0
+        # Force agent prior to start at walkable index 5
+        config["self_start_pos"] = 5
         agent.reset(config=config)
         prev_reward_info = {"sparse_reward_by_agent": [0] if use_single_env else [0, 0]}
         total_reward = 0.0
