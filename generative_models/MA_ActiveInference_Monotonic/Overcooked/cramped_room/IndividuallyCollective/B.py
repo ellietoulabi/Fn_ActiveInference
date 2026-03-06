@@ -148,6 +148,7 @@ def B_self_held(parents: dict, action: int) -> np.ndarray:
                             p_success = INTERACT_SUCCESS_PROB
                         elif front == model_init.FRONT_POT and held == model_init.HELD_ONION and pot in (
                             model_init.POT_0,
+                            
                             model_init.POT_1,
                             model_init.POT_2,
                         ):
