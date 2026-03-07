@@ -97,8 +97,8 @@ states = {
     "ck_delivered": list(range(2)),
 
     # --- multi-agent (commented for single-agent run) ---
-    # "other_pos": list(range(N_WALKABLE)),
-    # "other_held": list(range(N_HELD_TYPES)),
+    "other_pos": list(range(N_WALKABLE)),
+    "other_held": list(range(N_HELD_TYPES)),
 }
 
 # Add binary counter factors
@@ -115,8 +115,8 @@ observations = {
     "soup_delivered_obs": [0, 1],
 
     # --- multi-agent (commented for single-agent run) ---
-    # "other_pos_obs": list(range(N_WALKABLE)),
-    # "other_held_obs": list(range(N_HELD_TYPES)),
+    "other_pos_obs": list(range(N_WALKABLE)),
+    "other_held_obs": list(range(N_HELD_TYPES)),
 }
 
 # Add counter occupancy observations
@@ -133,8 +133,8 @@ observation_state_dependencies = {
     "soup_delivered_obs": ["self_pos", "self_orientation", "self_held"],
 
     # --- multi-agent (commented for single-agent run) ---
-    # "other_pos_obs": ["other_pos"],
-    # "other_held_obs": ["other_held"],
+    "other_pos_obs": ["other_pos"],
+    "other_held_obs": ["other_held"],
 }
 
 # Add counter obs deps
@@ -142,7 +142,7 @@ for cf in COUNTER_FACTORS:
     observation_state_dependencies[f"{cf}_obs"] = [cf]
 
 state_state_dependencies = {
-    "self_pos": ["self_pos"],  # single-agent: no other_pos collision
+    "self_pos": ["self_pos","other_pos"],  # single-agent: no other_pos collision
     "self_orientation": ["self_orientation"],
 
     # (UPDATED) self_held depends on counters so drop feasibility is representable
@@ -156,6 +156,10 @@ state_state_dependencies = {
     "ck_put3":     ["ck_put3", "self_pos", "self_orientation", "self_held", "pot_state"],
     "ck_plated":   ["ck_plated", "self_pos", "self_orientation", "self_held", "pot_state"],
     "ck_delivered":["ck_delivered", "self_pos", "self_orientation", "self_held"],
+
+
+    "other_pos": ["other_pos"],
+    "other_held": ["other_held"],
 }
 
 # Add counter transition deps (each counter updates based on itself + local interaction context)

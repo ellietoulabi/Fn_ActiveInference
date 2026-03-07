@@ -1,9 +1,8 @@
 """
-Run a single Monotonic IndividuallyCollective Active Inference agent in the real Overcooked
-single-agent layout (cramped_room_single) with step-by-step logs.
+Run two Monotonic IndividuallyCollective Active Inference agents in Overcooked cramped_room
+with step-by-step logs.
 
-Uses OvercookedSingleAgentEnv and cramped_room_single.layout so there is only one player;
-no dummy agent.
+Uses OvercookedMultiAgentEnv so both agents are controlled by AIF.
 
 Run from project root: python run_individually_collective.py  (or python3 run_individually_collective.py)
 """
@@ -24,8 +23,7 @@ if overcooked_src.exists():
 # Single agent vs environment: IndividuallyCollective AIF agent in Overcooked
 # -----------------------------------------------------------------------------
 
-from utils.visualization.overcooked_terminal_map import orientation_str
-from utils.visualization.overcooked_terminal_map_single import render_overcooked_grid_single
+from utils.visualization.overcooked_terminal_map import orientation_str, render_overcooked_grid
 
 
 ACTION_NAMES = {
@@ -100,8 +98,7 @@ def _agent_summary_lines(state, model_init, max_agents: int | None = None):
 
 def run_agent_vs_env_scenarios():
     """
-    Run one Monotonic IndividuallyCollective AIF agent in the Overcooked cramped_room_single env
-    (single-player layout; no dummy).
+    Run two Monotonic IndividuallyCollective AIF agents in the Overcooked cramped_room env.
     """
     try:
         import numpy as np
@@ -118,14 +115,7 @@ def run_agent_vs_env_scenarios():
             model_init as mon_model_init,
             env_utils,
         )
-        try:
-            from environments.overcooked_single_agent_gym import OvercookedSingleAgentEnv
-            SingleAgentEnv = OvercookedSingleAgentEnv
-            single_agent_layout = "cramped_room_single"
-        except Exception:
-            from environments.overcooked_ma_gym import OvercookedMultiAgentEnv
-            SingleAgentEnv = None
-            single_agent_layout = None
+        from environments.overcooked_ma_gym import OvercookedMultiAgentEnv
     except Exception as e:
         print("\n[SKIP] Agent vs env: could not load agent or environment: {}".format(e))
         return
@@ -136,8 +126,7 @@ def run_agent_vs_env_scenarios():
     observation_labels = model_init_agent.observations
     env_params = {"width": model_init_agent.GRID_WIDTH, "height": model_init_agent.GRID_HEIGHT}
 
-    # Agent params tuned for speed: minimal policies, few iters, skip ctr_* in EFE (see control.py).
-    # For better quality: policy_len=2–3, inference_horizon=2–3, num_iter=16, dF_tol=0.001.
+    # Agent params tuned for speed.
     def create_agent(seed=None):
         if seed is not None:
             np.random.seed(seed)
@@ -152,115 +141,127 @@ def run_agent_vs_env_scenarios():
             env_params=env_params,
             observation_state_dependencies=model_init_agent.observation_state_dependencies,
             actions=list(range(model_init_agent.N_ACTIONS)),
-            gamma=4.0,
-            alpha=16.0,
+            gamma = 1.5,
+            alpha = 2.0,
             policy_len=3,
             inference_horizon=3,
-            action_selection="deterministic",
+            action_selection="stochastic",
             sampling_mode="full",
             inference_algorithm="VANILLA",
             num_iter=16,
             dF_tol=0.01,
         )
 
-    max_steps_per_scenario = 100
+    max_steps_per_scenario = 500
     horizon = max_steps_per_scenario + 10
 
-    if SingleAgentEnv is not None and single_agent_layout is not None:
-        try:
-            env = SingleAgentEnv(config={"layout": single_agent_layout, "horizon": horizon})
-            use_single_env = True
-            print("[Env] Using single-agent env: layout={}".format(single_agent_layout))
-        except Exception as e:
-            from environments.overcooked_ma_gym import OvercookedMultiAgentEnv
-            env = OvercookedMultiAgentEnv(config={"layout": "cramped_room", "horizon": horizon})
-            use_single_env = False
-            print("[Env] Single-agent env failed ({}), using two-agent cramped_room with dummy.".format(e))
-    else:
-        from environments.overcooked_ma_gym import OvercookedMultiAgentEnv
-        env = OvercookedMultiAgentEnv(config={"layout": "cramped_room", "horizon": horizon})
-        use_single_env = False
+    env = OvercookedMultiAgentEnv(config={"layout": "cramped_room", "horizon": horizon})
+    print("[Env] Using multi-agent env: layout=cramped_room")
 
-    agent = create_agent(seed=42)
-    DUMMY_ACTION = 4  # STAY (only used when use_single_env is False)
+    agent_0 = create_agent(seed=48)
+    agent_1 = create_agent(seed=49)
 
     def run_one_episode(episode_name, seed=None):
         obs, infos = env.reset(seed=seed)
         state = infos["agent_0"]["state"]
-        # Force env player to start at walkable index 5 (so map and obs match prior)
-        grid_idx = model_init_agent.WALKABLE_INDICES[5]
-        x, y = model_init_agent.index_to_xy(grid_idx)
-        state.players[0].update_pos_and_or((x, y), state.players[0].orientation)
-        config = env_utils.get_D_config_from_state(state, 0)
-        # Force agent prior to start at walkable index 5
-        config["self_start_pos"] = 5
-        agent.reset(config=config)
-        prev_reward_info = {"sparse_reward_by_agent": [0] if use_single_env else [0, 0]}
-        total_reward = 0.0
+        config_0 = env_utils.get_D_config_from_state(state, 0)
+        config_1 = env_utils.get_D_config_from_state(state, 1)
+        agent_0.reset(config=config_0)
+        agent_1.reset(config=config_1)
+        prev_reward_info = {"sparse_reward_by_agent": [0, 0]}
+        total_reward_0 = 0.0
+        total_reward_1 = 0.0
 
         print("\n" + "=" * 72)
         print("  {}".format(episode_name))
         print("=" * 72)
 
         for step in range(1, max_steps_per_scenario + 1):
-            state_str = _state_summary(state, model_init_agent, max_agents=1)
-            obs_display = env_utils.env_obs_to_model_obs(state, 0, reward_info=prev_reward_info)
+            state_str = _state_summary(state, model_init_agent, max_agents=2)
+            obs_0 = env_utils.env_obs_to_model_obs(state, 0, reward_info=prev_reward_info)
+            obs_1 = env_utils.env_obs_to_model_obs(state, 1, reward_info=prev_reward_info)
             print("\n  --- Step {} ---".format(step))
             print("    Env state:  {}".format(state_str))
             print("    Map (before action):")
-            for row in render_overcooked_grid_single(state, model_init_agent):
+            for row in render_overcooked_grid(state, model_init_agent):
                 print("      " + row)
-            for line in _agent_summary_lines(state, model_init_agent, max_agents=1):
+            for line in _agent_summary_lines(state, model_init_agent, max_agents=2):
                 print(line)
-            print("    Obs (model): self_pos_obs={} self_orientation_obs={} self_held_obs={} pot_state_obs={} soup_delivered_obs={}".format(
-                obs_display["self_pos_obs"], obs_display["self_orientation_obs"],
-                obs_display["self_held_obs"], obs_display["pot_state_obs"],
-                obs_display["soup_delivered_obs"]))
+            print("    Obs A0: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
+                obs_0["self_pos_obs"], obs_0["self_orientation_obs"], obs_0["self_held_obs"],
+                obs_0["other_pos_obs"], obs_0["other_held_obs"], obs_0["pot_state_obs"], obs_0["soup_delivered_obs"]))
+            print("    Obs A1: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
+                obs_1["self_pos_obs"], obs_1["self_orientation_obs"], obs_1["self_held_obs"],
+                obs_1["other_pos_obs"], obs_1["other_held_obs"], obs_1["pot_state_obs"], obs_1["soup_delivered_obs"]))
 
-            action = int(agent.step(obs_display))
-            if use_single_env:
-                observations, rewards, terminated, truncated, infos = env.step(action)
-                prev_reward_info = {"sparse_reward_by_agent": [infos["agent_0"].get("sparse_reward", 0)]}
-            else:
-                observations, rewards, terminated, truncated, infos = env.step({"agent_0": action, "agent_1": DUMMY_ACTION})
-                prev_reward_info = {"sparse_reward_by_agent": [infos["agent_0"].get("sparse_reward", 0), infos["agent_1"].get("sparse_reward", 0)]}
+            action_0 = int(agent_0.step(obs_0))
+            action_1 = int(agent_1.step(obs_1))
+            observations, rewards, terminated, truncated, infos = env.step({"agent_0": action_0, "agent_1": action_1})
+            prev_reward_info = {
+                "sparse_reward_by_agent": [
+                    infos["agent_0"].get("sparse_reward", 0),
+                    infos["agent_1"].get("sparse_reward", 0),
+                ]
+            }
             state = infos["agent_0"]["state"]
-            r = rewards["agent_0"]
-            total_reward += r
+            r0 = rewards["agent_0"]
+            r1 = rewards["agent_1"]
+            total_reward_0 += r0
+            total_reward_1 += r1
 
-            qs = agent.get_state_beliefs()
-            print("    Beliefs over states:")
+            qs_0 = agent_0.get_state_beliefs()
+            print("    Beliefs A0:")
             for factor in state_factors:
-                p = qs[factor]
+                p = qs_0[factor]
+                map_idx = int(np.argmax(p))
+                max_p = float(np.max(p))
+                H = float(-np.sum(p * np.log(p + 1e-16)))
+                print("      {} {} (p={:.2f}, H={:.2f})".format(factor, map_idx, max_p, H))
+            qs_1 = agent_1.get_state_beliefs()
+            print("    Beliefs A1:")
+            for factor in state_factors:
+                p = qs_1[factor]
                 map_idx = int(np.argmax(p))
                 max_p = float(np.max(p))
                 H = float(-np.sum(p * np.log(p + 1e-16)))
                 print("      {} {} (p={:.2f}, H={:.2f})".format(factor, map_idx, max_p, H))
 
-            print("    Policy beliefs:")
-            q_pi = agent.get_policy_posterior()
-            H_pi = float(-np.sum(q_pi * np.log(q_pi + 1e-16)))
-            top = agent.get_top_policies(top_k=5)
-            print("      entropy {:.3f}:".format(H_pi))
-            for rank, (pol, prob, pol_idx) in enumerate(top, 1):
+            print("    Policy beliefs A0:")
+            q_pi_0 = agent_0.get_policy_posterior()
+            H_pi_0 = float(-np.sum(q_pi_0 * np.log(q_pi_0 + 1e-16)))
+            top_0 = agent_0.get_top_policies(top_k=5)
+            print("      entropy {:.3f}:".format(H_pi_0))
+            for rank, (pol, prob, pol_idx) in enumerate(top_0, 1):
+                pol_str = "→".join([ACTION_NAMES.get(int(a), str(a))[0] for a in pol])
+                bar = "█" * int(prob * 20)
+                print("        #{:d} [{:>8}] {:<20} {:.3f}".format(rank, pol_str, bar, float(prob)))
+            print("    Policy beliefs A1:")
+            q_pi_1 = agent_1.get_policy_posterior()
+            H_pi_1 = float(-np.sum(q_pi_1 * np.log(q_pi_1 + 1e-16)))
+            top_1 = agent_1.get_top_policies(top_k=5)
+            print("      entropy {:.3f}:".format(H_pi_1))
+            for rank, (pol, prob, pol_idx) in enumerate(top_1, 1):
                 pol_str = "→".join([ACTION_NAMES.get(int(a), str(a))[0] for a in pol])
                 bar = "█" * int(prob * 20)
                 print("        #{:d} [{:>8}] {:<20} {:.3f}".format(rank, pol_str, bar, float(prob)))
 
-            print("    Action:     {} [{}]".format(ACTION_NAMES.get(action, action), action))
-            print("    Reward:    {}  (cumulative: {})".format(r, total_reward))
+            print("    Action A0: {} [{}]".format(ACTION_NAMES.get(action_0, action_0), action_0))
+            print("    Action A1: {} [{}]".format(ACTION_NAMES.get(action_1, action_1), action_1))
+            print("    Reward A0: {}  (cumulative: {})".format(r0, total_reward_0))
+            print("    Reward A1: {}  (cumulative: {})".format(r1, total_reward_1))
 
             if terminated.get("__all__") or truncated.get("__all__"):
                 print("    Episode ended.")
                 break
 
-        print("\n  Scenario total reward: {}".format(total_reward))
-        return total_reward
+        print("\n  Scenario total reward A0: {}".format(total_reward_0))
+        print("  Scenario total reward A1: {}".format(total_reward_1))
+        return total_reward_0, total_reward_1
 
-    run_one_episode("IndividuallyCollective: single agent, cramped_room_single (seed=76)", seed=76)
+    run_one_episode("IndividuallyCollective: two agents, cramped_room (seed=76)", seed=76)
 
     print("\n" + "=" * 72)
-    print("  Single-agent run finished.")
+    print("  Two-agent run finished.")
     print("=" * 72)
 
 

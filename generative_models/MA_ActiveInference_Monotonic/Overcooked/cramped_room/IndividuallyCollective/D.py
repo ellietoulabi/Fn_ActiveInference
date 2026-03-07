@@ -1,28 +1,42 @@
 # D.py
 """
-Prior beliefs (D) for IndividuallyCollective paradigm (single-agent) — Cramped Room.
-Includes binary counter occupancy factors (all start EMPTY).
+Prior beliefs (D) for IndividuallyCollective paradigm — Cramped Room.
+Includes:
+- self position / orientation / held
+- other agent position / held
+- binary counter occupancy factors (all start EMPTY)
 """
 
 import numpy as np
 from . import model_init
 
 DEFAULT_START_GRID_XY = (1, 2)
+DEFAULT_OTHER_START_GRID_XY = (3, 2)
 CHECKBOX_FACTORS = ("ck_put1", "ck_put2", "ck_put3", "ck_plated", "ck_delivered")
+
+
+def _grid_xy_to_walkable(xy) -> int:
+    gx, gy = xy
+    grid_idx = model_init.xy_to_index(gx, gy)
+    walkable_idx = model_init.grid_idx_to_walkable_idx(grid_idx)
+    return int(walkable_idx) if walkable_idx is not None else 0
 
 
 def build_D(
     self_start_pos: int | None = None,
     self_start_ori: int = 0,
+    other_start_pos: int | None = None,
 ) -> dict[str, np.ndarray]:
 
     if self_start_pos is None:
-        gx, gy = DEFAULT_START_GRID_XY
-        start_grid = model_init.xy_to_index(gx, gy)
-        start_walkable = model_init.grid_idx_to_walkable_idx(start_grid)
-        self_start_pos = int(start_walkable) if start_walkable is not None else 0
+        self_start_pos = _grid_xy_to_walkable(DEFAULT_START_GRID_XY)
     else:
         self_start_pos = int(self_start_pos)
+
+    if other_start_pos is None:
+        other_start_pos = _grid_xy_to_walkable(DEFAULT_OTHER_START_GRID_XY)
+    else:
+        other_start_pos = int(other_start_pos)
 
     self_start_ori = int(self_start_ori)
 
@@ -41,6 +55,15 @@ def build_D(
     # self_held
     D["self_held"] = np.zeros(model_init.N_HELD_TYPES, dtype=float)
     D["self_held"][model_init.HELD_NONE] = 1.0
+
+    # other_pos
+    D["other_pos"] = np.zeros(model_init.N_WALKABLE, dtype=float)
+    other_idx = other_start_pos if 0 <= other_start_pos < model_init.N_WALKABLE else 0
+    D["other_pos"][other_idx] = 1.0
+
+    # other_held
+    D["other_held"] = np.zeros(model_init.N_HELD_TYPES, dtype=float)
+    D["other_held"][model_init.HELD_NONE] = 1.0
 
     # pot_state
     D["pot_state"] = np.zeros(model_init.N_POT_STATES, dtype=float)
@@ -71,4 +94,5 @@ def D_fn(config: dict | None = None) -> dict[str, np.ndarray]:
     return build_D(
         self_start_pos=config.get("self_start_pos"),
         self_start_ori=config.get("self_start_ori", 0),
+        other_start_pos=config.get("other_start_pos"),
     )

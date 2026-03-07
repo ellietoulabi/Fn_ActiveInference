@@ -1,7 +1,12 @@
 # A.py
 """
-Observation likelihoods p(o | state) model (A) for IndividuallyCollective paradigm — Cramped Room (monotonic, single-agent).
-Includes binary counter occupancy observations for modeled counters.
+Observation likelihoods p(o | state) model (A) for IndividuallyCollective paradigm — Cramped Room.
+Includes:
+- self position / orientation / held observations
+- other agent position / held observations
+- pot state observation
+- soup delivered observation
+- binary counter occupancy observations for modeled counters
 """
 
 import numpy as np
@@ -35,6 +40,16 @@ def A_self_held_obs(self_held: int) -> np.ndarray:
     return _noisy_categorical(int(self_held), n, A_NOISE_LEVEL)
 
 
+def A_other_pos_obs(other_pos: int) -> np.ndarray:
+    n = len(model_init.observations["other_pos_obs"])
+    return _noisy_categorical(int(other_pos), n, A_NOISE_LEVEL)
+
+
+def A_other_held_obs(other_held: int) -> np.ndarray:
+    n = len(model_init.observations["other_held_obs"])
+    return _noisy_categorical(int(other_held), n, A_NOISE_LEVEL)
+
+
 def A_pot_state_obs(pot_state: int) -> np.ndarray:
     n = len(model_init.observations["pot_state_obs"])
     return _noisy_categorical(int(pot_state), n, A_NOISE_LEVEL)
@@ -63,6 +78,10 @@ def A_fn(state_indices: dict) -> dict[str, np.ndarray]:
     obs["self_pos_obs"] = A_self_pos_obs(state_indices["self_pos"])
     obs["self_orientation_obs"] = A_self_orientation_obs(state_indices["self_orientation"])
     obs["self_held_obs"] = A_self_held_obs(state_indices["self_held"])
+
+    obs["other_pos_obs"] = A_other_pos_obs(state_indices["other_pos"])
+    obs["other_held_obs"] = A_other_held_obs(state_indices["other_held"])
+
     obs["pot_state_obs"] = A_pot_state_obs(pot_state)
     obs["soup_delivered_obs"] = A_soup_delivered_obs(soup_delivered)
 

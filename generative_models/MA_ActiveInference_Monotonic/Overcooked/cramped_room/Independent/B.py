@@ -1,7 +1,9 @@
 # B.py
 """
 Transition p(s' | s, a) model (B) for IndividuallyCollective paradigm — Cramped Room (Monotonic checkbox model).
-Includes binary counter occupancy hidden factors for MODELED_COUNTERS.
+Includes:
+- binary counter occupancy hidden factors for MODELED_COUNTERS
+- simple persistence factors for other_pos and other_held
 """
 
 import numpy as np
@@ -55,9 +57,14 @@ def _move_walkable(walkable_idx: int, action: int) -> int:
         return int(walkable_idx)
     return int(new_walkable)
 
-
 def B_self_pos(parents: dict, action: int) -> np.ndarray:
+    """
+    Position transition with collision blocking:
+    if intended target cell is occupied by the other agent, stay put.
+    """
     q_pos = np.array(parents["self_pos"], dtype=float)
+    q_other_pos = np.array(parents["other_pos"], dtype=float)
+
     S = q_pos.shape[0]
     next_q = np.zeros(S, dtype=float)
 
@@ -65,11 +72,20 @@ def B_self_pos(parents: dict, action: int) -> np.ndarray:
         p = q_pos[w]
         if p <= 1e-16:
             continue
-        new_w = _move_walkable(w, action)
-        next_q[new_w] += p
+
+        intended_w = _move_walkable(w, action)
+
+        # if target is where other agent is believed to be, block move
+        p_blocked = float(q_other_pos[intended_w]) if 0 <= intended_w < S else 0.0
+        p_blocked = float(np.clip(p_blocked, 0.0, 1.0))
+
+        if intended_w == w:
+            next_q[w] += p
+        else:
+            next_q[intended_w] += p * (1.0 - p_blocked)
+            next_q[w] += p * p_blocked
 
     return normalize(next_q)
-
 
 def B_self_orientation(parents: dict, action: int) -> np.ndarray:
     q_ori = np.array(parents["self_orientation"], dtype=float)
@@ -83,6 +99,49 @@ def B_self_orientation(parents: dict, action: int) -> np.ndarray:
         next_q[new_ori] += p
 
     return normalize(next_q)
+
+
+# def B_other_pos(parents: dict, action: int) -> np.ndarray:
+#     """
+#     Simple persistence model for other agent position.
+#     For this first multi-agent step, we do not model other-agent motion dynamics yet.
+#     """
+#     return normalize(np.array(parents["other_pos"], dtype=float))
+
+def B_other_pos(parents: dict, action: int) -> np.ndarray:
+    """
+    Simple uncertainty over other agent motion:
+    other may stay or move to adjacent walkable cells.
+    """
+    q_other = np.array(parents["other_pos"], dtype=float)
+    next_q = np.zeros(model_init.N_WALKABLE, dtype=float)
+
+    for w in range(model_init.N_WALKABLE):
+        p = q_other[w]
+        if p <= 1e-16:
+            continue
+
+        candidates = {
+            w,
+            _move_walkable(w, model_init.NORTH),
+            _move_walkable(w, model_init.SOUTH),
+            _move_walkable(w, model_init.EAST),
+            _move_walkable(w, model_init.WEST),
+        }
+        candidates = list(candidates)
+        mass = p / float(len(candidates))
+
+        for c in candidates:
+            next_q[c] += mass
+
+    return normalize(next_q)
+
+def B_other_held(parents: dict, action: int) -> np.ndarray:
+    """
+    Simple persistence model for other agent held object.
+    For this first multi-agent step, we do not model other-agent pickup/drop dynamics yet.
+    """
+    return normalize(np.array(parents["other_held"], dtype=float))
 
 
 def _get_front(pos_w: int, ori: int) -> int:
@@ -106,7 +165,6 @@ def B_self_held(parents: dict, action: int) -> np.ndarray:
     q_held = np.array(parents["self_held"], dtype=float)
     q_pot = np.array(parents["pot_state"], dtype=float)
 
-    # counter marginals (binary)
     q_ctr = {g: np.array(parents[f"ctr_{g}"], dtype=float) for g in model_init.MODELED_COUNTERS}
 
     next_q = np.zeros(model_init.N_HELD_TYPES, dtype=float)
@@ -131,7 +189,6 @@ def B_self_held(parents: dict, action: int) -> np.ndarray:
                     if w <= 1e-16:
                         continue
 
-                    # default: no change
                     new_held = held
                     p_success = 1.0
 
@@ -161,17 +218,12 @@ def B_self_held(parents: dict, action: int) -> np.ndarray:
                             p_success = INTERACT_SUCCESS_PROB
 
                         elif front == model_init.FRONT_COUNTER and front_ctr is not None:
-                            # binary occupancy gate: can drop only if believed empty
                             if held != model_init.HELD_NONE:
                                 p_empty = float(q_ctr[front_ctr][model_init.CTR_EMPTY])
-                                # success path: drop -> NONE
                                 next_q[model_init.HELD_NONE] += w * INTERACT_SUCCESS_PROB * p_empty
-                                # otherwise: stay holding (either interact fails or counter full)
                                 next_q[held] += w * (1.0 - INTERACT_SUCCESS_PROB * p_empty)
                                 continue
-                            # held == NONE: do nothing in binary version (no pickup model)
 
-                    # non-counter / default accumulation
                     next_q[new_held] += w * p_success
                     if p_success < 1.0:
                         next_q[held] += w * (1.0 - p_success)
@@ -291,7 +343,6 @@ def B_counter_occupancy(parents: dict, action: int, counter_grid: int) -> np.nda
 def B_checkboxes(parents: dict, action: int) -> dict[str, np.ndarray]:
     """
     Predictive belief update for checkbox factors (mean-field, marginal-based).
-    (unchanged)
     """
     q_pos = np.asarray(parents["self_pos"], dtype=float)
     q_ori = np.asarray(parents["self_orientation"], dtype=float)
@@ -372,7 +423,6 @@ def B_fn(qs: dict, action: int, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
     new_qs: dict[str, np.ndarray] = {}
 
     for factor, deps in state_state_dependencies.items():
-        # checkbox block
         if factor in ("ck_put1", "ck_put2", "ck_put3", "ck_plated", "ck_delivered"):
             if factor == "ck_put1":
                 new_qs.update(B_checkboxes(qs, action))
@@ -386,16 +436,18 @@ def B_fn(qs: dict, action: int, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
             new_qs[factor] = B_self_orientation(parents, action)
         elif factor == "self_held":
             new_qs[factor] = B_self_held(parents, action)
+        elif factor == "other_pos":
+            new_qs[factor] = B_other_pos(parents, action)
+        elif factor == "other_held":
+            new_qs[factor] = B_other_held(parents, action)
         elif factor == "pot_state":
             new_qs[factor] = B_pot_state(parents, action)
         elif factor.startswith("ctr_"):
-            # ctr_<grid>
             grid = int(factor.split("_")[1])
             new_qs[factor] = B_counter_occupancy(parents, action, grid)
         else:
             new_qs[factor] = normalize(np.array(parents[factor], dtype=float))
 
-    # Optional global transition noise: mix each factor's next_q with uniform.
     if B_NOISE_LEVEL > 0.0:
         for k in new_qs:
             v = np.array(new_qs[k], dtype=float)

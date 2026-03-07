@@ -2,10 +2,11 @@
 """
 Env <-> model utilities for IndividuallyCollective paradigm - Cramped Room (Monotonic checkbox model).
 
-Converts Overcooked env state to single-agent model observations.
+Converts Overcooked env state to multi-agent model observations.
 - Agent position uses walkable indices 0..5 (not grid 0..19).
 - Pot state uses 4 values: POT_0, POT_1, POT_2, POT_3 (ready); cook_time=0.
 - Adds binary counter occupancy observations for MODELED_COUNTERS.
+- Adds observations for the other agent's position and held object.
 """
 
 from . import model_init
@@ -66,29 +67,48 @@ def _counter_occupancy_from_env(env_state, grid_idx: int) -> int:
     return model_init.CTR_FULL if obj is not None else model_init.CTR_EMPTY
 
 
+def _agent_pos_to_walkable(agent) -> int:
+    """
+    Convert an Overcooked agent position to walkable-index space.
+    """
+    pos = agent.position
+    pos_grid = model_init.xy_to_index(pos[0], pos[1])
+    pos_walkable = model_init.grid_idx_to_walkable_idx(pos_grid)
+    if pos_walkable is None:
+        pos_walkable = 0
+    return pos_walkable
+
+
+def _agent_held_type(agent) -> int:
+    """
+    Convert held object to model held type.
+    """
+    return model_init.object_name_to_held_type(
+        agent.held_object.name if agent.has_object() else None
+    )
+
+
 def env_obs_to_model_obs(env_state, agent_idx, reward_info=None):
     """
-    Convert OvercookedState to single-agent model observation indices.
+    Convert OvercookedState to model observation indices.
 
     Returns dict with keys matching model_init.observations:
-    self_pos_obs, self_orientation_obs, self_held_obs, pot_state_obs, soup_delivered_obs,
+    self_pos_obs, self_orientation_obs, self_held_obs,
+    other_pos_obs, other_held_obs,
+    pot_state_obs, soup_delivered_obs,
     plus ctr_<grid>_obs for each modeled counter.
     """
     this_agent = env_state.players[agent_idx]
+    other_agent = env_state.players[1 - agent_idx]
 
-    # Overcooked position is (x, y) with x=column, y=row.
-    this_pos = this_agent.position
-    x, y = this_pos[0], this_pos[1]
-    this_pos_grid = model_init.xy_to_index(x, y)
-    this_pos_walkable = model_init.grid_idx_to_walkable_idx(this_pos_grid)
-    if this_pos_walkable is None:
-        this_pos_walkable = 0  # fallback if env position not on floor (should not happen)
-
+    # Self
+    this_pos_walkable = _agent_pos_to_walkable(this_agent)
     this_ori_idx = model_init.direction_to_index(this_agent.orientation)
+    this_held = _agent_held_type(this_agent)
 
-    this_held = model_init.object_name_to_held_type(
-        this_agent.held_object.name if this_agent.has_object() else None
-    )
+    # Other
+    other_pos_walkable = _agent_pos_to_walkable(other_agent)
+    other_held = _agent_held_type(other_agent)
 
     pot_state = _extract_pot_state_from_env(env_state)
 
@@ -105,6 +125,10 @@ def env_obs_to_model_obs(env_state, agent_idx, reward_info=None):
         "self_pos_obs": this_pos_walkable,
         "self_orientation_obs": this_ori_idx,
         "self_held_obs": this_held,
+
+        "other_pos_obs": other_pos_walkable,
+        "other_held_obs": other_held,
+
         "pot_state_obs": pot_state,
         "soup_delivered_obs": soup_delivered,
     }
@@ -118,23 +142,22 @@ def env_obs_to_model_obs(env_state, agent_idx, reward_info=None):
 
 def get_D_config_from_state(state, agent_idx):
     """
-    Extract initial position (walkable index) and orientation from env state.
+    Extract initial self/other positions and self orientation from env state.
 
-    Returns a config dict for D_fn(config). self_start_pos is in walkable space (0..5).
+    Returns a config dict for D_fn(config).
+    self_start_pos and other_start_pos are in walkable space (0..5).
     """
     this_agent = state.players[agent_idx]
+    other_agent = state.players[1 - agent_idx]
 
-    this_pos = this_agent.position
-    this_pos_grid = model_init.xy_to_index(this_pos[0], this_pos[1])
-    this_pos_walkable = model_init.grid_idx_to_walkable_idx(this_pos_grid)
-    if this_pos_walkable is None:
-        this_pos_walkable = 0
-
+    this_pos_walkable = _agent_pos_to_walkable(this_agent)
+    other_pos_walkable = _agent_pos_to_walkable(other_agent)
     this_ori_idx = model_init.direction_to_index(this_agent.orientation)
 
     return {
         "self_start_pos": this_pos_walkable,
         "self_start_ori": this_ori_idx,
+        "other_start_pos": other_pos_walkable,
     }
 
 
