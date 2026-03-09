@@ -1,4 +1,4 @@
-# Overcooked Model Notes
+# Notes
 
 
 
@@ -48,6 +48,7 @@
 
 ### Policies
 - [ ] joint policies (`InCo`)
+- [ ] 
 
 ---
 
