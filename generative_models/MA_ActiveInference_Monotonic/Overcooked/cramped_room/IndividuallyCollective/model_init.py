@@ -26,9 +26,9 @@ ONION_DISPENSER_INDICES = [y * GRID_WIDTH + x for x, y in ONION_DISPENSERS]
 DISH_DISPENSER_INDICES = [y * GRID_WIDTH + x for x, y in DISH_DISPENSERS]
 
 COUNTER_INDICES = {
-    0, 1, 3, 4,        # row 0: X, X, P, X, X
-    10, 14,            # row 2: X, _, _, _, X
-    15, 17, 19,        # row 3: X, D, X, S, X
+    0, 1, 3, 4,
+    10, 14,
+    15, 17, 19,
 }
 
 WALKABLE_INDICES = [6, 7, 8, 11, 12, 13]
@@ -38,7 +38,50 @@ N_WALKABLE = len(WALKABLE_INDICES)
 NORTH, SOUTH, EAST, WEST, STAY, INTERACT = 0, 1, 2, 3, 4, 5
 N_ACTIONS = 6
 
-INTERACT_SUCCESS_PROB = 0.9  # 0.9 = 10% chance interact "fails" (no change)
+SELF = 0
+OTHER = 1
+N_ACTORS = 2
+
+# Interleaved step-action encoding (single integer)
+# 0..5   => (SELF, primitive_action)
+# 6..11  => (OTHER, primitive_action)
+N_INTERLEAVED_STEP_ACTIONS = N_ACTORS * N_ACTIONS
+
+ACTOR_NAMES = {
+    SELF: "SELF",
+    OTHER: "OTHER",
+}
+
+ACTION_NAMES = {
+    NORTH: "NORTH",
+    SOUTH: "SOUTH",
+    EAST: "EAST",
+    WEST: "WEST",
+    STAY: "STAY",
+    INTERACT: "INTERACT",
+}
+
+def encode_interleaved_step(actor: int, action: int) -> int:
+    return int(actor) * N_ACTIONS + int(action)
+
+def decode_interleaved_step(step_action: int) -> tuple[int, int]:
+    a = int(step_action)
+    actor = a // N_ACTIONS
+    action = a % N_ACTIONS
+    return actor, action
+
+def policy_step_to_actions(actor: int, action: int):
+    """
+    Convert one policy step (actor, action) into effective primitive actions.
+    If one agent acts, the other agent is STAY.
+    """
+    if actor == SELF:
+        return action, STAY
+    elif actor == OTHER:
+        return STAY, action
+    return STAY, STAY
+
+INTERACT_SUCCESS_PROB = 1.0
 
 # Directions
 DIR_NORTH = (0, -1)
@@ -56,30 +99,30 @@ HELD_SOUP = 3
 N_HELD_TYPES = 4
 
 # Pot states
-POT_0 = 0          # 0 onions; idle
-POT_1 = 1          # 1 onion
-POT_2 = 2          # 2 onions
-POT_3 = 3          # cooked soup ready
+POT_0 = 0
+POT_1 = 1
+POT_2 = 2
+POT_3 = 3
 N_POT_STATES = 4
 
 # Front tile types
 FRONT_WALL = 0
-FRONT_EMPTY = 1    # walkable cell
-FRONT_ONION = 2    # onion dispenser
-FRONT_DISH = 3     # dish dispenser
+FRONT_EMPTY = 1
+FRONT_ONION = 2
+FRONT_DISH = 3
 FRONT_POT = 4
 FRONT_SERVE = 5
-FRONT_COUNTER = 6  # counter (can drop objects)
+FRONT_COUNTER = 6
 N_FRONT_TYPES = 7
 
-# -------------------------------------------------
-# Binary counter occupancy (NEW)
-# -------------------------------------------------
+# Counter contents (modeled counters only)
+# We need more than empty/full so the model can predict picking up specific items.
 CTR_EMPTY = 0
-CTR_FULL = 1
-N_CTR_STATES = 2
+CTR_ONION = 1
+CTR_DISH = 2
+CTR_SOUP = 3
+N_CTR_STATES = 4
 
-# Counters we actually model (user-provided)
 MODELED_COUNTERS = [1, 3, 10, 14, 17]
 COUNTER_FACTORS = [f"ctr_{idx}" for idx in MODELED_COUNTERS]
 
@@ -96,12 +139,11 @@ states = {
     "ck_plated": list(range(2)),
     "ck_delivered": list(range(2)),
 
-    # --- multi-agent (commented for single-agent run) ---
     "other_pos": list(range(N_WALKABLE)),
+    "other_orientation": list(range(N_DIRECTIONS)),
     "other_held": list(range(N_HELD_TYPES)),
 }
 
-# Add binary counter factors
 for cf in COUNTER_FACTORS:
     states[cf] = list(range(N_CTR_STATES))
 
@@ -114,12 +156,11 @@ observations = {
     "pot_state_obs": list(range(N_POT_STATES)),
     "soup_delivered_obs": [0, 1],
 
-    # --- multi-agent (commented for single-agent run) ---
     "other_pos_obs": list(range(N_WALKABLE)),
+    "other_orientation_obs": list(range(N_DIRECTIONS)),
     "other_held_obs": list(range(N_HELD_TYPES)),
 }
 
-# Add counter occupancy observations
 for cf in COUNTER_FACTORS:
     observations[f"{cf}_obs"] = list(range(N_CTR_STATES))
 
@@ -129,46 +170,43 @@ observation_state_dependencies = {
     "self_held_obs": ["self_held"],
     "pot_state_obs": ["pot_state"],
 
-    # reward pulse comes from env reward_info; keep deps as-is
-    "soup_delivered_obs": ["self_pos", "self_orientation", "self_held"],
+    "soup_delivered_obs": ["ck_delivered"],
 
-    # --- multi-agent (commented for single-agent run) ---
     "other_pos_obs": ["other_pos"],
+    "other_orientation_obs": ["other_orientation"],
     "other_held_obs": ["other_held"],
 }
 
-# Add counter obs deps
 for cf in COUNTER_FACTORS:
     observation_state_dependencies[f"{cf}_obs"] = [cf]
 
 state_state_dependencies = {
-    "self_pos": ["self_pos","other_pos"],  # single-agent: no other_pos collision
+    "self_pos": ["self_pos", "other_pos"],
     "self_orientation": ["self_orientation"],
 
-    # (UPDATED) self_held depends on counters so drop feasibility is representable
     "self_held": ["self_pos", "self_orientation", "self_held", "pot_state"] + COUNTER_FACTORS,
 
-    "pot_state": ["self_pos", "self_orientation", "self_held", "pot_state"],
+    "pot_state": [
+        "self_pos", "self_orientation", "self_held",
+        "other_pos", "other_orientation", "other_held",
+        "pot_state"
+    ],
 
-    # Checkbox memory
-    "ck_put1":     ["ck_put1", "self_pos", "self_orientation", "self_held", "pot_state"],
-    "ck_put2":     ["ck_put2", "self_pos", "self_orientation", "self_held", "pot_state"],
-    "ck_put3":     ["ck_put3", "self_pos", "self_orientation", "self_held", "pot_state"],
-    "ck_plated":   ["ck_plated", "self_pos", "self_orientation", "self_held", "pot_state"],
-    "ck_delivered":["ck_delivered", "self_pos", "self_orientation", "self_held"],
+    "ck_put1": ["ck_put1", "self_pos", "self_orientation", "self_held", "pot_state", "other_pos", "other_orientation", "other_held"],
+    "ck_put2": ["ck_put2", "self_pos", "self_orientation", "self_held", "pot_state", "other_pos", "other_orientation", "other_held"],
+    "ck_put3": ["ck_put3", "self_pos", "self_orientation", "self_held", "pot_state", "other_pos", "other_orientation", "other_held"],
+    "ck_plated": ["ck_plated", "self_pos", "self_orientation", "self_held", "pot_state", "other_pos", "other_orientation", "other_held"],
+    "ck_delivered": ["ck_delivered", "self_pos", "self_orientation", "self_held", "other_pos", "other_orientation", "other_held"],
 
-
-    "other_pos": ["other_pos"],
-    "other_held": ["other_held"],
+    "other_pos": ["other_pos", "self_pos"],
+    "other_orientation": ["other_orientation"],
+    "other_held": ["other_pos", "other_orientation", "other_held", "pot_state"] + COUNTER_FACTORS,
 }
 
-# Add counter transition deps (each counter updates based on itself + local interaction context)
 for cf in COUNTER_FACTORS:
-    state_state_dependencies[cf] = [cf, "self_pos", "self_orientation", "self_held"]
+    state_state_dependencies[cf] = [cf, "self_pos", "self_orientation", "self_held", "other_pos", "other_orientation", "other_held"]
 
-# -------------------------------------------------
 # Utility functions
-# -------------------------------------------------
 def xy_to_index(x: int, y: int, width: int = GRID_WIDTH) -> int:
     return y * width + x
 
@@ -178,11 +216,10 @@ def index_to_xy(index: int, width: int = GRID_WIDTH):
     return x, y
 
 def direction_to_index(direction):
-    """Map (dx, dy) tuple to orientation index 0..3 (NORTH, SOUTH, EAST, WEST)."""
     for i, d in enumerate(DIRECTIONS):
         if d == direction:
             return i
-    return 0  # fallback to NORTH
+    return 0
 
 def object_name_to_held_type(obj_name):
     if obj_name is None:
@@ -191,20 +228,17 @@ def object_name_to_held_type(obj_name):
     return obj_map.get(obj_name, HELD_NONE)
 
 def walkable_idx_to_grid_idx(walkable_idx: int) -> int:
-    """Convert walkable position index (0..N_WALKABLE-1) to grid cell index (0..GRID_SIZE-1)."""
     if 0 <= walkable_idx < N_WALKABLE:
         return WALKABLE_INDICES[walkable_idx]
-    return WALKABLE_INDICES[0]  # fallback
+    return WALKABLE_INDICES[0]
 
 def grid_idx_to_walkable_idx(grid_idx: int):
-    """Convert grid cell index to walkable index. Returns None if cell is not walkable."""
     for w in range(N_WALKABLE):
         if WALKABLE_INDICES[w] == grid_idx:
             return w
     return None
 
 def position_in_front(walkable_idx: int, orientation_idx: int, width: int = GRID_WIDTH, height: int = GRID_HEIGHT):
-    """Grid index of the cell in front of (walkable_idx, orientation_idx), or None if out of bounds."""
     grid_idx = walkable_idx_to_grid_idx(walkable_idx)
     x, y = index_to_xy(grid_idx, width)
     if 0 <= orientation_idx < N_DIRECTIONS:
@@ -217,7 +251,6 @@ def position_in_front(walkable_idx: int, orientation_idx: int, width: int = GRID
     return None
 
 def modeled_counter_in_front(walkable_idx: int, orientation_idx: int):
-    """Return the modeled counter grid index in front, or None."""
     fg = position_in_front(walkable_idx, orientation_idx, GRID_WIDTH, GRID_HEIGHT)
     if fg is None:
         return None

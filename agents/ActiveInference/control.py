@@ -187,7 +187,14 @@ def get_expected_obs_from_beliefs(A_fn, qs_dict, state_factors, state_sizes,
     return qo_dict
 
 
-def get_expected_obs_sequence(A_fn, qs_pi, state_factors, state_sizes):
+def get_expected_obs_sequence(
+    A_fn,
+    qs_pi,
+    state_factors,
+    state_sizes,
+    observation_labels=None,
+    observation_state_dependencies=None,
+):
     """
     Compute expected observations over time under a policy.
     
@@ -204,7 +211,14 @@ def get_expected_obs_sequence(A_fn, qs_pi, state_factors, state_sizes):
     qo_pi = []
     
     for qs_t in qs_pi:
-        qo_t = get_expected_obs_from_beliefs(A_fn, qs_t, state_factors, state_sizes)
+        qo_t = get_expected_obs_from_beliefs(
+            A_fn,
+            qs_t,
+            state_factors,
+            state_sizes,
+            observation_labels=observation_labels,
+            observation_state_dependencies=observation_state_dependencies,
+        )
         qo_pi.append(qo_t)
     
     return qo_pi
@@ -509,7 +523,14 @@ def vanilla_fpi_update_posterior_policies(
             policy_details.append((policy_idx, policy, qs_pi, utility, info_gain))
         elif use_utility:
             # Only utility needed
-            qo_pi = get_expected_obs_sequence(A_fn, qs_pi, state_factors, state_sizes)
+            qo_pi = get_expected_obs_sequence(
+                A_fn,
+                qs_pi,
+                state_factors,
+                state_sizes,
+                observation_labels=observation_labels,
+                observation_state_dependencies=observation_state_dependencies,
+            )
             utility = calc_expected_utility(qo_pi, C_fn, observation_labels)
             G[policy_idx] -= utility
             info_gain = 0.0
@@ -673,7 +694,14 @@ def evaluate_policy_components(
     qs_pi = get_expected_states(B_fn, qs, policy, env_params)
     
     # Predict observations
-    qo_pi = get_expected_obs_sequence(A_fn, qs_pi, state_factors, state_sizes)
+    qo_pi = get_expected_obs_sequence(
+        A_fn,
+        qs_pi,
+        state_factors,
+        state_sizes,
+        observation_labels=observation_labels,
+        observation_state_dependencies=observation_state_dependencies,
+    )
     
     # Compute components
     utility = calc_expected_utility(qo_pi, C_fn, observation_labels)

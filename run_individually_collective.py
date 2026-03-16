@@ -152,7 +152,7 @@ def run_agent_vs_env_scenarios():
             dF_tol=0.01,
         )
 
-    max_steps_per_scenario = 500
+    max_steps_per_scenario = 2000
     horizon = max_steps_per_scenario + 10
 
     env = OvercookedMultiAgentEnv(config={"layout": "cramped_room", "horizon": horizon})
