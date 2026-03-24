@@ -34,17 +34,34 @@ COUNTER_INDICES = {
 WALKABLE_INDICES = [6, 7, 8, 11, 12, 13]
 N_WALKABLE = len(WALKABLE_INDICES)
 
-# Actions (per-agent)
+# Primitive actions (used by environment + macro terminal mode)
 NORTH, SOUTH, EAST, WEST, STAY, INTERACT = 0, 1, 2, 3, 4, 5
-N_ACTIONS = 6
+N_PRIMITIVE_ACTIONS = 6
+
+# Semantic macro-actions (used by planning/policies in this model)
+DESTINATIONS = [
+    "onion1",
+    "onion2",
+    "dish",
+    "serve",
+    "pot",
+    "cntr1",
+    "cntr2",
+    "cntr3",
+    "cntr4",
+    "cntr5",
+]
+MODES = ["stay", "interact"]
+SEMANTIC_ACTIONS = [(dst, mode) for dst in DESTINATIONS for mode in MODES]
+N_ACTIONS = len(SEMANTIC_ACTIONS)  # 20
 
 SELF = 0
 OTHER = 1
 N_ACTORS = 2
 
-# Interleaved step-action encoding (single integer)
-# 0..5   => (SELF, primitive_action)
-# 6..11  => (OTHER, primitive_action)
+# Interleaved step-action encoding (single integer) over semantic actions:
+# 0..19   => (SELF, semantic_action)
+# 20..39  => (OTHER, semantic_action)
 N_INTERLEAVED_STEP_ACTIONS = N_ACTORS * N_ACTIONS
 
 ACTOR_NAMES = {
@@ -52,14 +69,7 @@ ACTOR_NAMES = {
     OTHER: "OTHER",
 }
 
-ACTION_NAMES = {
-    NORTH: "NORTH",
-    SOUTH: "SOUTH",
-    EAST: "EAST",
-    WEST: "WEST",
-    STAY: "STAY",
-    INTERACT: "INTERACT",
-}
+ACTION_NAMES = {i: f"{dst}:{mode}" for i, (dst, mode) in enumerate(SEMANTIC_ACTIONS)}
 
 def encode_interleaved_step(actor: int, action: int) -> int:
     return int(actor) * N_ACTIONS + int(action)
@@ -69,6 +79,25 @@ def decode_interleaved_step(step_action: int) -> tuple[int, int]:
     actor = a // N_ACTIONS
     action = a % N_ACTIONS
     return actor, action
+
+
+def semantic_action_from_index(action_idx: int) -> tuple[str, str]:
+    i = int(action_idx)
+    if i < 0 or i >= N_ACTIONS:
+        return SEMANTIC_ACTIONS[0]
+    return SEMANTIC_ACTIONS[i]
+
+
+def construct_semantic_policies(policy_len: int = 2) -> list[list[int]]:
+    """
+    Enumerate all semantic policies over action indices [0..N_ACTIONS-1].
+    Default: policy_len=2 -> 20*20 = 400 policies.
+    """
+    from itertools import product
+
+    if policy_len <= 0:
+        return []
+    return [list(p) for p in product(range(N_ACTIONS), repeat=int(policy_len))]
 
 
 # Policy step: simultaneous primitives (global agent_0, global agent_1). Passed to B_fn as
@@ -85,6 +114,22 @@ def policy_step_to_actions(actor: int, action: int):
     elif actor == OTHER:
         return STAY, action
     return STAY, STAY
+
+
+# For each semantic destination, we define a canonical walkable index and orientation
+# such that the landmark is in front of the agent.
+SEMANTIC_DEST_TARGET_POSE = {
+    "onion1": (0, WEST),   # walkable 0 (grid 6), face counter/dispenser at grid 5
+    "onion2": (2, EAST),   # walkable 2 (grid 8), face dispenser at grid 9
+    "dish": (3, SOUTH),    # walkable 3 (grid 11), face dish dispenser at grid 16
+    "serve": (5, SOUTH),   # walkable 5 (grid 13), face serving at grid 18
+    "pot": (1, NORTH),     # walkable 1 (grid 7), face pot at grid 2
+    "cntr1": (0, NORTH),   # counter grid 1
+    "cntr2": (2, NORTH),   # counter grid 3
+    "cntr3": (3, WEST),    # counter grid 10
+    "cntr4": (5, EAST),    # counter grid 14
+    "cntr5": (4, SOUTH),   # counter grid 17
+}
 
 INTERACT_SUCCESS_PROB = 1.0
 

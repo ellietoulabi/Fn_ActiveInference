@@ -3,12 +3,14 @@
 Transition p(s' | s, a) model (B) for IndividuallyCollective paradigm — Cramped Room.
 
 Policy semantics:
-- one policy step is (actor, primitive_action)
-- if SELF acts, OTHER is STAY
-- if OTHER acts, SELF is STAY
+- one policy step is a semantic macro-action index in [0..19], encoding
+  (destination, terminal_mode)
+- interleaved compatibility is retained: (actor, semantic_action)
+- joint pair compatibility is retained: (JOINT_PAIR_LABEL, a0, a1)
 
-This B uses both effective actions:
-    self_action, other_action = model_init.policy_step_to_actions(actor, action)
+Macro transition semantics for one semantic action:
+1) Navigate to destination target pose (walkable index + orientation)
+2) Execute terminal mode (STAY or INTERACT)
 """
 
 import numpy as np
@@ -59,8 +61,8 @@ def _decode_policy_step(step, **kwargs) -> tuple[int, int]:
         return model_init.policy_step_to_actions(actor, action)
 
     # Scalar encoding support:
-    # - 0..5   => (SELF, primitive_action)
-    # - 6..11  => (OTHER, primitive_action)
+    # - 0..19   => (SELF, semantic_action)
+    # - 20..39  => (OTHER, semantic_action)
     a = int(step)
     n_actions = int(getattr(model_init, "N_ACTIONS", 6))
     n_actors = int(getattr(model_init, "N_ACTORS", 2))
@@ -69,8 +71,19 @@ def _decode_policy_step(step, **kwargs) -> tuple[int, int]:
         action = a % n_actions
         return model_init.policy_step_to_actions(actor, action)
 
-    # Back-compat: treat as primitive self action
+    # Back-compat: treat as a semantic self action index directly
     return a, model_init.STAY
+
+
+def _semantic_to_target_pose(semantic_action: int) -> tuple[int, int, int]:
+    """
+    Decode semantic action index into:
+      (target_walkable_idx, target_orientation_idx, terminal_primitive_mode)
+    """
+    dst, mode = model_init.semantic_action_from_index(int(semantic_action))
+    target_w, target_ori = model_init.SEMANTIC_DEST_TARGET_POSE[dst]
+    terminal = model_init.INTERACT if mode == "interact" else model_init.STAY
+    return int(target_w), int(target_ori), int(terminal)
 
 
 def _update_orientation(ori_idx: int, action: int) -> int:
@@ -555,12 +568,18 @@ def B_counter_occupancy(parents: dict, self_action: int, other_action: int, coun
     return normalize(next_q)
 
 
-def B_checkboxes(parents: dict, self_action: int, other_action: int) -> dict[str, np.ndarray]:
+def B_checkboxes(
+    parents: dict,
+    self_action: int,
+    other_action: int,
+    q_pot_next: np.ndarray | None = None,
+) -> dict[str, np.ndarray]:
     """
-    Event semantics:
-    - ck_delivered = probability delivery happened this imagined step
-    - ck_plated    = probability plating happened this imagined step if no delivery reset
-    - ck_put1/2/3  remain pot-driven as before
+    Monotonic checkbox semantics (semantic macro B_fn):
+    - ck_put1/2/3: sticky toward 1 when pot mass crosses onion-count thresholds;
+      uses the *same* post-action pot belief as factor pot_state when q_pot_next is passed.
+    - ck_plated: sticky toward 1 when a plating INTERACT occurs; masked by delivery reset.
+    - ck_delivered: sticky toward 1 once a delivery INTERACT occurs (monotonic), aligned with ck_put* style.
     """
     q_sp = np.asarray(parents["self_pos"], dtype=float)
     q_so = np.asarray(parents["self_orientation"], dtype=float)
@@ -576,6 +595,7 @@ def B_checkboxes(parents: dict, self_action: int, other_action: int) -> dict[str
     q_ck2 = np.asarray(parents["ck_put2"], dtype=float)
     q_ck3 = np.asarray(parents["ck_put3"], dtype=float)
     q_plat = np.asarray(parents["ck_plated"], dtype=float)
+    q_ck_del = np.asarray(parents["ck_delivered"], dtype=float)
 
     p_deliver_now = 0.0
     p_plated_now = 0.0
@@ -613,9 +633,26 @@ def B_checkboxes(parents: dict, self_action: int, other_action: int) -> dict[str
     p_deliver_now = float(np.clip(p_deliver_now, 0.0, 1.0))
     p_plated_now = float(np.clip(p_plated_now, 0.0, 1.0))
 
-    p_has_put1 = float(q_pot[model_init.POT_1] + q_pot[model_init.POT_2] + q_pot[model_init.POT_3])
-    p_has_put2 = float(q_pot[model_init.POT_2] + q_pot[model_init.POT_3])
-    p_has_put3 = float(q_pot[model_init.POT_3])
+    pot_parents = {
+        "self_pos": q_sp,
+        "self_orientation": q_so,
+        "self_held": q_sh,
+        "other_pos": q_op,
+        "other_orientation": q_oo,
+        "other_held": q_oh,
+        "pot_state": q_pot,
+    }
+    if q_pot_next is None:
+        q_pot_next = B_pot_state(pot_parents, self_action, other_action)
+    else:
+        q_pot_next = np.asarray(q_pot_next, dtype=float)
+    p_has_put1 = float(
+        q_pot_next[model_init.POT_1]
+        + q_pot_next[model_init.POT_2]
+        + q_pot_next[model_init.POT_3]
+    )
+    p_has_put2 = float(q_pot_next[model_init.POT_2] + q_pot_next[model_init.POT_3])
+    p_has_put3 = float(q_pot_next[model_init.POT_3])
 
     p_ck1_next_1_if_no_del = 1.0 - (1.0 - q_ck1[1]) * (1.0 - p_has_put1)
     p_ck2_next_1_if_no_del = 1.0 - (1.0 - q_ck2[1]) * (1.0 - p_has_put2)
@@ -628,7 +665,14 @@ def B_checkboxes(parents: dict, self_action: int, other_action: int) -> dict[str
     p_plat_next_1_if_no_del = 1.0 - (1.0 - q_plat[1]) * (1.0 - p_plated_now)
     p_plat_next_1 = (1.0 - p_deliver_now) * p_plat_next_1_if_no_del
 
-    p_del_next_1 = p_deliver_now
+    # Monotonic delivery: P(ck_del'=1) = P(ck_del=1) + P(ck_del=0)*P(deliver this step)
+    p_del_next_1 = float(
+        np.clip(
+            float(q_ck_del[1]) + (1.0 - float(q_ck_del[1])) * p_deliver_now,
+            0.0,
+            1.0,
+        )
+    )
 
     next_ck1 = np.array([1.0 - p_ck1_next_1, p_ck1_next_1], dtype=float)
     next_ck2 = np.array([1.0 - p_ck2_next_1, p_ck2_next_1], dtype=float)
@@ -650,38 +694,55 @@ def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
     Main transition model p(s' | s, a) for all hidden state factors.
 
     `action` can be:
-      - (JOINT_PAIR_LABEL, a0, a1): simultaneous global primitives (requires ego_agent_index in kwargs)
-      - (actor, primitive_action): interleaved single-actor step
-      - int: interleaved or primitive self-action (legacy)
+      - semantic action index (0..19)
+      - (actor, semantic_action) interleaved
+      - (JOINT_PAIR_LABEL, a0, a1) where a0/a1 are semantic action indices
     """
-    self_action, other_action = _decode_policy_step(action, **kwargs)
+    self_semantic, other_semantic = _decode_policy_step(action, **kwargs)
+    self_pos, self_ori, self_terminal = _semantic_to_target_pose(self_semantic)
+    other_pos, other_ori, other_terminal = _semantic_to_target_pose(other_semantic)
+
+    # Macro navigation stage: both agents jump to destination target poses.
+    qs_macro = {k: np.array(v, dtype=float) for k, v in qs.items()}
+    qs_macro["self_pos"] = np.eye(model_init.N_WALKABLE, dtype=float)[self_pos]
+    qs_macro["self_orientation"] = np.eye(model_init.N_DIRECTIONS, dtype=float)[self_ori]
+    qs_macro["other_pos"] = np.eye(model_init.N_WALKABLE, dtype=float)[other_pos]
+    qs_macro["other_orientation"] = np.eye(model_init.N_DIRECTIONS, dtype=float)[other_ori]
+
     new_qs: dict[str, np.ndarray] = {}
+
+    pot_deps = state_state_dependencies["pot_state"]
+    parents_pot = {k: qs_macro[k] for k in pot_deps}
+    pot_next = B_pot_state(parents_pot, self_terminal, other_terminal)
 
     for factor, deps in state_state_dependencies.items():
         if factor in ("ck_put1", "ck_put2", "ck_put3", "ck_plated", "ck_delivered"):
             if factor == "ck_put1":
-                new_qs.update(B_checkboxes(qs, self_action, other_action))
+                new_qs.update(
+                    B_checkboxes(qs_macro, self_terminal, other_terminal, q_pot_next=pot_next)
+                )
             continue
 
-        parents = {k: qs[k] for k in deps}
+        parents = {k: qs_macro[k] for k in deps}
 
         if factor == "self_pos":
-            new_qs[factor] = B_self_pos(parents, self_action)
+            # Position and orientation already applied in macro navigation stage.
+            new_qs[factor] = np.array(qs_macro["self_pos"], dtype=float)
         elif factor == "self_orientation":
-            new_qs[factor] = B_self_orientation(parents, self_action)
+            new_qs[factor] = np.array(qs_macro["self_orientation"], dtype=float)
         elif factor == "self_held":
-            new_qs[factor] = B_self_held(parents, self_action)
+            new_qs[factor] = B_self_held(parents, self_terminal)
         elif factor == "other_pos":
-            new_qs[factor] = B_other_pos(parents, other_action)
+            new_qs[factor] = np.array(qs_macro["other_pos"], dtype=float)
         elif factor == "other_orientation":
-            new_qs[factor] = B_other_orientation(parents, other_action)
+            new_qs[factor] = np.array(qs_macro["other_orientation"], dtype=float)
         elif factor == "other_held":
-            new_qs[factor] = B_other_held(parents, other_action)
+            new_qs[factor] = B_other_held(parents, other_terminal)
         elif factor == "pot_state":
-            new_qs[factor] = B_pot_state(parents, self_action, other_action)
+            new_qs[factor] = np.array(pot_next, dtype=float)
         elif factor.startswith("ctr_"):
             grid = int(factor.split("_")[1])
-            new_qs[factor] = B_counter_occupancy(parents, self_action, other_action, grid)
+            new_qs[factor] = B_counter_occupancy(parents, self_terminal, other_terminal, grid)
         else:
             new_qs[factor] = normalize(np.array(parents[factor], dtype=float))
 

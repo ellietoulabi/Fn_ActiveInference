@@ -17,6 +17,24 @@ from agents.ActiveInference import control, inference
 
 
 class Agent(_BaseAgent):
+    @staticmethod
+    def _get_expected_states_structured(B_fn, qs_current, policy, env_params):
+        """
+        Roll out beliefs for policies whose steps may be non-scalars
+        (e.g. tuple step-actions such as (a0, a1)).
+        """
+        if np.isscalar(policy):
+            policy = [int(policy)]
+
+        qs_pred = []
+        qs_t = qs_current
+        for action in policy:
+            action_for_b = int(action) if np.isscalar(action) else action
+            qs_next = B_fn(qs_t, action_for_b, **env_params)
+            qs_pred.append(qs_next)
+            qs_t = qs_next
+        return qs_pred
+
     def infer_states(self, obs_dict):
         if self.inference_algorithm != "VANILLA":
             raise NotImplementedError("Only VANILLA inference supported")
@@ -119,4 +137,43 @@ class Agent(_BaseAgent):
             )
 
         return self.qs
+
+    def infer_policies(self):
+        """
+        Same as base Agent.infer_policies, but uses a structured-action-compatible
+        rollout for policy steps (supports tuple actions).
+        """
+        if self.inference_algorithm != "VANILLA":
+            raise NotImplementedError("Only VANILLA inference supported")
+
+        original_get_expected_states = control.get_expected_states
+        control.get_expected_states = self._get_expected_states_structured
+        try:
+            result = control.vanilla_fpi_update_posterior_policies(
+                self.qs,
+                self.A_fn,
+                self.B_fn,
+                self.C_fn,
+                self.policies,
+                self.env_params,
+                self.state_factors,
+                self.state_sizes,
+                self.observation_labels,
+                observation_state_dependencies=self.observation_state_dependencies,
+                use_utility=self.use_utility,
+                use_states_info_gain=self.use_states_info_gain,
+                E=self.E,
+                gamma=self.gamma,
+                return_policy_details=True,
+            )
+        finally:
+            control.get_expected_states = original_get_expected_states
+
+        if len(result) == 3:
+            self.q_pi, G, self._last_policy_details = result
+        else:
+            self.q_pi, G = result
+            self._last_policy_details = None
+
+        return self.q_pi, G
 

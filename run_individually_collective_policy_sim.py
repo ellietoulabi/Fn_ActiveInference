@@ -1,27 +1,24 @@
-"""
-Run two Monotonic IndividuallyCollective Active Inference agents in Overcooked cramped_room
-with step-by-step logs.
 
-Uses OvercookedMultiAgentEnv so both agents are controlled by AIF.
-
-Run from project root: python run_individually_collective.py  (or python3 run_individually_collective.py)
-"""
 
 import argparse
 import sys
 from pathlib import Path
 
+import numpy as np
 # Project root
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-# Add overcooked_ai src so we can load the MDP
 overcooked_src = PROJECT_ROOT / "environments" / "overcooked_ai" / "src"
 if overcooked_src.exists():
     sys.path.insert(0, str(overcooked_src))
 
 
 # -----------------------------------------------------------------------------
-# Single agent vs environment: IndividuallyCollective AIF agent in Overcooked
+# Two-agent Overcooked sim: IndividuallyCollective AIF with joint pair policies
+#
+# Each planning step is (JOINT_PAIR_LABEL, a0, a1): env agent 0 executes a0, agent 1 a1.
+# Each ego's B_fn maps that to (self_action, other_action) via ego_agent_index in env_params.
+# Both agents share one policy index per env step (sample/argmax from q_pi0 * q_pi1).
 # -----------------------------------------------------------------------------
 
 from utils.visualization.overcooked_terminal_map import orientation_str, render_overcooked_grid
@@ -30,6 +27,10 @@ from utils.visualization.overcooked_terminal_map import orientation_str, render_
 ACTION_NAMES = {
     0: "NORTH", 1: "SOUTH", 2: "EAST", 3: "WEST", 4: "STAY", 5: "INTERACT",
 }
+
+# Joint pair policies: two planning steps; each step assigns one primitive per agent.
+N_PRIMITIVE_ACTIONS = 6
+PAIR_POLICY_HORIZON = 2
 
 _ORI_NAMES = {0: "N", 1: "S", 2: "E", 3: "W"}
 _HELD_NAMES = {0: "NONE", 1: "ONION", 2: "DISH", 3: "SOUP"}
@@ -58,32 +59,45 @@ def _fmt_pos(model_init, idx: int) -> str:
         return f"w{int(idx)}"
 
 
-def _fmt_step_action(model_init, step_action: int) -> str:
+def _fmt_pair_step(step_action) -> str:
+    """Format one joint policy step (label, a0, a1) with six primitive names."""
+    if isinstance(step_action, (tuple, list)) and len(step_action) == 3:
+        a0 = int(step_action[1])
+        a1 = int(step_action[2])
+        return "A0:{}|A1:{}".format(
+            ACTION_NAMES.get(a0, str(a0)),
+            ACTION_NAMES.get(a1, str(a1)),
+        )
+    return str(step_action)
+
+
+def _fmt_policy(pol) -> str:
+    return "→".join([_fmt_pair_step(a) for a in pol])
+
+
+def _pair_step_action_to_primitive(step_action, agent_idx: int, model_init) -> int:
     """
-    For interleaved step-actions (0..11): decode to ACTOR:PRIMITIVE.
-    Falls back to primitive action name if decode not available.
+    Global joint step (JOINT_PAIR_LABEL, a0, a1): return primitive for env agent_idx.
+    Falls back to STAY if malformed.
     """
     try:
-        actor, a = model_init.decode_interleaved_step(int(step_action))
-        actor_s = getattr(model_init, "ACTOR_NAMES", {}).get(int(actor), str(actor))
-        return "{}:{}".format(actor_s, ACTION_NAMES.get(int(a), str(a)))
+        if isinstance(step_action, (tuple, list)) and len(step_action) == 3:
+            return int(step_action[1 + int(agent_idx)])
     except Exception:
-        return ACTION_NAMES.get(int(step_action), str(step_action))
+        pass
+    return int(getattr(model_init, "STAY", 4))
 
 
-def _fmt_policy(model_init, pol) -> str:
-    return "→".join([_fmt_step_action(model_init, int(a)) for a in pol])
+def _construct_joint_pair_policies(joint_label: str):
+    """All sequences of PAIR_POLICY_HORIZON steps; each step is (joint_label, a0, a1)."""
+    from itertools import product
 
-
-def _step_action_to_primitive(model_init, step_action: int) -> int:
-    """
-    Execute only SELF-assigned primitives; OTHER-assigned means STAY (can't directly control OTHER).
-    """
-    try:
-        actor, a = model_init.decode_interleaved_step(int(step_action))
-        return int(a) if int(actor) == int(model_init.SELF) else int(model_init.STAY)
-    except Exception:
-        return int(step_action)
+    step_pairs = [
+        (joint_label, a0, a1)
+        for a0 in range(N_PRIMITIVE_ACTIONS)
+        for a1 in range(N_PRIMITIVE_ACTIONS)
+    ]
+    return [[*steps] for steps in product(step_pairs, repeat=PAIR_POLICY_HORIZON)]
 
 
 def _belief_table(np, qs: dict, model_init, title: str) -> str:
@@ -140,54 +154,6 @@ def _belief_table(np, qs: dict, model_init, title: str) -> str:
             lines.append("      {:<19}  {:<18}  p(nonempty)={}".format(k, v, _fmt_prob(p_nonempty)))
 
     return "\n".join(lines)
-
-def _construct_ego_first_policies(model_init, policy_len: int):
-    """
-    Ego-first interleaved policies:
-    - step 1 must be SELF (0..N_ACTIONS-1)
-    - steps 2..T can be SELF or OTHER (0..N_INTERLEAVED_STEP_ACTIONS-1)
-    """
-    n_actions = int(getattr(model_init, "N_ACTIONS", 6))
-    n_inter = int(getattr(model_init, "N_INTERLEAVED_STEP_ACTIONS", 2 * n_actions))
-
-    step1 = list(range(n_actions))          # SELF:*  (actor=0)
-    later = list(range(n_inter))            # SELF:* or OTHER:*
-
-    if policy_len <= 1:
-        return [[a] for a in step1]
-
-    # Explicit loops (fast enough for len=3; 6*12*12=864)
-    policies = []
-    if policy_len == 2:
-        for a1 in step1:
-            for a2 in later:
-                policies.append([a1, a2])
-        return policies
-
-    if policy_len == 3:
-        for a1 in step1:
-            for a2 in later:
-                for a3 in later:
-                    policies.append([a1, a2, a3])
-        return policies
-
-    # Generic (small horizons only)
-    from itertools import product
-    for a1 in step1:
-        for rest in product(later, repeat=policy_len - 1):
-            policies.append([a1, *rest])
-    return policies
-
-def _first_step_is_other(model_init, policy) -> bool:
-    """
-    True iff the first step decodes to actor OTHER.
-    If decode isn't available, assume it's not-other.
-    """
-    try:
-        actor, _ = model_init.decode_interleaved_step(int(policy[0]))
-        return int(actor) == int(model_init.OTHER)
-    except Exception:
-        return False
 
 
 def _state_summary(state, model_init, max_agents: int | None = None):
@@ -266,11 +232,6 @@ def run_agent_vs_env_scenarios():
         help="If set, suppress all logs and print only the step number each iteration.",
     )
     parser.add_argument(
-        "--fullpolicies",
-        action="store_true",
-        help="If set, use the full interleaved policy set (12^T). Default is ego-first (6*12^(T-1)).",
-    )
-    parser.add_argument(
         "--noig",
         action="store_true",
         help="Disable epistemic value (state information gain) in policy evaluation.",
@@ -278,15 +239,9 @@ def run_agent_vs_env_scenarios():
     args, _unknown = parser.parse_known_args()
     noprint = bool(args.noprint)
     verbose = not noprint
-    ego_first = not bool(args.fullpolicies)
     no_ig = bool(args.noig)
 
-    try:
-        import numpy as np
-    except ImportError:
-        if verbose:
-            print("\n[SKIP] Agent vs env: numpy not available.")
-        return
+  
     try:
         from agents.ActiveInferenceFixedPolicies.agent import Agent
         from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndividuallyCollective import (
@@ -304,19 +259,27 @@ def run_agent_vs_env_scenarios():
         return
 
     model_init_agent = mon_model_init
+    if int(getattr(model_init_agent, "N_ACTIONS", 0)) != N_PRIMITIVE_ACTIONS:
+        if verbose:
+            print(
+                "\n[SKIP] model_init N_ACTIONS ({}) != script N_PRIMITIVE_ACTIONS ({}).".format(
+                    getattr(model_init_agent, "N_ACTIONS", None),
+                    N_PRIMITIVE_ACTIONS,
+                )
+            )
+        return
     state_factors = list(model_init_agent.states.keys())
     state_sizes = {f: len(v) for f, v in model_init_agent.states.items()}
     observation_labels = model_init_agent.observations
-    env_params = {"width": model_init_agent.GRID_WIDTH, "height": model_init_agent.GRID_HEIGHT}
-    policy_len = 2
+    base_env_params = {"width": model_init_agent.GRID_WIDTH, "height": model_init_agent.GRID_HEIGHT}
+    policy_len = PAIR_POLICY_HORIZON
+    joint_label = str(getattr(model_init_agent, "JOINT_PAIR_LABEL", "__joint_pair__"))
 
-    # Agent params tuned for speed.
-    def create_agent(seed=None):
+    def create_agent(seed=None, ego_agent_index: int = 0):
         if seed is not None:
             np.random.seed(seed)
-        policies = None
-        if ego_first:
-            policies = _construct_ego_first_policies(model_init_agent, policy_len=policy_len)
+        policies = _construct_joint_pair_policies(joint_label)
+        env_params = {**base_env_params, "ego_agent_index": int(ego_agent_index)}
         agent = Agent(
             A_fn=A_fn,
             B_fn=B_fn,
@@ -327,7 +290,7 @@ def run_agent_vs_env_scenarios():
             observation_labels=observation_labels,
             env_params=env_params,
             observation_state_dependencies=model_init_agent.observation_state_dependencies,
-            actions=list(range(getattr(model_init_agent, "N_INTERLEAVED_STEP_ACTIONS", model_init_agent.N_ACTIONS))),
+            actions=list(range(N_PRIMITIVE_ACTIONS)),
             gamma = 4.0,
             alpha = 16.0,
             policies=policies,
@@ -336,32 +299,67 @@ def run_agent_vs_env_scenarios():
             action_selection="stochastic",
             sampling_mode="full",
             inference_algorithm="VANILLA",
-            num_iter=8,
+            num_iter=16,
             dF_tol=0.01,
         )
         if no_ig:
             agent.use_states_info_gain = False
         return agent
 
-    max_steps_per_scenario = 150
+    max_steps_per_scenario = 50
     horizon = max_steps_per_scenario + 10
 
     env = OvercookedMultiAgentEnv(config={"layout": "cramped_room", "horizon": horizon})
     if verbose:
         print("[Env] Using multi-agent env: layout=cramped_room")
 
-    agent_0 = create_agent(seed=48)
-    agent_1 = create_agent(seed=49)
+    agent_0 = create_agent(seed=48, ego_agent_index=0)
+    agent_1 = create_agent(seed=49, ego_agent_index=1)
     if verbose:
+        n_pol = len(getattr(agent_0, "policies", []))
         print(
-            "[Policies] n_policies(A0)={} n_policies(A1)={} policy_len={} actions={} ego_first={}".format(
-                len(getattr(agent_0, "policies", [])),
-                len(getattr(agent_1, "policies", [])),
-                int(getattr(agent_0, "policy_len", 0)),
-                len(getattr(agent_0, "actions", [])),
-                ego_first,
+            "[Policies] joint pairs: horizon={} primitives={} n_policies(per agent)={}".format(
+                PAIR_POLICY_HORIZON,
+                N_PRIMITIVE_ACTIONS,
+                n_pol,
             )
         )
+
+    def _coordinated_joint_first_step(agent_0, agent_1):
+        """
+        Both agents already ran infer_policies with ego-aware B. Choose one policy index
+        so they execute the same global joint first step: (label, a0, a1).
+
+        Uses q_pi0 * q_pi1 (renormalized) for stochastic sampling so both assign mass to
+        the same joint plans; deterministic uses argmax of the product.
+        """
+        n_pol = len(agent_0.policies)
+        q0 = np.asarray(agent_0.get_policy_posterior(), dtype=np.float64).reshape(-1)
+        q1 = np.asarray(agent_1.get_policy_posterior(), dtype=np.float64).reshape(-1)
+        q_prod = q0 * q1
+        if agent_0.action_selection == "deterministic":
+            pol_idx = int(np.argmax(q_prod))
+        else:
+            alpha = float(agent_0.alpha)
+            log_q = np.log(np.maximum(q_prod, 1e-16))
+            p_policies = np.exp(log_q * alpha)
+            p_policies = np.maximum(p_policies, 0.0)
+            s = float(np.sum(p_policies))
+            if s <= 0.0 or not np.isfinite(s):
+                p_policies = np.ones(n_pol, dtype=np.float64) / float(n_pol)
+            else:
+                p_policies = p_policies / s
+                if len(p_policies) > 1:
+                    p_policies[-1] = 1.0 - float(np.sum(p_policies[:-1]))
+                else:
+                    p_policies[0] = 1.0
+            pol_idx = int(np.random.choice(n_pol, p=p_policies))
+        joint_step = agent_0.policies[pol_idx][0]
+        agent_0.action = joint_step
+        agent_0.step_time()
+        agent_1.action = joint_step
+        agent_1.step_time()
+        return pol_idx, joint_step
 
     def run_one_episode(episode_name, seed=None):
         obs, infos = env.reset(seed=seed)
@@ -401,10 +399,15 @@ def run_agent_vs_env_scenarios():
                     obs_1["self_pos_obs"], obs_1["self_orientation_obs"], obs_1["self_held_obs"],
                     obs_1["other_pos_obs"], obs_1["other_held_obs"], obs_1["pot_state_obs"], obs_1["soup_delivered_obs"]))
 
-            action_0_step = int(agent_0.step(obs_0))
-            action_1_step = int(agent_1.step(obs_1))
-            action_0 = _step_action_to_primitive(model_init_agent, action_0_step)
-            action_1 = _step_action_to_primitive(model_init_agent, action_1_step)
+            agent_0.infer_states(obs_0)
+            agent_1.infer_states(obs_1)
+            agent_0.infer_policies()
+            agent_1.infer_policies()
+            pol_idx, joint_first = _coordinated_joint_first_step(agent_0, agent_1)
+            action_0_step = joint_first
+            action_1_step = joint_first
+            action_0 = _pair_step_action_to_primitive(joint_first, 0, model_init_agent)
+            action_1 = _pair_step_action_to_primitive(joint_first, 1, model_init_agent)
             observations, rewards, terminated, truncated, infos = env.step({"agent_0": action_0, "agent_1": action_1})
             prev_reward_info = {
                 "sparse_reward_by_agent": [
@@ -431,11 +434,9 @@ def run_agent_vs_env_scenarios():
                 print("      entropy {:.3f}:".format(H_pi_0))
                 if top_0:
                     best_pol, best_prob, best_idx = top_0[0]
-                    print("      BEST: idx={} p={:.3f}  {}".format(int(best_idx), float(best_prob), _fmt_policy(model_init_agent, best_pol)))
-                    if _first_step_is_other(model_init_agent, best_pol):
-                        print("      NOTE: best policy starts with OTHER ⇒ executed action will be STAY.")
-                for rank, (pol, prob, pol_idx) in enumerate(top_0, 1):
-                    pol_str = _fmt_policy(model_init_agent, pol)
+                    print("      BEST: idx={} p={:.3f}  {}".format(int(best_idx), float(best_prob), _fmt_policy(best_pol)))
+                for rank, (pol, prob, _pidx) in enumerate(top_0, 1):
+                    pol_str = _fmt_policy(pol)
                     bar = "█" * int(prob * 20)
                     print("        #{:d} [{:>8}] {:<20} {:.3f}".format(rank, pol_str, bar, float(prob)))
 
@@ -446,16 +447,20 @@ def run_agent_vs_env_scenarios():
                 print("      entropy {:.3f}:".format(H_pi_1))
                 if top_1:
                     best_pol, best_prob, best_idx = top_1[0]
-                    print("      BEST: idx={} p={:.3f}  {}".format(int(best_idx), float(best_prob), _fmt_policy(model_init_agent, best_pol)))
-                    if _first_step_is_other(model_init_agent, best_pol):
-                        print("      NOTE: best policy starts with OTHER ⇒ executed action will be STAY.")
-                for rank, (pol, prob, pol_idx) in enumerate(top_1, 1):
-                    pol_str = _fmt_policy(model_init_agent, pol)
+                    print("      BEST: idx={} p={:.3f}  {}".format(int(best_idx), float(best_prob), _fmt_policy(best_pol)))
+                for rank, (pol, prob, _pidx) in enumerate(top_1, 1):
+                    pol_str = _fmt_policy(pol)
                     bar = "█" * int(prob * 20)
                     print("        #{:d} [{:>8}] {:<20} {:.3f}".format(rank, pol_str, bar, float(prob)))
 
-                print("    Action A0(step): {} [{}]".format(_fmt_step_action(model_init_agent, action_0_step), action_0_step))
-                print("    Action A1(step): {} [{}]".format(_fmt_step_action(model_init_agent, action_1_step), action_1_step))
+                print(
+                    "    Coordinated policy idx={}  joint first step: {}".format(
+                        int(pol_idx),
+                        _fmt_pair_step(joint_first),
+                    )
+                )
+                print("    Action A0(step): {} [{}]".format(_fmt_pair_step(action_0_step), action_0_step))
+                print("    Action A1(step): {} [{}]".format(_fmt_pair_step(action_1_step), action_1_step))
                 print("    Action A0(exec): {} [{}]".format(ACTION_NAMES.get(action_0, action_0), action_0))
                 print("    Action A1(exec): {} [{}]".format(ACTION_NAMES.get(action_1, action_1), action_1))
                 print("    Reward A0: {}  (cumulative: {})".format(r0, total_reward_0))
