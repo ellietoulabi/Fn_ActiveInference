@@ -10,7 +10,16 @@
 ```
 
 
+## Status: 
+ - semantic policies work
+
+
+
+
 ## TODO
+- [ ] make sure everything is correct
+- [ ] action-level policy
+- [ ] dynamic policy
 
 ### model_init.py
 - [x] states
@@ -47,9 +56,13 @@
 ---
 
 ### Policies
-- [ ] joint policies (`InCo`)
-- [ ] 
-
+- [x] joint policies (`InCo`)
+- [x] Fixed Predefined set of policies saved in a file
+- [ ] think about if you need to change Active Inference implementation
+- [ ] list all policy ideas (why james' doesnt work)
+- [ ] change the gen model
+- [ ] run
+- [ ] REMEMBER to save results to discuss them in
 ---
 
 ## Parameters

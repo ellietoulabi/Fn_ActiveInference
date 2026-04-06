@@ -6,8 +6,8 @@ Includes:
 - self position / orientation / held observations
 - other agent position / orientation / held observations
 - pot state observation
-- soup delivered observation (from ck_delivered event state)
-- binary counter occupancy observations for modeled counters
+- soup delivered observation (event pulse: delivered this step)
+- counter occupancy observations for modeled counters
 """
 
 import numpy as np
@@ -61,13 +61,13 @@ def A_pot_state_obs(pot_state: int) -> np.ndarray:
     return _noisy_categorical(int(pot_state), n, A_NOISE_LEVEL)
 
 
-def A_soup_delivered_obs(soup_delivered: int) -> np.ndarray:
+def A_soup_delivered_obs(soup_delivered_event: int) -> np.ndarray:
     """
     Event semantics:
-      soup_delivered_obs = 1 iff ck_delivered = 1
+      soup_delivered_obs = 1 iff ck_delivered = 1 for the current step only.
     """
     n = len(model_init.observations["soup_delivered_obs"])
-    idx = 1 if int(soup_delivered) > 0 else 0
+    idx = 1 if int(soup_delivered_event) > 0 else 0
     return _noisy_categorical(idx, n, A_NOISE_LEVEL)
 
 
@@ -77,12 +77,12 @@ def A_counter_occ_obs(counter_occ: int, factor_name: str) -> np.ndarray:
       0 empty, 1 onion, 2 dish, 3 soup
     """
     n = len(model_init.observations[f"{factor_name}_obs"])
-    return _noisy_categorical(int(counter_occ), n, A_NOISE_LEVEL)
+    return _noisy_categorical(int(counter_occ), n, 0)
 
 
 def A_fn(state_indices: dict) -> dict[str, np.ndarray]:
     pot_state = int(state_indices.get("pot_state", model_init.POT_0))
-    soup_delivered = int(state_indices.get("ck_delivered", 0))
+    delivered_event = int(state_indices.get("ck_delivered", 0))
 
     obs: dict[str, np.ndarray] = {}
 
@@ -95,7 +95,7 @@ def A_fn(state_indices: dict) -> dict[str, np.ndarray]:
     obs["other_held_obs"] = A_other_held_obs(state_indices["other_held"])
 
     obs["pot_state_obs"] = A_pot_state_obs(pot_state)
-    obs["soup_delivered_obs"] = A_soup_delivered_obs(soup_delivered)
+    obs["soup_delivered_obs"] = A_soup_delivered_obs(delivered_event)
 
     for grid_idx in model_init.MODELED_COUNTERS:
         factor = f"ctr_{grid_idx}"

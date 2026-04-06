@@ -3,14 +3,23 @@
 Transition p(s' | s, a) model (B) for IndividuallyCollective paradigm — Cramped Room.
 
 Policy semantics:
-- one policy step is a semantic macro-action index in [0..19], encoding
-  (destination, terminal_mode)
-- interleaved compatibility is retained: (actor, semantic_action)
-- joint pair compatibility is retained: (JOINT_PAIR_LABEL, a0, a1)
+- one policy step is a semantic JOINT PAIR or ego-framed semantic step
+- joint pair compatibility is retained: (JOINT_PAIR_LABEL, a0, a1), where
+  a0 is env-agent-0's semantic action and a1 is env-agent-1's semantic action
+- ego-framed compatibility is retained: (actor, semantic_action)
+- scalar encoding support is retained for interleaved semantic steps
 
-Macro transition semantics for one semantic action:
-1) Navigate to destination target pose (walkable index + orientation)
+Semantic macro transition semantics for one semantic action:
+1) Navigate to destination target pose
 2) Execute terminal mode (STAY or INTERACT)
+
+Important:
+- For a JOINT_PAIR_LABEL step, each ego agent interprets the same global pair
+  from its own perspective:
+    ego 0 sees (self=a0, other=a1)
+    ego 1 sees (self=a1, other=a0)
+- This file only defines transition semantics for imagined joint action hypotheses.
+  It does not force both agents to execute the same joint pair in the real env.
 """
 
 import numpy as np
@@ -26,12 +35,19 @@ def normalize(p: np.ndarray) -> np.ndarray:
 
 def _decode_policy_step(step, **kwargs) -> tuple[int, int]:
     """
-    Map policy step to (self_action, other_action) in the current agent's ego frame.
+    Map one policy step to (self_semantic_action, other_semantic_action)
+    in the current agent's ego frame.
 
-    - (JOINT_PAIR_LABEL, a0, a1): global primitives; ego_agent_index in kwargs (0 or 1)
-      selects self vs other mapping.
-    - (actor, primitive) actor in {SELF, OTHER}: one agent moves, the other STAY (interleaved).
-    - Scalar 0..11: interleaved encoding.
+    Supported inputs:
+    - (JOINT_PAIR_LABEL, a0, a1): global semantic pair; ego_agent_index in kwargs
+      determines whether self is a0 or a1.
+    - (actor, semantic_action): ego-framed interleaved semantic step
+    - scalar encoding:
+        0..N_ACTIONS-1               => semantic self-action, other=STAY
+        N_ACTIONS..2*N_ACTIONS-1     => semantic other-action, self=STAY
+
+    Returns:
+      (self_semantic_action, other_semantic_action)
     """
     ego = int(kwargs.get("ego_agent_index", 0))
 
@@ -60,9 +76,6 @@ def _decode_policy_step(step, **kwargs) -> tuple[int, int]:
         actor, action = int(step[0]), int(step[1])
         return model_init.policy_step_to_actions(actor, action)
 
-    # Scalar encoding support:
-    # - 0..19   => (SELF, semantic_action)
-    # - 20..39  => (OTHER, semantic_action)
     a = int(step)
     n_actions = int(getattr(model_init, "N_ACTIONS", 6))
     n_actors = int(getattr(model_init, "N_ACTORS", 2))
@@ -71,7 +84,7 @@ def _decode_policy_step(step, **kwargs) -> tuple[int, int]:
         action = a % n_actions
         return model_init.policy_step_to_actions(actor, action)
 
-    # Back-compat: treat as a semantic self action index directly
+    # Back-compat fallback: treat as ego semantic self-action directly
     return a, model_init.STAY
 
 
@@ -123,6 +136,7 @@ def _get_front(pos_w: int, ori: int) -> int:
 
 
 INTERACT_SUCCESS_PROB = getattr(model_init, "INTERACT_SUCCESS_PROB", 0.9)
+
 
 def _held_to_ctr_content(held: int) -> int:
     if held == model_init.HELD_ONION:
@@ -239,9 +253,7 @@ def B_self_held(parents: dict, self_action: int) -> np.ndarray:
                                 next_q[held] += w * (1.0 - INTERACT_SUCCESS_PROB * p_empty)
                                 continue
                             else:
-                                # Pick up from counter if it has a known item type.
                                 qc = np.asarray(q_ctr[front_ctr], dtype=float)
-                                # If counter is empty, interaction changes nothing (stay NONE).
                                 p_empty = float(qc[model_init.CTR_EMPTY]) if qc.size else 1.0
                                 if p_empty > 0.0:
                                     next_q[model_init.HELD_NONE] += w * p_empty
@@ -254,7 +266,6 @@ def B_self_held(parents: dict, self_action: int) -> np.ndarray:
                                     held_item = _ctr_content_to_held(cs)
                                     next_q[held_item] += w * INTERACT_SUCCESS_PROB * p_cs
                                     next_q[model_init.HELD_NONE] += w * (1.0 - INTERACT_SUCCESS_PROB) * p_cs
-                                # Counter empty case falls through to default below.
                                 if float(qc[model_init.CTR_EMPTY]) < 1.0:
                                     continue
 
@@ -483,13 +494,11 @@ def _apply_counter_fill(ctr_state: int, held: int, action: int, front_ctr, count
     if not (action == model_init.INTERACT and front_ctr == counter_grid):
         return new_ctr, p_success
 
-    # Place onto empty counter
     if held != model_init.HELD_NONE and int(ctr_state) == int(model_init.CTR_EMPTY):
         new_ctr = _held_to_ctr_content(int(held))
         p_success = INTERACT_SUCCESS_PROB if new_ctr != model_init.CTR_EMPTY else 1.0
         return new_ctr, p_success
 
-    # Pick up from non-empty counter
     if held == model_init.HELD_NONE and int(ctr_state) != int(model_init.CTR_EMPTY):
         new_ctr = model_init.CTR_EMPTY
         p_success = INTERACT_SUCCESS_PROB
@@ -595,7 +604,7 @@ def B_checkboxes(
     q_ck2 = np.asarray(parents["ck_put2"], dtype=float)
     q_ck3 = np.asarray(parents["ck_put3"], dtype=float)
     q_plat = np.asarray(parents["ck_plated"], dtype=float)
-    q_ck_del = np.asarray(parents["ck_delivered"], dtype=float)
+    # q_ck_del = np.asarray(parents["ck_delivered"], dtype=float)
 
     p_deliver_now = 0.0
     p_plated_now = 0.0
@@ -646,6 +655,7 @@ def B_checkboxes(
         q_pot_next = B_pot_state(pot_parents, self_action, other_action)
     else:
         q_pot_next = np.asarray(q_pot_next, dtype=float)
+
     p_has_put1 = float(
         q_pot_next[model_init.POT_1]
         + q_pot_next[model_init.POT_2]
@@ -665,14 +675,7 @@ def B_checkboxes(
     p_plat_next_1_if_no_del = 1.0 - (1.0 - q_plat[1]) * (1.0 - p_plated_now)
     p_plat_next_1 = (1.0 - p_deliver_now) * p_plat_next_1_if_no_del
 
-    # Monotonic delivery: P(ck_del'=1) = P(ck_del=1) + P(ck_del=0)*P(deliver this step)
-    p_del_next_1 = float(
-        np.clip(
-            float(q_ck_del[1]) + (1.0 - float(q_ck_del[1])) * p_deliver_now,
-            0.0,
-            1.0,
-        )
-    )
+    p_del_next_1 = float(np.clip(p_deliver_now, 0.0, 1.0))
 
     next_ck1 = np.array([1.0 - p_ck1_next_1, p_ck1_next_1], dtype=float)
     next_ck2 = np.array([1.0 - p_ck2_next_1, p_ck2_next_1], dtype=float)
@@ -694,15 +697,24 @@ def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
     Main transition model p(s' | s, a) for all hidden state factors.
 
     `action` can be:
-      - semantic action index (0..19)
-      - (actor, semantic_action) interleaved
-      - (JOINT_PAIR_LABEL, a0, a1) where a0/a1 are semantic action indices
+      - semantic joint pair: (JOINT_PAIR_LABEL, a0, a1)
+      - ego-framed interleaved semantic step: (actor, semantic_action)
+      - scalar-encoded interleaved semantic step
+
+    The step is decoded into ego-framed semantic actions:
+      (self_semantic_action, other_semantic_action)
+
+    Each semantic action is then abstracted as:
+      1) immediate navigation to a canonical target pose
+      2) terminal primitive STAY or INTERACT at that pose
+
+    This is an abstract macro-transition model for planning, not a primitive
+    simulator of the real env rollout.
     """
     self_semantic, other_semantic = _decode_policy_step(action, **kwargs)
     self_pos, self_ori, self_terminal = _semantic_to_target_pose(self_semantic)
     other_pos, other_ori, other_terminal = _semantic_to_target_pose(other_semantic)
 
-    # Macro navigation stage: both agents jump to destination target poses.
     qs_macro = {k: np.array(v, dtype=float) for k, v in qs.items()}
     qs_macro["self_pos"] = np.eye(model_init.N_WALKABLE, dtype=float)[self_pos]
     qs_macro["self_orientation"] = np.eye(model_init.N_DIRECTIONS, dtype=float)[self_ori]
@@ -726,7 +738,6 @@ def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
         parents = {k: qs_macro[k] for k in deps}
 
         if factor == "self_pos":
-            # Position and orientation already applied in macro navigation stage.
             new_qs[factor] = np.array(qs_macro["self_pos"], dtype=float)
         elif factor == "self_orientation":
             new_qs[factor] = np.array(qs_macro["self_orientation"], dtype=float)

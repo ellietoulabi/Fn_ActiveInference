@@ -1,10 +1,9 @@
-
-
 import argparse
 import sys
 from pathlib import Path
 
 import numpy as np
+
 # Project root
 PROJECT_ROOT = Path(__file__).resolve().parent
 
@@ -14,17 +13,29 @@ if overcooked_src.exists():
 
 
 # -----------------------------------------------------------------------------
-# Two-agent Overcooked sim: IndividuallyCollective AIF with joint pair policies
+# Two-agent Overcooked sim: IndividuallyCollective AIF with ego-framed joint
+# pair policies and decentralized execution.
 #
-# Each planning step is (JOINT_PAIR_LABEL, a0, a1): env agent 0 executes a0, agent 1 a1.
-# Each ego's B_fn maps that to (self_action, other_action) via ego_agent_index in env_params.
-# Both agents share one policy index per env step (sample/argmax from q_pi0 * q_pi1).
+# Key semantics:
+# - Each planning step is a JOINT PAIR policy step: (JOINT_PAIR_LABEL, a0, a1)
+#   where a0 is env-agent-0's semantic action and a1 is env-agent-1's semantic
+#   action in GLOBAL indexing.
+# - Each ego agent evaluates the SAME global pair from its own perspective:
+#     ego 0 interprets it as (self=a0, other=a1)
+#     ego 1 interprets it as (self=a1, other=a0)
+#   via ego_agent_index inside B_fn.
+# - Crucially, each agent selects its OWN preferred joint pair independently.
+# - Then each agent executes ONLY ITS OWN COMPONENT of the pair it selected:
+#     env agent 0 executes selected_pair_0[1]
+#     env agent 1 executes selected_pair_1[2]
+# - Therefore, the realized env action pair need not equal either selected
+#   joint pair exactly. This is the intended IndividuallyCollective semantics:
+#   collective reasoning, decentralized commitment.
 # -----------------------------------------------------------------------------
 
 from utils.visualization.overcooked_terminal_map import orientation_str, render_overcooked_grid
 
 
-# Primitive actions (used by the Overcooked env each env.step()).
 PRIMITIVE_ACTION_NAMES = {
     0: "NORTH",
     1: "SOUTH",
@@ -34,7 +45,7 @@ PRIMITIVE_ACTION_NAMES = {
     5: "INTERACT",
 }
 
-N_PRIMITIVE_ACTIONS = 6  # NORTH/SOUTH/EAST/WEST/STAY/INTERACT
+N_PRIMITIVE_ACTIONS = 6
 PAIR_POLICY_HORIZON = 1
 MACRO_MAX_PRIMITIVE_STEPS = 8
 
@@ -48,7 +59,7 @@ def _fmt_prob(x: float) -> str:
     return "{:>5.2f}".format(float(x))
 
 
-def _map_stats(np, p):
+def _map_stats(np_mod, p):
     p = np.asarray(p, dtype=float)
     i = int(np.argmax(p)) if p.size else 0
     pm = float(p[i]) if p.size else 0.0
@@ -66,7 +77,7 @@ def _fmt_pos(model_init, idx: int) -> str:
 
 
 def _fmt_pair_step(step_action, semantic_model_init) -> str:
-    """Format one joint policy step (label, a0, a1) with semantic actions."""
+    """Format one global joint policy step (label, a0, a1) with semantic names."""
     if isinstance(step_action, (tuple, list)) and len(step_action) == 3:
         a0 = int(step_action[1])
         a1 = int(step_action[2])
@@ -81,19 +92,6 @@ def _fmt_policy(pol, semantic_model_init) -> str:
     return "→".join([_fmt_pair_step(a, semantic_model_init) for a in pol])
 
 
-def _pair_step_action_to_primitive(step_action, agent_idx: int, model_init) -> int:
-    """
-    Global joint step (JOINT_PAIR_LABEL, a0, a1): return primitive for env agent_idx.
-    Falls back to STAY if malformed.
-    """
-    try:
-        if isinstance(step_action, (tuple, list)) and len(step_action) == 3:
-            return int(step_action[1 + int(agent_idx)])
-    except Exception:
-        pass
-    return int(getattr(model_init, "STAY", 4))
-
-
 def _construct_joint_pair_policies(joint_label: str, n_semantic_actions: int):
     """Enumerate all sequences of semantic joint steps (label, a0, a1)."""
     from itertools import product
@@ -106,7 +104,7 @@ def _construct_joint_pair_policies(joint_label: str, n_semantic_actions: int):
     return [[*steps] for steps in product(step_pairs, repeat=PAIR_POLICY_HORIZON)]
 
 
-def _belief_table(np, qs: dict, model_init, title: str) -> str:
+def _belief_table(np_mod, qs: dict, model_init, title: str) -> str:
     lines = []
     lines.append(f"    {title}")
     lines.append("      factor               MAP                 p(MAP)    H")
@@ -119,7 +117,7 @@ def _belief_table(np, qs: dict, model_init, title: str) -> str:
         p = qs.get(f, None)
         if p is None:
             continue
-        i, pm, H = _map_stats(np, p)
+        i, pm, H = _map_stats(np_mod, p)
         if f.endswith("_pos"):
             v = _fmt_pos(model_init, i)
         elif f.endswith("_orientation"):
@@ -134,7 +132,7 @@ def _belief_table(np, qs: dict, model_init, title: str) -> str:
         p = qs.get(f, None)
         if p is None:
             continue
-        i, pm, H = _map_stats(np, p)
+        i, pm, H = _map_stats(np_mod, p)
         if f == "pot_state":
             v = _POT_NAMES.get(i, str(i))
             row(f, v, pm, H)
@@ -153,7 +151,7 @@ def _belief_table(np, qs: dict, model_init, title: str) -> str:
         lines.append("      -- counters (MAP, p(nonempty)) --")
         for k in sorted(ctr_factors, key=lambda s: int(s.split("_")[1])):
             p = np.asarray(qs[k], dtype=float)
-            i, pm, _H = _map_stats(np, p)
+            i, pm, _H = _map_stats(np_mod, p)
             p_empty = float(p[0]) if p.size > 0 else 1.0
             p_nonempty = float(1.0 - p_empty)
             v = _CTR_NAMES.get(i, str(i))
@@ -175,6 +173,7 @@ def _state_summary(state, model_init, max_agents: int | None = None):
         if p.has_object() and p.held_object:
             held = getattr(p.held_object, "name", str(p.held_object))
         parts.append("A{}@{} held={}".format(i, w, held))
+
     pot = "empty"
     for (pos, obj) in state.objects.items():
         if not obj or getattr(obj, "name", None) != "soup":
@@ -182,6 +181,7 @@ def _state_summary(state, model_init, max_agents: int | None = None):
         grid_idx = model_init.xy_to_index(pos[0], pos[1])
         if grid_idx not in model_init.POT_INDICES:
             continue
+
         ing = getattr(obj, "ingredients", [])
         n = len(ing) if ing else 0
         is_idle = bool(getattr(obj, "is_idle", False))
@@ -194,6 +194,7 @@ def _state_summary(state, model_init, max_agents: int | None = None):
                 ct = getattr(obj, "cook_time", None)
             except Exception:
                 ct = None
+
         if is_ready:
             phase = "ready"
         elif is_cooking:
@@ -202,11 +203,13 @@ def _state_summary(state, model_init, max_agents: int | None = None):
             phase = "idle"
         else:
             phase = "unknown"
+
         extra = ""
         if tick is not None and ct is not None and not is_idle:
             extra = " t={}/{}".format(int(tick), int(ct))
         pot = "{}onion({}{})".format(n, phase, extra)
         break
+
     return " | ".join(parts) + " | pot={}".format(pot)
 
 
@@ -227,9 +230,69 @@ def _agent_summary_lines(state, model_init, max_agents: int | None = None):
     return lines
 
 
+def _sample_or_argmax_policy_index(agent) -> int:
+    """
+    Select one policy index independently for a single agent from its own q_pi.
+    Mirrors the previous coordinated selector, but without combining posteriors
+    across agents.
+    """
+    q_pi = np.asarray(agent.get_policy_posterior(), dtype=np.float64).reshape(-1)
+    n_pol = len(q_pi)
+    if n_pol == 0:
+        return 0
+
+    if getattr(agent, "action_selection", "stochastic") == "deterministic":
+        return int(np.argmax(q_pi))
+
+    alpha = float(getattr(agent, "alpha", 1.0))
+    log_q = np.log(np.maximum(q_pi, 1e-16))
+    p_policies = np.exp(log_q * alpha)
+    p_policies = np.maximum(p_policies, 0.0)
+
+    s = float(np.sum(p_policies))
+    if s <= 0.0 or not np.isfinite(s):
+        p_policies = np.ones(n_pol, dtype=np.float64) / float(n_pol)
+    else:
+        p_policies = p_policies / s
+        if n_pol > 1:
+            p_policies[-1] = 1.0 - float(np.sum(p_policies[:-1]))
+        else:
+            p_policies[0] = 1.0
+
+    return int(np.random.choice(n_pol, p=p_policies))
+
+
+def _independent_joint_first_steps(agent_0, agent_1):
+    """
+    Each agent selects its OWN preferred global joint first step independently.
+    Then each agent's internal time-step is advanced using the joint step it
+    personally selected.
+
+    Returns:
+      pol_idx_0, step_0, pol_idx_1, step_1
+    where each step_k is a global joint pair: (label, a0, a1)
+    """
+    pol_idx_0 = _sample_or_argmax_policy_index(agent_0)
+    pol_idx_1 = _sample_or_argmax_policy_index(agent_1)
+
+    step_0 = agent_0.policies[pol_idx_0][0]
+    step_1 = agent_1.policies[pol_idx_1][0]
+
+    agent_0.action = step_0
+    agent_0.step_time()
+
+    agent_1.action = step_1
+    agent_1.step_time()
+
+    return pol_idx_0, step_0, pol_idx_1, step_1
+
+
 def run_agent_vs_env_scenarios():
     """
     Run two Monotonic IndividuallyCollective AIF agents in the Overcooked cramped_room env.
+
+    Each agent reasons over JOINT semantic action pairs but executes only its own
+    component from the pair it independently selected.
     """
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument(
@@ -247,7 +310,6 @@ def run_agent_vs_env_scenarios():
     verbose = not noprint
     no_ig = bool(args.noig)
 
-  
     try:
         from agents.ActiveInferenceFixedPolicies.agent import Agent
         from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndividuallyCollectiveWithSemanticPolicies import (
@@ -274,6 +336,7 @@ def run_agent_vs_env_scenarios():
                 )
             )
         return
+
     N_SEMANTIC_ACTIONS = int(getattr(model_init_agent, "N_ACTIONS", 0))
     state_factors = list(model_init_agent.states.keys())
     state_sizes = {f: len(v) for f, v in model_init_agent.states.items()}
@@ -285,8 +348,10 @@ def run_agent_vs_env_scenarios():
     def create_agent(seed=None, ego_agent_index: int = 0):
         if seed is not None:
             np.random.seed(seed)
+
         policies = _construct_joint_pair_policies(joint_label, N_SEMANTIC_ACTIONS)
         env_params = {**base_env_params, "ego_agent_index": int(ego_agent_index)}
+
         agent = Agent(
             A_fn=A_fn,
             B_fn=B_fn,
@@ -298,8 +363,8 @@ def run_agent_vs_env_scenarios():
             env_params=env_params,
             observation_state_dependencies=model_init_agent.observation_state_dependencies,
             actions=list(range(N_SEMANTIC_ACTIONS)),
-            gamma = 1.0,
-            alpha = 2.0,
+            gamma=8.0,
+            alpha=32.0,
             policies=policies,
             policy_len=policy_len,
             inference_horizon=policy_len,
@@ -313,9 +378,7 @@ def run_agent_vs_env_scenarios():
             agent.use_states_info_gain = False
         return agent
 
-    max_steps_per_scenario = 250
-    # OvercookedMultiAgentEnv counts primitive env.step() calls, while our policy loop
-    # advances per semantic macro decision.
+    max_steps_per_scenario = 1000
     horizon = max_steps_per_scenario * MACRO_MAX_PRIMITIVE_STEPS + 10
 
     env = OvercookedMultiAgentEnv(config={"layout": "cramped_room", "horizon": horizon})
@@ -324,51 +387,16 @@ def run_agent_vs_env_scenarios():
 
     agent_0 = create_agent(seed=48, ego_agent_index=0)
     agent_1 = create_agent(seed=49, ego_agent_index=1)
+
     if verbose:
         n_pol = len(getattr(agent_0, "policies", []))
         print(
-            "[Policies] joint pairs: horizon={} primitives={} n_policies(per agent)={}".format(
+            "[Policies] joint pairs: horizon={} semantic_actions={} n_policies(per agent)={}".format(
                 PAIR_POLICY_HORIZON,
-                N_PRIMITIVE_ACTIONS,
+                N_SEMANTIC_ACTIONS,
                 n_pol,
             )
         )
-
-    def _coordinated_joint_first_step(agent_0, agent_1):
-        """
-        Both agents already ran infer_policies with ego-aware B. Choose one policy index
-        so they execute the same global joint first step: (label, a0, a1).
-
-        Uses q_pi0 * q_pi1 (renormalized) for stochastic sampling so both assign mass to
-        the same joint plans; deterministic uses argmax of the product.
-        """
-        n_pol = len(agent_0.policies)
-        q0 = np.asarray(agent_0.get_policy_posterior(), dtype=np.float64).reshape(-1)
-        q1 = np.asarray(agent_1.get_policy_posterior(), dtype=np.float64).reshape(-1)
-        q_prod = q0 * q1
-        if agent_0.action_selection == "deterministic":
-            pol_idx = int(np.argmax(q_prod))
-        else:
-            alpha = float(agent_0.alpha)
-            log_q = np.log(np.maximum(q_prod, 1e-16))
-            p_policies = np.exp(log_q * alpha)
-            p_policies = np.maximum(p_policies, 0.0)
-            s = float(np.sum(p_policies))
-            if s <= 0.0 or not np.isfinite(s):
-                p_policies = np.ones(n_pol, dtype=np.float64) / float(n_pol)
-            else:
-                p_policies = p_policies / s
-                if len(p_policies) > 1:
-                    p_policies[-1] = 1.0 - float(np.sum(p_policies[:-1]))
-                else:
-                    p_policies[0] = 1.0
-            pol_idx = int(np.random.choice(n_pol, p=p_policies))
-        joint_step = agent_0.policies[pol_idx][0]
-        agent_0.action = joint_step
-        agent_0.step_time()
-        agent_1.action = joint_step
-        agent_1.step_time()
-        return pol_idx, joint_step
 
     def _semantic_idx_to_macro_params(semantic_idx: int):
         """
@@ -390,13 +418,11 @@ def run_agent_vs_env_scenarios():
         cur_w = int(obs_nav["self_pos_obs"])
         cur_ori = int(obs_nav["self_orientation_obs"])
 
-        # If at destination but orientation differs, try to set orientation via a move.
         if cur_w == target_w and cur_ori != target_ori:
             if 0 <= target_ori < 4:
-                return int(target_ori)  # NORTH/SOUTH/EAST/WEST are aligned with 0..3
+                return int(target_ori)
             return int(model_init_agent.STAY)
 
-        # Move one step in the dominant axis toward target_w.
         if cur_w != target_w:
             cur_grid = model_init_agent.walkable_idx_to_grid_idx(cur_w)
             tgt_grid = model_init_agent.walkable_idx_to_grid_idx(target_w)
@@ -426,7 +452,6 @@ def run_agent_vs_env_scenarios():
                     cand = int(model_init_agent.STAY)
                     nx, ny = cur_x, cur_y
 
-            # Only take the move if the destination grid is walkable in our abstraction.
             cand_grid = model_init_agent.xy_to_index(nx, ny)
             new_walkable = model_init_agent.grid_idx_to_walkable_idx(cand_grid)
             if new_walkable is None:
@@ -435,17 +460,17 @@ def run_agent_vs_env_scenarios():
 
         return int(model_init_agent.STAY)
 
-    def _execute_semantic_joint_macro_step(env, state, joint_step, prev_reward_info):
+    def _execute_semantic_individual_macro_step(env, state, a0_sem, a1_sem, prev_reward_info):
         """
-        Execute one *semantic policy step* in the real env.
-        A semantic step is (a0_sem, a1_sem) paired; each semantic action is a macro
-        (navigate toward destination, then terminal STAY/INTERACT when reached).
-        """
-        a0_sem = int(joint_step[1])
-        a1_sem = int(joint_step[2])
+        Execute one semantic decision step in the real env under IndividuallyCollective semantics:
 
-        t0_w, t0_ori, m0, terminal0 = _semantic_idx_to_macro_params(a0_sem)
-        t1_w, t1_ori, m1, terminal1 = _semantic_idx_to_macro_params(a1_sem)
+        - agent 0 executes ONLY its own semantic choice a0_sem
+        - agent 1 executes ONLY its own semantic choice a1_sem
+
+        These may come from different selected joint pairs.
+        """
+        t0_w, t0_ori, _m0, terminal0 = _semantic_idx_to_macro_params(int(a0_sem))
+        t1_w, t1_ori, _m1, terminal1 = _semantic_idx_to_macro_params(int(a1_sem))
 
         done0 = False
         done1 = False
@@ -458,6 +483,7 @@ def run_agent_vs_env_scenarios():
         for _sub in range(MACRO_MAX_PRIMITIVE_STEPS):
             obs_nav0 = env_utils.env_obs_to_model_obs(state, 0, reward_info=None)
             obs_nav1 = env_utils.env_obs_to_model_obs(state, 1, reward_info=None)
+
             cur_w0 = int(obs_nav0["self_pos_obs"])
             cur_ori0 = int(obs_nav0["self_orientation_obs"])
             cur_w1 = int(obs_nav1["self_pos_obs"])
@@ -480,7 +506,6 @@ def run_agent_vs_env_scenarios():
                 {"agent_0": int(action0), "agent_1": int(action1)}
             )
 
-            # Update reward pulse for next semantic imagination.
             prev_reward_info = {
                 "sparse_reward_by_agent": [
                     infos["agent_0"].get("sparse_reward", 0),
@@ -495,7 +520,6 @@ def run_agent_vs_env_scenarios():
             terminated_out = terminated
             truncated_out = truncated
 
-            # Mark completion when the destination pose is reached (regardless of terminal success).
             if not done0 and reached0:
                 done0 = True
             if not done1 and reached1:
@@ -511,10 +535,12 @@ def run_agent_vs_env_scenarios():
     def run_one_episode(episode_name, seed=None):
         obs, infos = env.reset(seed=seed)
         state = infos["agent_0"]["state"]
+
         config_0 = env_utils.get_D_config_from_state(state, 0)
         config_1 = env_utils.get_D_config_from_state(state, 1)
         agent_0.reset(config=config_0)
         agent_1.reset(config=config_1)
+
         prev_reward_info = {"sparse_reward_by_agent": [0, 0]}
         total_reward_0 = 0.0
         total_reward_1 = 0.0
@@ -527,8 +553,8 @@ def run_agent_vs_env_scenarios():
         for step in range(1, max_steps_per_scenario + 1):
             obs_0 = env_utils.env_obs_to_model_obs(state, 0, reward_info=prev_reward_info)
             obs_1 = env_utils.env_obs_to_model_obs(state, 1, reward_info=prev_reward_info)
+
             if noprint:
-                # Only step number, nothing else.
                 print(step, flush=True)
             else:
                 state_str = _state_summary(state, model_init_agent, max_agents=2)
@@ -539,29 +565,54 @@ def run_agent_vs_env_scenarios():
                     print("      " + row)
                 for line in _agent_summary_lines(state, model_init_agent, max_agents=2):
                     print(line)
-                print("    Obs A0: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
-                    obs_0["self_pos_obs"], obs_0["self_orientation_obs"], obs_0["self_held_obs"],
-                    obs_0["other_pos_obs"], obs_0["other_held_obs"], obs_0["pot_state_obs"], obs_0["soup_delivered_obs"]))
-                print("    Obs A1: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
-                    obs_1["self_pos_obs"], obs_1["self_orientation_obs"], obs_1["self_held_obs"],
-                    obs_1["other_pos_obs"], obs_1["other_held_obs"], obs_1["pot_state_obs"], obs_1["soup_delivered_obs"]))
+                print(
+                    "    Obs A0: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
+                        obs_0["self_pos_obs"],
+                        obs_0["self_orientation_obs"],
+                        obs_0["self_held_obs"],
+                        obs_0["other_pos_obs"],
+                        obs_0["other_held_obs"],
+                        obs_0["pot_state_obs"],
+                        obs_0["soup_delivered_obs"],
+                    )
+                )
+                print(
+                    "    Obs A1: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
+                        obs_1["self_pos_obs"],
+                        obs_1["self_orientation_obs"],
+                        obs_1["self_held_obs"],
+                        obs_1["other_pos_obs"],
+                        obs_1["other_held_obs"],
+                        obs_1["pot_state_obs"],
+                        obs_1["soup_delivered_obs"],
+                    )
+                )
 
             agent_0.infer_states(obs_0)
             agent_1.infer_states(obs_1)
+
             agent_0.infer_policies()
             agent_1.infer_policies()
-            pol_idx, joint_first = _coordinated_joint_first_step(agent_0, agent_1)
-            action_0_step = joint_first
-            action_1_step = joint_first
-            state, prev_reward_info, r0, r1, terminated, truncated = _execute_semantic_joint_macro_step(
-                env, state, joint_first, prev_reward_info
+
+            pol_idx_0, joint_first_0, pol_idx_1, joint_first_1 = _independent_joint_first_steps(agent_0, agent_1)
+
+            # Decentralized execution:
+            # - agent 0 executes ONLY its own component from the pair it selected
+            # - agent 1 executes ONLY its own component from the pair it selected
+            a0_sem_executed = int(joint_first_0[1])
+            a1_sem_executed = int(joint_first_1[2])
+
+            state, prev_reward_info, r0, r1, terminated, truncated = _execute_semantic_individual_macro_step(
+                env, state, a0_sem_executed, a1_sem_executed, prev_reward_info
             )
+
             total_reward_0 += float(r0)
             total_reward_1 += float(r1)
 
             if verbose:
                 qs_0 = agent_0.get_state_beliefs()
                 print(_belief_table(np, qs_0, model_init_agent, title="Beliefs A0"))
+
                 qs_1 = agent_1.get_state_beliefs()
                 print(_belief_table(np, qs_1, model_init_agent, title="Beliefs A1"))
 
@@ -604,19 +655,25 @@ def run_agent_vs_env_scenarios():
                     print("        #{:d} [{:>8}] {:<20} {:.3f}".format(rank, pol_str, bar, float(prob)))
 
                 print(
-                    "    Coordinated policy idx={}  joint first step: {}".format(
-                        int(pol_idx),
-                        _fmt_pair_step(joint_first, model_init_agent),
+                    "    A0 selected policy idx={}  first joint step: {}".format(
+                        int(pol_idx_0),
+                        _fmt_pair_step(joint_first_0, model_init_agent),
                     )
                 )
-                a0_sem = int(joint_first[1])
-                a1_sem = int(joint_first[2])
                 print(
-                    "    Semantic macro chosen: A0={}  A1={}".format(
-                        model_init_agent.ACTION_NAMES.get(a0_sem, str(a0_sem)),
-                        model_init_agent.ACTION_NAMES.get(a1_sem, str(a1_sem)),
+                    "    A1 selected policy idx={}  first joint step: {}".format(
+                        int(pol_idx_1),
+                        _fmt_pair_step(joint_first_1, model_init_agent),
                     )
                 )
+
+                print(
+                    "    Decentralized executed semantic actions: A0={}  A1={}".format(
+                        model_init_agent.ACTION_NAMES.get(a0_sem_executed, str(a0_sem_executed)),
+                        model_init_agent.ACTION_NAMES.get(a1_sem_executed, str(a1_sem_executed)),
+                    )
+                )
+
                 print("    Reward A0: {}  (cumulative: {})".format(r0, total_reward_0))
                 print("    Reward A1: {}  (cumulative: {})".format(r1, total_reward_1))
 
@@ -628,6 +685,7 @@ def run_agent_vs_env_scenarios():
         if verbose:
             print("\n  Scenario total reward A0: {}".format(total_reward_0))
             print("  Scenario total reward A1: {}".format(total_reward_1))
+
         return total_reward_0, total_reward_1
 
     run_one_episode(
