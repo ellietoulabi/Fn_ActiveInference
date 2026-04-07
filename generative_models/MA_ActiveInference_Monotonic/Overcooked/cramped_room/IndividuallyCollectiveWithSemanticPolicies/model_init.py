@@ -1,4 +1,3 @@
-# model_init.py
 """
 IndividuallyCollective paradigm model init for Overcooked - Cramped Room layout (Monotonic)
 Layout:
@@ -50,18 +49,19 @@ DESTINATIONS = [
     "cntr3",
     "cntr4",
     "cntr5",
+    "noop",   # semantic no-op used for interleaved compatibility
 ]
 MODES = ["stay", "interact"]
 SEMANTIC_ACTIONS = [(dst, mode) for dst in DESTINATIONS for mode in MODES]
-N_ACTIONS = len(SEMANTIC_ACTIONS)  # 20
+N_ACTIONS = len(SEMANTIC_ACTIONS)  # 22
 
 SELF = 0
 OTHER = 1
 N_ACTORS = 2
 
 # Interleaved step-action encoding (single integer) over semantic actions:
-# 0..19   => (SELF, semantic_action)
-# 20..39  => (OTHER, semantic_action)
+# 0..N_ACTIONS-1              => (SELF, semantic_action)
+# N_ACTIONS..2*N_ACTIONS-1    => (OTHER, semantic_action)
 N_INTERLEAVED_STEP_ACTIONS = N_ACTORS * N_ACTIONS
 
 ACTOR_NAMES = {
@@ -71,8 +71,10 @@ ACTOR_NAMES = {
 
 ACTION_NAMES = {i: f"{dst}:{mode}" for i, (dst, mode) in enumerate(SEMANTIC_ACTIONS)}
 
+
 def encode_interleaved_step(actor: int, action: int) -> int:
     return int(actor) * N_ACTIONS + int(action)
+
 
 def decode_interleaved_step(step_action: int) -> tuple[int, int]:
     a = int(step_action)
@@ -88,10 +90,13 @@ def semantic_action_from_index(action_idx: int) -> tuple[str, str]:
     return SEMANTIC_ACTIONS[i]
 
 
+def semantic_index(dst: str, mode: str) -> int:
+    return SEMANTIC_ACTIONS.index((dst, mode))
+
+
 def construct_semantic_policies(policy_len: int = 2) -> list[list[int]]:
     """
     Enumerate all semantic policies over action indices [0..N_ACTIONS-1].
-    Default: policy_len=2 -> 20*20 = 400 policies.
     """
     from itertools import product
 
@@ -100,26 +105,32 @@ def construct_semantic_policies(policy_len: int = 2) -> list[list[int]]:
     return [list(p) for p in product(range(N_ACTIONS), repeat=int(policy_len))]
 
 
-# Policy step: simultaneous primitives (global agent_0, global agent_1). Passed to B_fn as
-# (JOINT_PAIR_LABEL, a0, a1); B_fn maps to (self_action, other_action) using ego_agent_index in env_params.
+# Policy step: simultaneous semantic pair for global agent_0, global agent_1.
+# Passed to B_fn as (JOINT_PAIR_LABEL, a0, a1); B_fn maps to ego frame via ego_agent_index.
 JOINT_PAIR_LABEL = "__joint_pair__"
+
 
 def policy_step_to_actions(actor: int, action: int):
     """
-    Convert one policy step (actor, action) into effective primitive actions.
-    If one agent acts, the other agent is STAY.
+    Convert one interleaved semantic policy step (actor, semantic_action)
+    into a pair of semantic action indices.
+
+    The inactive agent receives a semantic noop.
     """
+    noop_sem = semantic_index("noop", "stay")
+
     if actor == SELF:
-        return action, STAY
+        return int(action), int(noop_sem)
     elif actor == OTHER:
-        return STAY, action
-    return STAY, STAY
+        return int(noop_sem), int(action)
+    return int(noop_sem), int(noop_sem)
 
 
-# For each semantic destination, we define a canonical walkable index and orientation
+# For each semantic destination, define a canonical walkable index and orientation
 # such that the landmark is in front of the agent.
+# "noop" is a placeholder only and is handled specially in B.py.
 SEMANTIC_DEST_TARGET_POSE = {
-    "onion1": (0, WEST),   # walkable 0 (grid 6), face counter/dispenser at grid 5
+    "onion1": (0, WEST),   # walkable 0 (grid 6), face dispenser/counter at grid 5
     "onion2": (2, EAST),   # walkable 2 (grid 8), face dispenser at grid 9
     "dish": (3, SOUTH),    # walkable 3 (grid 11), face dish dispenser at grid 16
     "serve": (5, SOUTH),   # walkable 5 (grid 13), face serving at grid 18
@@ -129,6 +140,7 @@ SEMANTIC_DEST_TARGET_POSE = {
     "cntr3": (3, WEST),    # counter grid 10
     "cntr4": (5, EAST),    # counter grid 14
     "cntr5": (4, SOUTH),   # counter grid 17
+    "noop": (0, NORTH),    # placeholder only
 }
 
 INTERACT_SUCCESS_PROB = 1.0
@@ -166,7 +178,6 @@ FRONT_COUNTER = 6
 N_FRONT_TYPES = 7
 
 # Counter contents (modeled counters only)
-# We need more than empty/full so the model can predict picking up specific items.
 CTR_EMPTY = 0
 CTR_ONION = 1
 CTR_DISH = 2
@@ -256,14 +267,17 @@ state_state_dependencies = {
 for cf in COUNTER_FACTORS:
     state_state_dependencies[cf] = [cf, "self_pos", "self_orientation", "self_held", "other_pos", "other_orientation", "other_held"]
 
+
 # Utility functions
 def xy_to_index(x: int, y: int, width: int = GRID_WIDTH) -> int:
     return y * width + x
+
 
 def index_to_xy(index: int, width: int = GRID_WIDTH):
     y = index // width
     x = index % width
     return x, y
+
 
 def direction_to_index(direction):
     for i, d in enumerate(DIRECTIONS):
@@ -271,22 +285,26 @@ def direction_to_index(direction):
             return i
     return 0
 
+
 def object_name_to_held_type(obj_name):
     if obj_name is None:
         return HELD_NONE
     obj_map = {"onion": HELD_ONION, "dish": HELD_DISH, "soup": HELD_SOUP}
     return obj_map.get(obj_name, HELD_NONE)
 
+
 def walkable_idx_to_grid_idx(walkable_idx: int) -> int:
     if 0 <= walkable_idx < N_WALKABLE:
         return WALKABLE_INDICES[walkable_idx]
     return WALKABLE_INDICES[0]
+
 
 def grid_idx_to_walkable_idx(grid_idx: int):
     for w in range(N_WALKABLE):
         if WALKABLE_INDICES[w] == grid_idx:
             return w
     return None
+
 
 def position_in_front(walkable_idx: int, orientation_idx: int, width: int = GRID_WIDTH, height: int = GRID_HEIGHT):
     grid_idx = walkable_idx_to_grid_idx(walkable_idx)
@@ -300,11 +318,13 @@ def position_in_front(walkable_idx: int, orientation_idx: int, width: int = GRID
         return xy_to_index(fx, fy, width)
     return None
 
+
 def modeled_counter_in_front(walkable_idx: int, orientation_idx: int):
     fg = position_in_front(walkable_idx, orientation_idx, GRID_WIDTH, GRID_HEIGHT)
     if fg is None:
         return None
     return fg if fg in MODELED_COUNTERS else None
+
 
 def compute_front_tile_type(walkable_idx: int, orientation_idx: int) -> int:
     grid_idx = walkable_idx_to_grid_idx(walkable_idx)
@@ -328,14 +348,18 @@ def compute_front_tile_type(walkable_idx: int, orientation_idx: int) -> int:
         return FRONT_EMPTY
     return FRONT_WALL
 
+
 def is_at_location(grid_idx: int, location_indices) -> bool:
     return grid_idx in location_indices
+
 
 def is_at_pot(grid_idx: int) -> bool:
     return is_at_location(grid_idx, POT_INDICES)
 
+
 def is_at_serving(grid_idx: int) -> bool:
     return is_at_location(grid_idx, SERVING_INDICES)
+
 
 def is_at_onion_dispenser(grid_idx: int) -> bool:
     return is_at_location(grid_idx, ONION_DISPENSER_INDICES)

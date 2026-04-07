@@ -76,7 +76,7 @@ def _counter_contents_from_env(env_state, grid_idx: int) -> int:
         return model_init.CTR_DISH
     if name == "soup":
         return model_init.CTR_SOUP
-    return model_init.CTR_DISH
+    return model_init.CTR_EMPTY
 
 
 def _agent_pos_to_walkable(agent) -> int:

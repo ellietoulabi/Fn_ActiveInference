@@ -16,21 +16,18 @@ if overcooked_src.exists():
 # Two-agent Overcooked sim: IndividuallyCollective AIF with ego-framed joint
 # pair policies and decentralized execution.
 #
-# Key semantics:
-# - Each planning step is a JOINT PAIR policy step: (JOINT_PAIR_LABEL, a0, a1)
-#   where a0 is env-agent-0's semantic action and a1 is env-agent-1's semantic
-#   action in GLOBAL indexing.
-# - Each ego agent evaluates the SAME global pair from its own perspective:
-#     ego 0 interprets it as (self=a0, other=a1)
-#     ego 1 interprets it as (self=a1, other=a0)
-#   via ego_agent_index inside B_fn.
-# - Crucially, each agent selects its OWN preferred joint pair independently.
-# - Then each agent executes ONLY ITS OWN COMPONENT of the pair it selected:
-#     env agent 0 executes selected_pair_0[1]
-#     env agent 1 executes selected_pair_1[2]
-# - Therefore, the realized env action pair need not equal either selected
-#   joint pair exactly. This is the intended IndividuallyCollective semantics:
-#   collective reasoning, decentralized commitment.
+# IMPORTANT SEMANTICS:
+# - Each agent evaluates global joint semantic pair actions (a0, a1).
+# - Agent 0 interprets a pair as (self=a0, other=a1).
+# - Agent 1 interprets the same pair as (self=a1, other=a0).
+# - Each agent chooses its own preferred joint pair independently.
+# - Each agent stores ITS OWN SELECTED JOINT PAIR in agent.action, because the
+#   Agent class uses self.action inside infer_states() to construct the prior.
+# - In the real environment, execution is decentralized:
+#       env agent 0 executes only the a0 part of agent 0's chosen pair
+#       env agent 1 executes only the a1 part of agent 1's chosen pair
+# - Therefore executed env actions may form a hybrid pair, but this hybrid pair
+#   is NOT written back into agent.action.
 # -----------------------------------------------------------------------------
 
 from utils.visualization.overcooked_terminal_map import orientation_str, render_overcooked_grid
@@ -77,7 +74,6 @@ def _fmt_pos(model_init, idx: int) -> str:
 
 
 def _fmt_pair_step(step_action, semantic_model_init) -> str:
-    """Format one global joint policy step (label, a0, a1) with semantic names."""
     if isinstance(step_action, (tuple, list)) and len(step_action) == 3:
         a0 = int(step_action[1])
         a1 = int(step_action[2])
@@ -93,7 +89,6 @@ def _fmt_policy(pol, semantic_model_init) -> str:
 
 
 def _construct_joint_pair_policies(joint_label: str, n_semantic_actions: int):
-    """Enumerate all sequences of semantic joint steps (label, a0, a1)."""
     from itertools import product
 
     step_pairs = [
@@ -161,7 +156,6 @@ def _belief_table(np_mod, qs: dict, model_init, title: str) -> str:
 
 
 def _state_summary(state, model_init, max_agents: int | None = None):
-    """One-line summary of env state: positions (walkable), held, pot."""
     parts = []
     players = state.players if max_agents is None else state.players[:max_agents]
     for i, p in enumerate(players):
@@ -214,7 +208,6 @@ def _state_summary(state, model_init, max_agents: int | None = None):
 
 
 def _agent_summary_lines(state, model_init, max_agents: int | None = None):
-    """Return list of lines: per-agent position (walkable), holding, facing."""
     lines = []
     players = state.players if max_agents is None else state.players[:max_agents]
     for i, p in enumerate(players):
@@ -231,11 +224,6 @@ def _agent_summary_lines(state, model_init, max_agents: int | None = None):
 
 
 def _sample_or_argmax_policy_index(agent) -> int:
-    """
-    Select one policy index independently for a single agent from its own q_pi.
-    Mirrors the previous coordinated selector, but without combining posteriors
-    across agents.
-    """
     q_pi = np.asarray(agent.get_policy_posterior(), dtype=np.float64).reshape(-1)
     n_pol = len(q_pi)
     if n_pol == 0:
@@ -264,13 +252,14 @@ def _sample_or_argmax_policy_index(agent) -> int:
 
 def _independent_joint_first_steps(agent_0, agent_1):
     """
-    Each agent selects its OWN preferred global joint first step independently.
-    Then each agent's internal time-step is advanced using the joint step it
-    personally selected.
+    Each agent selects its OWN preferred joint step independently.
+
+    Crucially, each agent stores ITS OWN selected joint step as agent.action,
+    because the Agent class uses self.action during the next infer_states()
+    call to construct the transition prior.
 
     Returns:
       pol_idx_0, step_0, pol_idx_1, step_1
-    where each step_k is a global joint pair: (label, a0, a1)
     """
     pol_idx_0 = _sample_or_argmax_policy_index(agent_0)
     pol_idx_1 = _sample_or_argmax_policy_index(agent_1)
@@ -278,6 +267,7 @@ def _independent_joint_first_steps(agent_0, agent_1):
     step_0 = agent_0.policies[pol_idx_0][0]
     step_1 = agent_1.policies[pol_idx_1][0]
 
+    # Keep each agent internally aligned with the joint action it selected.
     agent_0.action = step_0
     agent_0.step_time()
 
@@ -288,12 +278,6 @@ def _independent_joint_first_steps(agent_0, agent_1):
 
 
 def run_agent_vs_env_scenarios():
-    """
-    Run two Monotonic IndividuallyCollective AIF agents in the Overcooked cramped_room env.
-
-    Each agent reasons over JOINT semantic action pairs but executes only its own
-    component from the pair it independently selected.
-    """
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument(
         "--noprint",
@@ -399,21 +383,12 @@ def run_agent_vs_env_scenarios():
         )
 
     def _semantic_idx_to_macro_params(semantic_idx: int):
-        """
-        Convert a semantic action index into macro parameters:
-        - target walkable index + orientation index
-        - terminal primitive (STAY or INTERACT)
-        """
         dst, mode = model_init_agent.semantic_action_from_index(int(semantic_idx))
         target_w, target_ori = model_init_agent.SEMANTIC_DEST_TARGET_POSE[dst]
         terminal_prim = model_init_agent.INTERACT if mode == "interact" else model_init_agent.STAY
         return int(target_w), int(target_ori), str(mode), int(terminal_prim)
 
     def _choose_nav_primitive(state, agent_idx: int, target_w: int, target_ori: int) -> int:
-        """
-        Greedy one-primitive navigation toward (target_w, target_ori).
-        This is an env-execution approximation of the semantic macro dynamics.
-        """
         obs_nav = env_utils.env_obs_to_model_obs(state, agent_idx, reward_info=None)
         cur_w = int(obs_nav["self_pos_obs"])
         cur_ori = int(obs_nav["self_orientation_obs"])
@@ -462,12 +437,11 @@ def run_agent_vs_env_scenarios():
 
     def _execute_semantic_individual_macro_step(env, state, a0_sem, a1_sem, prev_reward_info):
         """
-        Execute one semantic decision step in the real env under IndividuallyCollective semantics:
+        Execute decentralized semantic choices in the real env.
 
-        - agent 0 executes ONLY its own semantic choice a0_sem
-        - agent 1 executes ONLY its own semantic choice a1_sem
-
-        These may come from different selected joint pairs.
+        IMPORTANT:
+        This function does NOT write anything into agent.action.
+        It only realizes the environment consequences.
         """
         t0_w, t0_ori, _m0, terminal0 = _semantic_idx_to_macro_params(int(a0_sem))
         t1_w, t1_ori, _m1, terminal1 = _semantic_idx_to_macro_params(int(a1_sem))
@@ -520,6 +494,7 @@ def run_agent_vs_env_scenarios():
             terminated_out = terminated
             truncated_out = truncated
 
+            # mark done only after terminal primitive has been issued at target
             if not done0 and reached0:
                 done0 = True
             if not done1 and reached1:
@@ -551,6 +526,7 @@ def run_agent_vs_env_scenarios():
             print("=" * 72)
 
         for step in range(1, max_steps_per_scenario + 1):
+            # perception
             obs_0 = env_utils.env_obs_to_model_obs(state, 0, reward_info=prev_reward_info)
             obs_1 = env_utils.env_obs_to_model_obs(state, 1, reward_info=prev_reward_info)
 
@@ -588,17 +564,19 @@ def run_agent_vs_env_scenarios():
                     )
                 )
 
+            # inference
             agent_0.infer_states(obs_0)
             agent_1.infer_states(obs_1)
 
             agent_0.infer_policies()
             agent_1.infer_policies()
 
+            # action selection + internal time update
             pol_idx_0, joint_first_0, pol_idx_1, joint_first_1 = _independent_joint_first_steps(agent_0, agent_1)
 
-            # Decentralized execution:
-            # - agent 0 executes ONLY its own component from the pair it selected
-            # - agent 1 executes ONLY its own component from the pair it selected
+            # decentralized external execution:
+            # A0 executes only its own part from its chosen joint pair
+            # A1 executes only its own part from its chosen joint pair
             a0_sem_executed = int(joint_first_0[1])
             a1_sem_executed = int(joint_first_1[2])
 

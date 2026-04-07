@@ -3,23 +3,23 @@
 Transition p(s' | s, a) model (B) for IndividuallyCollective paradigm — Cramped Room.
 
 Policy semantics:
-- one policy step is a semantic JOINT PAIR or ego-framed semantic step
-- joint pair compatibility is retained: (JOINT_PAIR_LABEL, a0, a1), where
-  a0 is env-agent-0's semantic action and a1 is env-agent-1's semantic action
-- ego-framed compatibility is retained: (actor, semantic_action)
-- scalar encoding support is retained for interleaved semantic steps
+- one policy step may be:
+    1) a joint semantic pair: (JOINT_PAIR_LABEL, a0, a1)
+    2) an interleaved semantic step: (actor, semantic_action)
+    3) a scalar interleaved encoding over semantic actions
+- each semantic action is a macro:
+    (destination, terminal_mode)
 
-Semantic macro transition semantics for one semantic action:
-1) Navigate to destination target pose
+Macro transition semantics for one semantic action:
+1) Navigate to destination target pose (walkable index + orientation)
 2) Execute terminal mode (STAY or INTERACT)
 
-Important:
-- For a JOINT_PAIR_LABEL step, each ego agent interprets the same global pair
-  from its own perspective:
-    ego 0 sees (self=a0, other=a1)
-    ego 1 sees (self=a1, other=a0)
-- This file only defines transition semantics for imagined joint action hypotheses.
-  It does not force both agents to execute the same joint pair in the real env.
+Important fix:
+- For interleaved support, the non-acting agent must be a true semantic no-op.
+- We represent that as `None` internally, not primitive STAY.
+- In B_fn, `None` means:
+    * keep that agent's current belief over pos/orientation unchanged
+    * use terminal primitive STAY
 """
 
 import numpy as np
@@ -33,24 +33,20 @@ def normalize(p: np.ndarray) -> np.ndarray:
     return p / max(s, 1e-8)
 
 
-def _decode_policy_step(step, **kwargs) -> tuple[int, int]:
+def _decode_policy_step(step, **kwargs) -> tuple[int | None, int | None]:
     """
-    Map one policy step to (self_semantic_action, other_semantic_action)
+    Map a policy step into (self_semantic_action, other_semantic_action)
     in the current agent's ego frame.
 
-    Supported inputs:
-    - (JOINT_PAIR_LABEL, a0, a1): global semantic pair; ego_agent_index in kwargs
-      determines whether self is a0 or a1.
-    - (actor, semantic_action): ego-framed interleaved semantic step
-    - scalar encoding:
-        0..N_ACTIONS-1               => semantic self-action, other=STAY
-        N_ACTIONS..2*N_ACTIONS-1     => semantic other-action, self=STAY
+    Supported formats:
+    - (JOINT_PAIR_LABEL, a0, a1): global semantic pair, ego-aware swap for agent 1
+    - (actor, semantic_action): interleaved semantic step
+    - scalar 0..(2*N_ACTIONS-1): interleaved semantic encoding
 
     Returns:
-      (self_semantic_action, other_semantic_action)
+      semantic action index or None for a true semantic no-op.
     """
     ego = int(kwargs.get("ego_agent_index", 0))
-
     jp = getattr(model_init, "JOINT_PAIR_LABEL", None)
 
     def _is_joint_pair(s) -> bool:
@@ -62,30 +58,52 @@ def _decode_policy_step(step, **kwargs) -> tuple[int, int]:
             return True
         return False
 
+    # Joint pair of semantic actions
     if _is_joint_pair(step):
         a0, a1 = int(step[1]), int(step[2])
         if ego == 1:
             return a1, a0
         return a0, a1
 
+    # Interleaved tuple/list encoding: (actor, semantic_action)
     if isinstance(step, np.ndarray) and step.shape == (2,):
         actor, action = int(step[0]), int(step[1])
-        return model_init.policy_step_to_actions(actor, action)
+        if actor == model_init.SELF:
+            return action, None
+        if actor == model_init.OTHER:
+            return None, action
+        return None, None
 
     if isinstance(step, (tuple, list)) and len(step) == 2:
         actor, action = int(step[0]), int(step[1])
-        return model_init.policy_step_to_actions(actor, action)
+        if actor == model_init.SELF:
+            return action, None
+        if actor == model_init.OTHER:
+            return None, action
+        return None, None
 
+    # Scalar interleaved semantic encoding:
+    # 0..N_ACTIONS-1         => (SELF, semantic_action)
+    # N_ACTIONS..2*N_ACTIONS-1 => (OTHER, semantic_action)
     a = int(step)
-    n_actions = int(getattr(model_init, "N_ACTIONS", 6))
+    n_semantic_actions = int(getattr(model_init, "N_ACTIONS", 0))
     n_actors = int(getattr(model_init, "N_ACTORS", 2))
-    if 0 <= a < n_actions * n_actors:
-        actor = a // n_actions
-        action = a % n_actions
-        return model_init.policy_step_to_actions(actor, action)
 
-    # Back-compat fallback: treat as ego semantic self-action directly
-    return a, model_init.STAY
+    if 0 <= a < n_semantic_actions * n_actors:
+        actor = a // n_semantic_actions
+        action = a % n_semantic_actions
+        if actor == model_init.SELF:
+            return action, None
+        if actor == model_init.OTHER:
+            return None, action
+        return None, None
+
+    # Back-compat:
+    # Treat a bare scalar as a self semantic action.
+    if 0 <= a < n_semantic_actions:
+        return a, None
+
+    return None, None
 
 
 def _semantic_to_target_pose(semantic_action: int) -> tuple[int, int, int]:
@@ -586,9 +604,9 @@ def B_checkboxes(
     """
     Monotonic checkbox semantics (semantic macro B_fn):
     - ck_put1/2/3: sticky toward 1 when pot mass crosses onion-count thresholds;
-      uses the *same* post-action pot belief as factor pot_state when q_pot_next is passed.
+      uses the same post-action pot belief as factor pot_state when q_pot_next is passed.
     - ck_plated: sticky toward 1 when a plating INTERACT occurs; masked by delivery reset.
-    - ck_delivered: sticky toward 1 once a delivery INTERACT occurs (monotonic), aligned with ck_put* style.
+    - ck_delivered: sticky toward 1 once a delivery INTERACT occurs.
     """
     q_sp = np.asarray(parents["self_pos"], dtype=float)
     q_so = np.asarray(parents["self_orientation"], dtype=float)
@@ -656,11 +674,7 @@ def B_checkboxes(
     else:
         q_pot_next = np.asarray(q_pot_next, dtype=float)
 
-    p_has_put1 = float(
-        q_pot_next[model_init.POT_1]
-        + q_pot_next[model_init.POT_2]
-        + q_pot_next[model_init.POT_3]
-    )
+    p_has_put1 = float(q_pot_next[model_init.POT_1] + q_pot_next[model_init.POT_2] + q_pot_next[model_init.POT_3])
     p_has_put2 = float(q_pot_next[model_init.POT_2] + q_pot_next[model_init.POT_3])
     p_has_put3 = float(q_pot_next[model_init.POT_3])
 
@@ -697,29 +711,32 @@ def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
     Main transition model p(s' | s, a) for all hidden state factors.
 
     `action` can be:
-      - semantic joint pair: (JOINT_PAIR_LABEL, a0, a1)
-      - ego-framed interleaved semantic step: (actor, semantic_action)
-      - scalar-encoded interleaved semantic step
+      - semantic action index (back-compat: treated as self semantic action)
+      - (actor, semantic_action) interleaved
+      - (JOINT_PAIR_LABEL, a0, a1) where a0/a1 are semantic action indices
 
-    The step is decoded into ego-framed semantic actions:
-      (self_semantic_action, other_semantic_action)
-
-    Each semantic action is then abstracted as:
-      1) immediate navigation to a canonical target pose
-      2) terminal primitive STAY or INTERACT at that pose
-
-    This is an abstract macro-transition model for planning, not a primitive
-    simulator of the real env rollout.
+    Interleaved semantics:
+      the non-acting side is a true no-op (None), not primitive STAY.
     """
     self_semantic, other_semantic = _decode_policy_step(action, **kwargs)
-    self_pos, self_ori, self_terminal = _semantic_to_target_pose(self_semantic)
-    other_pos, other_ori, other_terminal = _semantic_to_target_pose(other_semantic)
 
     qs_macro = {k: np.array(v, dtype=float) for k, v in qs.items()}
-    qs_macro["self_pos"] = np.eye(model_init.N_WALKABLE, dtype=float)[self_pos]
-    qs_macro["self_orientation"] = np.eye(model_init.N_DIRECTIONS, dtype=float)[self_ori]
-    qs_macro["other_pos"] = np.eye(model_init.N_WALKABLE, dtype=float)[other_pos]
-    qs_macro["other_orientation"] = np.eye(model_init.N_DIRECTIONS, dtype=float)[other_ori]
+
+    # Macro navigation stage:
+    # overwrite only for agents that actually receive a semantic macro.
+    if self_semantic is not None:
+        self_pos, self_ori, self_terminal = _semantic_to_target_pose(self_semantic)
+        qs_macro["self_pos"] = np.eye(model_init.N_WALKABLE, dtype=float)[self_pos]
+        qs_macro["self_orientation"] = np.eye(model_init.N_DIRECTIONS, dtype=float)[self_ori]
+    else:
+        self_terminal = model_init.STAY
+
+    if other_semantic is not None:
+        other_pos, other_ori, other_terminal = _semantic_to_target_pose(other_semantic)
+        qs_macro["other_pos"] = np.eye(model_init.N_WALKABLE, dtype=float)[other_pos]
+        qs_macro["other_orientation"] = np.eye(model_init.N_DIRECTIONS, dtype=float)[other_ori]
+    else:
+        other_terminal = model_init.STAY
 
     new_qs: dict[str, np.ndarray] = {}
 

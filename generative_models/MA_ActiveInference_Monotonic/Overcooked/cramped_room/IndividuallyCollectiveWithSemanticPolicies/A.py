@@ -13,6 +13,7 @@ Includes:
 import numpy as np
 from . import model_init
 
+# A_NOISE_LEVEL = 0.001
 A_NOISE_LEVEL = 0.001
 
 
