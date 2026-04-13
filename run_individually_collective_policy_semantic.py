@@ -11,25 +11,6 @@ overcooked_src = PROJECT_ROOT / "environments" / "overcooked_ai" / "src"
 if overcooked_src.exists():
     sys.path.insert(0, str(overcooked_src))
 
-
-# -----------------------------------------------------------------------------
-# Two-agent Overcooked sim: IndividuallyCollective AIF with ego-framed joint
-# pair policies and decentralized execution.
-#
-# IMPORTANT SEMANTICS:
-# - Each agent evaluates global joint semantic pair actions (a0, a1).
-# - Agent 0 interprets a pair as (self=a0, other=a1).
-# - Agent 1 interprets the same pair as (self=a1, other=a0).
-# - Each agent chooses its own preferred joint pair independently.
-# - Each agent stores ITS OWN SELECTED JOINT PAIR in agent.action, because the
-#   Agent class uses self.action inside infer_states() to construct the prior.
-# - In the real environment, execution is decentralized:
-#       env agent 0 executes only the a0 part of agent 0's chosen pair
-#       env agent 1 executes only the a1 part of agent 1's chosen pair
-# - Therefore executed env actions may form a hybrid pair, but this hybrid pair
-#   is NOT written back into agent.action.
-# -----------------------------------------------------------------------------
-
 from utils.visualization.overcooked_terminal_map import orientation_str, render_overcooked_grid
 
 
