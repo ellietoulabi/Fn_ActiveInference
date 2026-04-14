@@ -109,9 +109,10 @@ def construct_semantic_policies(policy_len: int = 2) -> list[list[int]]:
 # Passed to B_fn as (JOINT_PAIR_LABEL, a0, a1); B_fn maps to ego frame via ego_agent_index.
 JOINT_PAIR_LABEL = "__joint_pair__"
 
-# Mark policy steps that are env primitives for B_fn rollouts / infer_states prior.
-# Runners wrap each primitive as (PRIMITIVE_POLICY_STEP, a_self[, a_other]) so 0..5 do not
-# collide with semantic indices 0..N_ACTIONS-1 inside B_fn.
+# Mark policy steps that are env primitives (0..N_PRIMITIVE_ACTIONS-1) for B_fn rollout.
+# Must match the convention used by runners that compile dynamic policies to primitives:
+#   (PRIMITIVE_POLICY_STEP, primitive_action)
+# This disambiguates primitive 0..5 from semantic indices 0..N_ACTIONS-1 inside B_fn.
 PRIMITIVE_POLICY_STEP = "__primitive_policy_step__"
 
 

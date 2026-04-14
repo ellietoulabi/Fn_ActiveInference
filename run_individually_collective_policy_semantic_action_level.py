@@ -211,6 +211,7 @@ def _sample_or_argmax_policy_index(agent) -> int:
     if n_pol == 0:
         return 0
 
+    # Posterior can pick up small negatives / NaNs from EFE numerics; sanitize before sampling.
     q_pi = np.nan_to_num(q_pi, nan=0.0, posinf=0.0, neginf=0.0)
     q_pi = np.maximum(q_pi, 0.0)
     zq = float(np.sum(q_pi))
@@ -234,6 +235,7 @@ def _sample_or_argmax_policy_index(agent) -> int:
     else:
         p_policies = p_policies / s
 
+    # Avoid the old "last bin = 1 - sum(rest)" trick: it can go negative when q_pi or sums drift.
     p_policies = np.clip(p_policies, 0.0, 1.0)
     s2 = float(np.sum(p_policies))
     if s2 <= 0.0 or not np.isfinite(s2):
@@ -461,8 +463,8 @@ def run_agent_vs_env_scenarios():
             env_params=env_params,
             observation_state_dependencies=model_init_agent.observation_state_dependencies,
             actions=list(range(N_PRIMITIVE_ACTIONS)),
-            gamma=8.0,
-            alpha=32.0,
+            gamma=4.0,
+            alpha=8.0,
             policy_len=policy_len,
             inference_horizon=policy_len,
             action_selection="stochastic",
@@ -476,7 +478,7 @@ def run_agent_vs_env_scenarios():
             agent.use_states_info_gain = False
         return agent
 
-    max_steps_per_scenario = 1000
+    max_steps_per_scenario = 2000
     horizon = max_steps_per_scenario + 10
 
     env = OvercookedMultiAgentEnv(config={"layout": "cramped_room", "horizon": horizon})
@@ -610,8 +612,9 @@ def run_agent_vs_env_scenarios():
                 else int(model_init_agent.STAY)
             )
 
-            # infer_states(..., use_action_for_state_inference=True): bare ints 0..5 collide
-            # with semantic indices; store joint primitives in ego frame for B_fn.
+            # For infer_states(..., use_action_for_state_inference=True), B_fn must see a
+            # PRIMITIVE_POLICY_STEP tuple — bare ints 0..5 collide with semantic indices 0..21.
+            # Ego frame: (marker, self_primitive, other_primitive); partner order swaps for A1.
             agent_0.action = (PRIMITIVE_POLICY_STEP, int(a0_prim), int(a1_prim))
             agent_0.step_time()
             agent_1.action = (PRIMITIVE_POLICY_STEP, int(a1_prim), int(a0_prim))

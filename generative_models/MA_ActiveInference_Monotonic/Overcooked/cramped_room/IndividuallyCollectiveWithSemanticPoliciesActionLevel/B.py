@@ -602,10 +602,13 @@ def B_checkboxes(
     q_pot_next: np.ndarray | None = None,
 ) -> dict[str, np.ndarray]:
     """
-    Monotonic checkbox semantics (semantic macro B_fn):
+    Monotonic checkbox semantics (aligned with cramped_room IndividuallyCollective / primitive B).
+
     - ck_put1/2/3: sticky toward 1 when pot mass crosses onion-count thresholds;
-      uses the same post-action pot belief as factor pot_state when q_pot_next is passed.
-    - ck_plated: sticky toward 1 when a plating INTERACT occurs; masked by delivery reset.
+      uses post-action pot marginal q_pot_next when passed (else recomputed via B_pot_state).
+    - ck_plated: sticky toward 1 when *any* agent runs INTERACT facing the pot while holding
+      a dish and the pot is believed ready (POT_3 mass from parents["pot_state"]).
+      Masked by delivery reset (same-step serve interact).
     - ck_delivered: sticky toward 1 once a delivery INTERACT occurs.
     """
     q_sp = np.asarray(parents["self_pos"], dtype=float)
@@ -798,7 +801,7 @@ def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
     Interleaved semantics:
       the non-acting side is a true no-op (None), not primitive STAY.
 
-    Primitive timestep (compiled env primitives):
+    Primitive timestep (policies compiled to env primitives):
       (PRIMITIVE_POLICY_STEP, a_self) or (PRIMITIVE_POLICY_STEP, a_self, a_other) —
       uses B_fn_primitive_step (no semantic teleport).
     """

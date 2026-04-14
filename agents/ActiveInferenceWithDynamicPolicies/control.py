@@ -74,7 +74,8 @@ def get_expected_states(B_fn, qs_current, policy, env_params):
     qs_t = qs_current
 
     for action in policy:
-        qs_next = B_fn(qs_t, int(action), **env_params)
+        action_for_b = int(action) if np.isscalar(action) else action
+        qs_next = B_fn(qs_t, action_for_b, **env_params)
         qs_pred.append(qs_next)
         qs_t = qs_next
 
