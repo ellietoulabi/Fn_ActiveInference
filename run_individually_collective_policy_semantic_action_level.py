@@ -13,6 +13,9 @@ if overcooked_src.exists():
 
 from utils.visualization.overcooked_terminal_map import orientation_str, render_overcooked_grid
 from agents.ActiveInferenceWithDynamicPolicies import utils as dyn_utils
+from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndividuallyCollectiveWithSemanticPoliciesActionLevel.model_init import (
+    PRIMITIVE_POLICY_STEP,
+)
 
 
 PRIMITIVE_ACTION_NAMES = {
@@ -65,8 +68,17 @@ def _fmt_pos(model_init, idx: int) -> str:
         return f"w{int(idx)}"
 
 
+def _env_primitive_from_policy_step(step) -> int:
+    """Map stored policy step to env primitive index (unwraps B_fn marker tuples)."""
+    if isinstance(step, (tuple, list)) and len(step) >= 2 and step[0] == PRIMITIVE_POLICY_STEP:
+        return int(step[1])
+    return int(step)
+
+
 def _fmt_policy(pol) -> str:
-    return "→".join([PRIMITIVE_ACTION_NAMES.get(int(a), str(a)) for a in pol])
+    return "→".join(
+        [PRIMITIVE_ACTION_NAMES.get(_env_primitive_from_policy_step(a), str(a)) for a in pol]
+    )
 
 
 def _belief_table(np_mod, qs: dict, model_init, title: str) -> str:
@@ -199,6 +211,14 @@ def _sample_or_argmax_policy_index(agent) -> int:
     if n_pol == 0:
         return 0
 
+    q_pi = np.nan_to_num(q_pi, nan=0.0, posinf=0.0, neginf=0.0)
+    q_pi = np.maximum(q_pi, 0.0)
+    zq = float(np.sum(q_pi))
+    if zq <= 0.0 or not np.isfinite(zq):
+        q_pi = np.ones(n_pol, dtype=np.float64) / float(n_pol)
+    else:
+        q_pi = q_pi / zq
+
     if getattr(agent, "action_selection", "stochastic") == "deterministic":
         return int(np.argmax(q_pi))
 
@@ -206,16 +226,20 @@ def _sample_or_argmax_policy_index(agent) -> int:
     log_q = np.log(np.maximum(q_pi, 1e-16))
     p_policies = np.exp(log_q * alpha)
     p_policies = np.maximum(p_policies, 0.0)
+    p_policies = np.nan_to_num(p_policies, nan=0.0, posinf=0.0, neginf=0.0)
 
     s = float(np.sum(p_policies))
     if s <= 0.0 or not np.isfinite(s):
         p_policies = np.ones(n_pol, dtype=np.float64) / float(n_pol)
     else:
         p_policies = p_policies / s
-        if n_pol > 1:
-            p_policies[-1] = 1.0 - float(np.sum(p_policies[:-1]))
-        else:
-            p_policies[0] = 1.0
+
+    p_policies = np.clip(p_policies, 0.0, 1.0)
+    s2 = float(np.sum(p_policies))
+    if s2 <= 0.0 or not np.isfinite(s2):
+        p_policies = np.ones(n_pol, dtype=np.float64) / float(n_pol)
+    else:
+        p_policies = p_policies / s2
 
     return int(np.random.choice(n_pol, p=p_policies))
 
@@ -248,6 +272,19 @@ def _translate_agent_policies_utils_to_env(agent):
             mc["final_facing"] = _translate_facing_utils_to_env(mc.get("final_facing", None))
             translated.append(mc)
         agent.policy_metadata = translated
+
+
+def _wrap_policies_for_primitive_B_rollout(agent):
+    """
+    infer_policies() rolls policies forward through B_fn. Scalar steps 0..5 collide with
+    semantic indices 0..N_ACTIONS-1; wrap each primitive as (PRIMITIVE_POLICY_STEP, a)
+    so B_fn uses primitive physics (B_fn_primitive_step) instead of semantic teleport.
+    """
+    if not agent.policies:
+        return
+    agent.policies = [
+        [(PRIMITIVE_POLICY_STEP, int(a)) for a in pol] for pol in agent.policies
+    ]
 
 
 def _extract_counter_contents_from_state(state):
@@ -433,7 +470,7 @@ def run_agent_vs_env_scenarios():
             inference_algorithm="VANILLA",
             num_iter=16,
             dF_tol=0.01,
-            use_action_for_state_inference=False,
+            use_action_for_state_inference=True,
         )
         if no_ig:
             agent.use_states_info_gain = False
@@ -545,6 +582,9 @@ def run_agent_vs_env_scenarios():
             _translate_agent_policies_utils_to_env(agent_0)
             _translate_agent_policies_utils_to_env(agent_1)
 
+            _wrap_policies_for_primitive_B_rollout(agent_0)
+            _wrap_policies_for_primitive_B_rollout(agent_1)
+
             # 4) policy inference over the current-step generated policies
             agent_0.infer_policies()
             agent_1.infer_policies()
@@ -559,13 +599,22 @@ def run_agent_vs_env_scenarios():
             meta_0 = agent_0.get_policy_metadata()[pol_idx_0] if agent_0.get_policy_metadata() else None
             meta_1 = agent_1.get_policy_metadata()[pol_idx_1] if agent_1.get_policy_metadata() else None
 
-            a0_prim = int(pol_0[0]) if len(pol_0) > 0 else int(model_init_agent.STAY)
-            a1_prim = int(pol_1[0]) if len(pol_1) > 0 else int(model_init_agent.STAY)
+            a0_prim = (
+                _env_primitive_from_policy_step(pol_0[0])
+                if len(pol_0) > 0
+                else int(model_init_agent.STAY)
+            )
+            a1_prim = (
+                _env_primitive_from_policy_step(pol_1[0])
+                if len(pol_1) > 0
+                else int(model_init_agent.STAY)
+            )
 
-            # store executed primitive action for history / optional prior propagation
-            agent_0.action = a0_prim
+            # infer_states(..., use_action_for_state_inference=True): bare ints 0..5 collide
+            # with semantic indices; store joint primitives in ego frame for B_fn.
+            agent_0.action = (PRIMITIVE_POLICY_STEP, int(a0_prim), int(a1_prim))
             agent_0.step_time()
-            agent_1.action = a1_prim
+            agent_1.action = (PRIMITIVE_POLICY_STEP, int(a1_prim), int(a0_prim))
             agent_1.step_time()
 
             _observations, state, prev_reward_info, rewards, terminated, truncated, infos = _execute_first_primitive_step(

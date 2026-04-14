@@ -706,6 +706,86 @@ def B_checkboxes(
     }
 
 
+def _try_primitive_policy_step(
+    action,
+) -> tuple[int, int] | None:
+    """
+    If action encodes one joint primitive step for ego (self) and partner (other), return
+    (self_primitive, other_primitive). Otherwise return None.
+    Format: (PRIMITIVE_POLICY_STEP, a_self) or (PRIMITIVE_POLICY_STEP, a_self, a_other).
+    """
+    lab = getattr(model_init, "PRIMITIVE_POLICY_STEP", None)
+    if lab is None:
+        return None
+    if isinstance(action, (tuple, list)) and len(action) >= 2 and action[0] == lab:
+        a_self = int(action[1])
+        a_other = int(action[2]) if len(action) >= 3 else int(model_init.STAY)
+        return a_self, a_other
+    return None
+
+
+def B_fn_primitive_step(
+    qs: dict,
+    self_action: int,
+    other_action: int,
+    B_NOISE_LEVEL: float = 0.0,
+    **kwargs,
+) -> dict:
+    """
+    Single-timestep transition using primitive env actions for both agents (ego frame).
+    Used when policy rollouts are compiled primitive paths; semantic teleport is not applied.
+    """
+    del kwargs  # ego_agent_index etc. not used for primitive rollout
+    parents = {k: np.asarray(qs[k], dtype=float) for k in qs}
+
+    pot_next = B_pot_state(parents, self_action, other_action)
+
+    new_qs: dict[str, np.ndarray] = {}
+
+    for factor, deps in state_state_dependencies.items():
+        if factor in ("ck_put1", "ck_put2", "ck_put3", "ck_plated", "ck_delivered"):
+            if factor == "ck_put1":
+                new_qs.update(
+                    B_checkboxes(parents, self_action, other_action, q_pot_next=pot_next)
+                )
+            continue
+
+        pdeps = {k: parents[k] for k in deps}
+
+        if factor == "self_pos":
+            new_qs[factor] = B_self_pos(pdeps, self_action)
+        elif factor == "self_orientation":
+            new_qs[factor] = B_self_orientation(pdeps, self_action)
+        elif factor == "self_held":
+            new_qs[factor] = B_self_held(pdeps, self_action)
+        elif factor == "other_pos":
+            new_qs[factor] = B_other_pos(pdeps, other_action)
+        elif factor == "other_orientation":
+            new_qs[factor] = B_other_orientation(pdeps, other_action)
+        elif factor == "other_held":
+            new_qs[factor] = B_other_held(pdeps, other_action)
+        elif factor == "pot_state":
+            new_qs[factor] = np.asarray(pot_next, dtype=float)
+        elif factor.startswith("ctr_"):
+            grid = int(factor.split("_")[1])
+            new_qs[factor] = B_counter_occupancy(pdeps, self_action, other_action, grid)
+        else:
+            new_qs[factor] = normalize(np.asarray(parents[factor], dtype=float))
+
+    if B_NOISE_LEVEL > 0.0:
+        for k in new_qs:
+            v = np.array(new_qs[k], dtype=float)
+            S = v.shape[0]
+            if S > 0:
+                uniform = np.ones(S, dtype=float) / float(S)
+                new_qs[k] = (1.0 - B_NOISE_LEVEL) * v + B_NOISE_LEVEL * uniform
+
+    for k in new_qs:
+        new_qs[k] = normalize(np.array(new_qs[k], dtype=float))
+
+    return new_qs
+
+
 def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
     """
     Main transition model p(s' | s, a) for all hidden state factors.
@@ -717,7 +797,16 @@ def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
 
     Interleaved semantics:
       the non-acting side is a true no-op (None), not primitive STAY.
+
+    Primitive timestep (compiled env primitives):
+      (PRIMITIVE_POLICY_STEP, a_self) or (PRIMITIVE_POLICY_STEP, a_self, a_other) —
+      uses B_fn_primitive_step (no semantic teleport).
     """
+    prim = _try_primitive_policy_step(action)
+    if prim is not None:
+        a_self, a_other = prim
+        return B_fn_primitive_step(qs, a_self, a_other, B_NOISE_LEVEL=B_NOISE_LEVEL, **kwargs)
+
     self_semantic, other_semantic = _decode_policy_step(action, **kwargs)
 
     qs_macro = {k: np.array(v, dtype=float) for k, v in qs.items()}
