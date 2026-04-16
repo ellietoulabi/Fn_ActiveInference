@@ -464,7 +464,7 @@ def run_agent_vs_env_scenarios():
             observation_state_dependencies=model_init_agent.observation_state_dependencies,
             actions=list(range(N_PRIMITIVE_ACTIONS)),
             gamma=4.0,
-            alpha=8.0,
+            alpha=16.0,
             policy_len=policy_len,
             inference_horizon=policy_len,
             action_selection="stochastic",
