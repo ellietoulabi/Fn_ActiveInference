@@ -27,9 +27,13 @@ Design choices
        end facing the destination
        then either stop or INTERACT depending on mode
 7. Movement actions are assumed to set orientation to the move direction.
-8. There is no separate turn action, so orientation is handled by planning in
-   an augmented state space over (position, facing). This allows loop-like
-   reorientation behavior when needed.
+8. There is no separate turn action. compile_semantic_policy uses a two-phase
+   plan: shortest position-only walk to an adjacent support tile (empty if
+   already there), then facing correction on that tile. If the required facing
+   points into a map obstacle (non-walkable tile or out of bounds), a single
+   press in that direction is treated as reorientation without moving (as when
+   bumping a counter in Overcooked). Otherwise, oriented BFS may step off and
+   return to fix facing.
 """
 
 from __future__ import annotations
@@ -256,6 +260,81 @@ def bfs_shortest_action_path(
     return None
 
 
+def all_shortest_action_paths(
+    start: Tuple[int, int],
+    goal: Tuple[int, int],
+    blocked_tiles: Optional[Sequence[Tuple[int, int]]] = None,
+    max_paths: int = 256,
+) -> List[List[int]]:
+    """
+    Enumerate all shortest position-only action sequences from start to goal.
+
+    Used so we can prefer a shortest walk that already ends with the required
+    facing, instead of arbitrarily taking the first BFS reconstruction and then
+    paying extra oriented-correction steps.
+    """
+    start = (int(start[0]), int(start[1]))
+    goal = (int(goal[0]), int(goal[1]))
+    if not is_walkable(start) or not is_walkable(goal):
+        return []
+    if start == goal:
+        return [[]]
+
+    blocked = set(blocked_tiles or [])
+    if goal in blocked:
+        blocked.remove(goal)
+
+    transitions = [
+        (UP, (-1, 0)),
+        (DOWN, (1, 0)),
+        (LEFT, (0, -1)),
+        (RIGHT, (0, 1)),
+    ]
+
+    dist: Dict[Tuple[int, int], int] = {start: 0}
+    preds: Dict[Tuple[int, int], List[Tuple[Tuple[int, int], int]]] = {start: []}
+
+    q = deque([start])
+    while q:
+        cur = q.popleft()
+        dcur = dist[cur]
+        for action, (dr, dc) in transitions:
+            nxt = (cur[0] + dr, cur[1] + dc)
+            if not in_bounds(nxt):
+                continue
+            if not is_walkable(nxt):
+                continue
+            if nxt in blocked:
+                continue
+            nd = dcur + 1
+            if nxt not in dist:
+                dist[nxt] = nd
+                preds[nxt] = [(cur, action)]
+                q.append(nxt)
+            elif dist[nxt] == nd:
+                preds[nxt].append((cur, action))
+
+    if goal not in dist:
+        return []
+
+    paths: List[List[int]] = []
+
+    def dfs_collect(node: Tuple[int, int], rev_actions: List[int]) -> None:
+        if len(paths) >= max_paths:
+            return
+        if node == start:
+            paths.append(list(reversed(rev_actions)))
+            return
+        for pred, act in preds[node]:
+            rev_actions.append(act)
+            dfs_collect(pred, rev_actions)
+            rev_actions.pop()
+
+    dfs_collect(goal, [])
+    paths.sort(key=lambda p: tuple(p))
+    return paths
+
+
 def bfs_shortest_action_path_oriented(
     start_pos: Tuple[int, int],
     start_facing: int,
@@ -271,7 +350,8 @@ def bfs_shortest_action_path_oriented(
     - facing (to the move direction)
 
     This lets the agent move away and come back in order to end on the desired
-    support tile with the desired final facing.
+    support tile with the desired final facing when a single press toward the
+    goal cannot be modeled as bump-turn (neighbor walkable).
     """
     if not is_walkable(start_pos) or not is_walkable(goal_pos):
         return None
@@ -454,6 +534,141 @@ def interaction_is_valid(state: Dict[str, Any], destination: str) -> bool:
 # Orientation-aware compilation
 # =============================================================================
 
+def _facing_after_primitive_path(start_facing: int, path: Sequence[int]) -> int:
+    """Facing after executing movement primitives (each move sets facing to that action)."""
+    f = int(start_facing)
+    for a in path:
+        f = int(a)
+    return f
+
+
+def _neighbor_cell(rc: Tuple[int, int], move_action: int) -> Tuple[int, int]:
+    r, c = int(rc[0]), int(rc[1])
+    a = int(move_action)
+    if a == UP:
+        return (r - 1, c)
+    if a == DOWN:
+        return (r + 1, c)
+    if a == LEFT:
+        return (r, c - 1)
+    if a == RIGHT:
+        return (r, c + 1)
+    return (r, c)
+
+
+def _map_blocks_walk_from(rc: Tuple[int, int], move_action: int) -> bool:
+    """True if a move in move_action would not enter a walkable map cell (wall/station/oob)."""
+    nxt = _neighbor_cell(rc, move_action)
+    if not in_bounds(nxt):
+        return True
+    if not is_walkable(nxt):
+        return True
+    return False
+
+
+def _facing_fix_press_into_map_obstacle(
+    approach: Tuple[int, int],
+    req_facing: int,
+) -> Optional[List[int]]:
+    """
+    One press toward required_facing when that direction is blocked by map layout.
+
+    Models bumping a counter/station: position stays on approach, facing becomes
+    req_facing. Only used when the neighbor in req_facing is not walkable floor.
+    """
+    rf = int(req_facing)
+    if rf in (STAY, INTERACT):
+        return None
+    ap = (int(approach[0]), int(approach[1]))
+    if _map_blocks_walk_from(ap, rf):
+        return [rf]
+    return None
+
+
+def _plan_two_phase_approach_path(
+    self_pos: Tuple[int, int],
+    start_facing: int,
+    approach: Tuple[int, int],
+    req_facing: int,
+    blocked_tiles: Optional[Sequence[Tuple[int, int]]],
+) -> Optional[List[int]]:
+    """
+    1) Shortest position-only walk to the approach tile (empty if already there).
+       Among all shortest walks, prefer one whose final facing already matches
+       req_facing (avoids spurious oriented correction from BFS tie-breaking).
+    2) If no shortest walk ends with req_facing, append shortest oriented correction
+       (approach,·)→(approach, req).
+    """
+    self_pos = (int(self_pos[0]), int(self_pos[1]))
+    approach = (int(approach[0]), int(approach[1]))
+    start_facing = int(start_facing)
+    req_facing = int(req_facing)
+
+    if self_pos == approach:
+        path_geo: List[int] = []
+        f_after = start_facing
+    else:
+        geo_candidates = all_shortest_action_paths(self_pos, approach, blocked_tiles)
+        if not geo_candidates:
+            return None
+
+        best_geo: Optional[List[int]] = None
+        best_face: Optional[List[int]] = None
+        best_total = None
+
+        for path_geo in geo_candidates:
+            f_after = _facing_after_primitive_path(start_facing, path_geo)
+            if f_after == req_facing:
+                path_face: List[int] = []
+            else:
+                bump = _facing_fix_press_into_map_obstacle(approach, req_facing)
+                if bump is not None:
+                    pf = bump
+                else:
+                    pf = bfs_shortest_action_path_oriented(
+                        approach,
+                        f_after,
+                        approach,
+                        req_facing,
+                        blocked_tiles,
+                    )
+                if pf is None:
+                    continue
+                path_face = list(pf)
+
+            total = len(path_geo) + len(path_face)
+            cand = (total, len(path_face), tuple(path_geo), path_geo, path_face)
+            if best_total is None or cand[:3] < best_total[:3]:
+                best_total = cand
+                best_geo = list(path_geo)
+                best_face = list(path_face)
+
+        if best_geo is None:
+            return None
+        path_geo = best_geo
+        path_face = best_face if best_face is not None else []
+
+    if self_pos == approach:
+        if f_after == req_facing:
+            return path_geo
+        bump = _facing_fix_press_into_map_obstacle(approach, req_facing)
+        if bump is not None:
+            path_face = bump
+        else:
+            path_face = bfs_shortest_action_path_oriented(
+                approach,
+                f_after,
+                approach,
+                req_facing,
+                blocked_tiles,
+            )
+        if path_face is None:
+            return None
+        return path_geo + list(path_face)
+
+    return path_geo + path_face
+
+
 def _compile_actions_for_mode(
     path_to_approach: List[int],
     mode: str,
@@ -522,13 +737,14 @@ def compile_semantic_policy(
     best = None
 
     # First try with the other agent treated as blocked.
+    # Two-phase: shortest walk to support tile, then oriented fix for facing only.
     for approach in sorted(candidate_approaches):
         req_facing = required_facing_from_approach(approach, target_tile)
-        path = bfs_shortest_action_path_oriented(
-            start_pos=self_pos,
+        path = _plan_two_phase_approach_path(
+            self_pos=self_pos,
             start_facing=start_facing,
-            goal_pos=approach,
-            goal_facing=req_facing,
+            approach=approach,
+            req_facing=req_facing,
             blocked_tiles=blocked_tiles,
         )
         if path is None:
@@ -547,11 +763,11 @@ def compile_semantic_policy(
     if best is None and blocked_tiles:
         for approach in sorted(candidate_approaches):
             req_facing = required_facing_from_approach(approach, target_tile)
-            path = bfs_shortest_action_path_oriented(
-                start_pos=self_pos,
+            path = _plan_two_phase_approach_path(
+                self_pos=self_pos,
                 start_facing=start_facing,
-                goal_pos=approach,
-                goal_facing=req_facing,
+                approach=approach,
+                req_facing=req_facing,
                 blocked_tiles=None,
             )
             if path is None:
@@ -599,9 +815,8 @@ def compile_semantic_policy(
         "actions": list(actions),
         "valid": True,
         "reason": (
-            "best reachable adjacent tile + correct facing + interact"
-            if mode == "interact"
-            else "best reachable adjacent tile + correct facing + stop"
+            "two-phase: shortest walk to approach tile, then facing fix if needed; "
+            + ("interact" if mode == "interact" else "stop")
         ),
     }
 

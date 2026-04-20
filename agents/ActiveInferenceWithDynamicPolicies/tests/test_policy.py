@@ -563,6 +563,17 @@ def test_expected_semantic_behavior():
     print("Compiled:", compiled)
     assert compiled["actions"] == [utils.INTERACT]
 
+    # Case 1b: same tile facing EAST — toward onion1 is WEST into station; one bump-turn, not EAST→WEST.
+    state_east = {**TEST_STATES[0], "self_orient": "EAST", "name": "Case 1b: (1,1) facing EAST toward onion1"}
+    compiled = utils.compile_semantic_policy(state_east, "onion1", "stay")
+    print_subheader("Case 1b expectation: onion1 stay = one WEST bump-turn")
+    print_state(state_east)
+    print("Compiled:", compiled)
+    assert compiled["actions"] == [utils.LEFT]
+    compiled = utils.compile_semantic_policy(state_east, "onion1", "interact")
+    print("Compiled interact:", compiled)
+    assert compiled["actions"] == [utils.LEFT, utils.INTERACT]
+
     # Case 1: pot stay should still exist
     compiled = utils.compile_semantic_policy(state, "pot", "stay")
     print("\nCase 1 expectation: pot stay exists")
