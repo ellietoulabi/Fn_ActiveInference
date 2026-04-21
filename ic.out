@@ -1,0 +1,322 @@
+[Env] Using multi-agent env: layout=cramped_room
+[Policies] dynamic semantic policies per agent: destinations=11 modes=2 total=22
+
+========================================================================
+  IndividuallyCollectiveWithSemanticPolicies: two agents, cramped_room (seed=76)
+========================================================================
+
+  --- Step 1 ---
+    Env state:  A0@0 held=none | A1@5 held=none | pot=empty
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾 [93m▲ [0m    🄾 
+      🅲     [38;5;208m▲ [0m🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=0  holding=none  facing=NORTH
+    A1: pos(walkable)=5  holding=none  facing=NORTH
+    Obs A0: self_pos=0 self_ori=0 self_held=0 other_pos=5 other_held=0 pot=0 delivered=0
+    Obs A1: self_pos=5 self_ori=0 self_held=0 other_pos=0 other_held=0 pot=0 delivered=0
+    Joint pair policies: 484 (22×22 semantic pairs)
+    Beliefs A0
+      factor               MAP                 p(MAP)    H
+      -------------------  ------------------  -------  -----
+      self_pos             w0 (g6 1,1)            1.00   0.01
+      self_orientation     N                      1.00   0.01
+      self_held            NONE                   1.00   0.01
+      other_pos            w5 (g13 3,2)           1.00   0.01
+      other_orientation    N                      1.00   0.01
+      other_held           NONE                   1.00   0.01
+      pot_state            P0                     1.00   0.01
+      ck_put1              0                      1.00  -0.00   (p1= 0.00)
+      ck_put2              0                      1.00  -0.00   (p1= 0.00)
+      ck_put3              0                      1.00  -0.00   (p1= 0.00)
+      ck_plated            0                      1.00  -0.00   (p1= 0.00)
+      ck_delivered         0                      1.00   0.00   (p1= 0.00)
+      -- counters (MAP, p(nonempty)) --
+      ctr_1                EMPTY               p(nonempty)= 0.00
+      ctr_3                EMPTY               p(nonempty)= 0.00
+      ctr_10               EMPTY               p(nonempty)= 0.00
+      ctr_14               EMPTY               p(nonempty)= 0.00
+      ctr_17               EMPTY               p(nonempty)= 0.00
+    Beliefs A1
+      factor               MAP                 p(MAP)    H
+      -------------------  ------------------  -------  -----
+      self_pos             w5 (g13 3,2)           1.00   0.01
+      self_orientation     N                      1.00   0.01
+      self_held            NONE                   1.00   0.01
+      other_pos            w0 (g6 1,1)            1.00   0.01
+      other_orientation    N                      1.00   0.01
+      other_held           NONE                   1.00   0.01
+      pot_state            P0                     1.00   0.01
+      ck_put1              0                      1.00  -0.00   (p1= 0.00)
+      ck_put2              0                      1.00  -0.00   (p1= 0.00)
+      ck_put3              0                      1.00  -0.00   (p1= 0.00)
+      ck_plated            0                      1.00  -0.00   (p1= 0.00)
+      ck_delivered         0                      1.00   0.00   (p1= 0.00)
+      -- counters (MAP, p(nonempty)) --
+      ctr_1                EMPTY               p(nonempty)= 0.00
+      ctr_3                EMPTY               p(nonempty)= 0.00
+      ctr_10               EMPTY               p(nonempty)= 0.00
+      ctr_14               EMPTY               p(nonempty)= 0.00
+      ctr_17               EMPTY               p(nonempty)= 0.00
+    Policy beliefs A0:
+      entropy 3.107:
+      BEST: idx=119 p=0.048  (a0:dish/interact ↔ a1:pot/interact)
+        #1 [(a0:dish/interact ↔ a1:pot/interact)]                      0.048
+        #2 [(a0:dish/interact ↔ a1:onion1/stay)]                      0.045
+        #3 [(a0:dish/interact ↔ a1:onion1/interact)]                      0.045
+        #4 [(a0:dish/interact ↔ a1:cntr3/interact)]                      0.045
+        #5 [(a0:dish/interact ↔ a1:cntr3/stay)]                      0.045
+    Policy beliefs A1:
+      entropy 3.107:
+      BEST: idx=203 p=0.048  (a0:pot/interact ↔ a1:dish/interact)
+        #1 [(a0:pot/interact ↔ a1:dish/interact)]                      0.048
+        #2 [(a0:onion1/stay ↔ a1:dish/interact)]                      0.045
+        #3 [(a0:onion1/interact ↔ a1:dish/interact)]                      0.045
+        #4 [(a0:cntr3/stay ↔ a1:dish/interact)]                      0.045
+        #5 [(a0:cntr3/interact ↔ a1:dish/interact)]                      0.045
+    A0 joint policy idx=116  ego=dish/interact  partner=serve/stay
+    A1 joint policy idx=115  ego=dish/interact  partner=dish/interact
+    Executed primitive actions: A0=SOUTH  A1=WEST
+    Reward A0: 0.0  (cumulative: 0.0)
+    Reward A1: 0.0  (cumulative: 0.0)
+
+  --- Step 2 ---
+    Env state:  A0@3 held=none | A1@4 held=none | pot=empty
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾       🄾 
+      🅲 [93m▼ [0m[38;5;208m◀ [0m  🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=none  facing=SOUTH
+    A1: pos(walkable)=4  holding=none  facing=WEST
+    Obs A0: self_pos=3 self_ori=1 self_held=0 other_pos=4 other_held=0 pot=0 delivered=0
+    Obs A1: self_pos=4 self_ori=3 self_held=0 other_pos=3 other_held=0 pot=0 delivered=0
+    Joint pair policies: 484 (22×22 semantic pairs)
+    Beliefs A0
+      factor               MAP                 p(MAP)    H
+      -------------------  ------------------  -------  -----
+      self_pos             w3 (g11 1,2)           1.00   0.01
+      self_orientation     S                      1.00   0.01
+      self_held            NONE                   1.00   0.01
+      other_pos            w4 (g12 2,2)           1.00   0.01
+      other_orientation    W                      1.00   0.01
+      other_held           NONE                   1.00   0.01
+      pot_state            P0                     1.00   0.01
+      ck_put1              0                      1.00   0.01   (p1= 0.00)
+      ck_put2              0                      1.00   0.01   (p1= 0.00)
+      ck_put3              0                      1.00   0.00   (p1= 0.00)
+      ck_plated            0                      1.00  -0.00   (p1= 0.00)
+      ck_delivered         0                      1.00   0.00   (p1= 0.00)
+      -- counters (MAP, p(nonempty)) --
+      ctr_1                EMPTY               p(nonempty)= 0.00
+      ctr_3                EMPTY               p(nonempty)= 0.00
+      ctr_10               EMPTY               p(nonempty)= 0.00
+      ctr_14               EMPTY               p(nonempty)= 0.00
+      ctr_17               EMPTY               p(nonempty)= 0.00
+    Beliefs A1
+      factor               MAP                 p(MAP)    H
+      -------------------  ------------------  -------  -----
+      self_pos             w4 (g12 2,2)           1.00   0.01
+      self_orientation     W                      1.00   0.01
+      self_held            NONE                   1.00   0.01
+      other_pos            w3 (g11 1,2)           1.00   0.01
+      other_orientation    S                      1.00   0.01
+      other_held           NONE                   1.00   0.01
+      pot_state            P0                     1.00   0.01
+      ck_put1              0                      1.00   0.01   (p1= 0.00)
+      ck_put2              0                      1.00   0.01   (p1= 0.00)
+      ck_put3              0                      1.00   0.00   (p1= 0.00)
+      ck_plated            0                      1.00  -0.00   (p1= 0.00)
+      ck_delivered         0                      1.00   0.00   (p1= 0.00)
+      -- counters (MAP, p(nonempty)) --
+      ctr_1                EMPTY               p(nonempty)= 0.00
+      ctr_3                EMPTY               p(nonempty)= 0.00
+      ctr_10               EMPTY               p(nonempty)= 0.00
+      ctr_14               EMPTY               p(nonempty)= 0.00
+      ctr_17               EMPTY               p(nonempty)= 0.00
+    Policy beliefs A0:
+      entropy 3.107:
+      BEST: idx=119 p=0.048  (a0:dish/interact ↔ a1:pot/interact)
+        #1 [(a0:dish/interact ↔ a1:pot/interact)]                      0.048
+        #2 [(a0:dish/interact ↔ a1:onion1/stay)]                      0.045
+        #3 [(a0:dish/interact ↔ a1:onion1/interact)]                      0.045
+        #4 [(a0:dish/interact ↔ a1:cntr3/interact)]                      0.045
+        #5 [(a0:dish/interact ↔ a1:cntr3/stay)]                      0.045
+    Policy beliefs A1:
+      entropy 3.107:
+      BEST: idx=203 p=0.048  (a0:pot/interact ↔ a1:dish/interact)
+        #1 [(a0:pot/interact ↔ a1:dish/interact)]                      0.048
+        #2 [(a0:onion1/stay ↔ a1:dish/interact)]                      0.045
+        #3 [(a0:onion1/interact ↔ a1:dish/interact)]                      0.045
+        #4 [(a0:cntr3/stay ↔ a1:dish/interact)]                      0.045
+        #5 [(a0:cntr3/interact ↔ a1:dish/interact)]                      0.045
+    A0 joint policy idx=130  ego=dish/interact  partner=noop/stay
+    A1 joint policy idx=423  ego=dish/interact  partner=cntr5/interact
+    Executed primitive actions: A0=INTERACT  A1=WEST
+    Reward A0: 0.0  (cumulative: 0.0)
+    Reward A1: 0.0  (cumulative: 0.0)
+
+  --- Step 3 ---
+    Env state:  A0@3 held=dish | A1@4 held=none | pot=empty
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾       🄾 
+      🅲 [93m▼ [0m[38;5;208m◀ [0m  🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=3  holding=dish  facing=SOUTH
+    A1: pos(walkable)=4  holding=none  facing=WEST
+    Obs A0: self_pos=3 self_ori=1 self_held=2 other_pos=4 other_held=0 pot=0 delivered=0
+    Obs A1: self_pos=4 self_ori=3 self_held=0 other_pos=3 other_held=2 pot=0 delivered=0
+    Joint pair policies: 484 (22×22 semantic pairs)
+    Beliefs A0
+      factor               MAP                 p(MAP)    H
+      -------------------  ------------------  -------  -----
+      self_pos             w3 (g11 1,2)           1.00   0.01
+      self_orientation     S                      1.00   0.01
+      self_held            DISH                   1.00   0.01
+      other_pos            w4 (g12 2,2)           1.00   0.01
+      other_orientation    W                      1.00   0.01
+      other_held           NONE                   1.00   0.01
+      pot_state            P0                     1.00   0.01
+      ck_put1              0                      1.00   0.01   (p1= 0.00)
+      ck_put2              0                      1.00   0.01   (p1= 0.00)
+      ck_put3              0                      1.00   0.01   (p1= 0.00)
+      ck_plated            0                      1.00   0.00   (p1= 0.00)
+      ck_delivered         0                      1.00   0.00   (p1= 0.00)
+      -- counters (MAP, p(nonempty)) --
+      ctr_1                EMPTY               p(nonempty)= 0.00
+      ctr_3                EMPTY               p(nonempty)= 0.00
+      ctr_10               EMPTY               p(nonempty)= 0.00
+      ctr_14               EMPTY               p(nonempty)= 0.00
+      ctr_17               EMPTY               p(nonempty)= 0.00
+    Beliefs A1
+      factor               MAP                 p(MAP)    H
+      -------------------  ------------------  -------  -----
+      self_pos             w4 (g12 2,2)           1.00   0.01
+      self_orientation     W                      1.00   0.01
+      self_held            NONE                   1.00   0.01
+      other_pos            w3 (g11 1,2)           1.00   0.01
+      other_orientation    S                      1.00   0.01
+      other_held           DISH                   1.00   0.01
+      pot_state            P0                     1.00   0.01
+      ck_put1              0                      1.00   0.01   (p1= 0.00)
+      ck_put2              0                      1.00   0.01   (p1= 0.00)
+      ck_put3              0                      1.00   0.01   (p1= 0.00)
+      ck_plated            0                      1.00   0.00   (p1= 0.00)
+      ck_delivered         0                      1.00   0.00   (p1= 0.00)
+      -- counters (MAP, p(nonempty)) --
+      ctr_1                EMPTY               p(nonempty)= 0.00
+      ctr_3                EMPTY               p(nonempty)= 0.00
+      ctr_10               EMPTY               p(nonempty)= 0.00
+      ctr_14               EMPTY               p(nonempty)= 0.00
+      ctr_17               EMPTY               p(nonempty)= 0.00
+    Policy beliefs A0:
+      entropy 5.864:
+      BEST: idx=207 p=0.003  (a0:pot/interact ↔ a1:pot/interact)
+        #1 [(a0:pot/interact ↔ a1:pot/interact)]                      0.003
+        #2 [(a0:cntr5/stay ↔ a1:pot/interact)]                      0.003
+        #3 [(a0:noop/stay ↔ a1:pot/interact)]                      0.003
+        #4 [(a0:serve/interact ↔ a1:pot/interact)]                      0.003
+        #5 [(a0:dish/stay ↔ a1:pot/interact)]                      0.003
+    Policy beliefs A1:
+      entropy 3.107:
+      BEST: idx=203 p=0.047  (a0:pot/interact ↔ a1:dish/interact)
+        #1 [(a0:pot/interact ↔ a1:dish/interact)]                      0.047
+        #2 [(a0:onion1/interact ↔ a1:dish/interact)]                      0.045
+        #3 [(a0:cntr3/interact ↔ a1:dish/interact)]                      0.045
+        #4 [(a0:cntr3/stay ↔ a1:dish/interact)]                      0.045
+        #5 [(a0:onion1/stay ↔ a1:dish/interact)]                      0.045
+    A0 joint policy idx=237  ego=cntr1/stay  partner=cntr4/interact
+    A1 joint policy idx=269  ego=dish/interact  partner=cntr2/stay
+    Executed primitive actions: A0=NORTH  A1=WEST
+    Reward A0: 0.0  (cumulative: 0.0)
+    Reward A1: 0.0  (cumulative: 0.0)
+
+  --- Step 4 ---
+    Env state:  A0@0 held=dish | A1@3 held=none | pot=empty
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾 [93m▲ [0m    🄾 
+      🅲 [38;5;208m◀ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=0  holding=dish  facing=NORTH
+    A1: pos(walkable)=3  holding=none  facing=WEST
+    Obs A0: self_pos=0 self_ori=0 self_held=2 other_pos=3 other_held=0 pot=0 delivered=0
+    Obs A1: self_pos=3 self_ori=3 self_held=0 other_pos=0 other_held=2 pot=0 delivered=0
+    Joint pair policies: 484 (22×22 semantic pairs)
+    Beliefs A0
+      factor               MAP                 p(MAP)    H
+      -------------------  ------------------  -------  -----
+      self_pos             w0 (g6 1,1)            1.00   0.01
+      self_orientation     N                      1.00   0.01
+      self_held            DISH                   1.00   0.01
+      other_pos            w3 (g11 1,2)           1.00   0.01
+      other_orientation    W                      1.00   0.01
+      other_held           NONE                   1.00   0.01
+      pot_state            P0                     1.00   0.01
+      ck_put1              0                      1.00   0.02   (p1= 0.00)
+      ck_put2              0                      1.00   0.01   (p1= 0.00)
+      ck_put3              0                      1.00   0.01   (p1= 0.00)
+      ck_plated            0                      1.00   0.00   (p1= 0.00)
+      ck_delivered         0                      1.00   0.00   (p1= 0.00)
+      -- counters (MAP, p(nonempty)) --
+      ctr_1                EMPTY               p(nonempty)= 0.00
+      ctr_3                EMPTY               p(nonempty)= 0.00
+      ctr_10               EMPTY               p(nonempty)= 0.00
+      ctr_14               EMPTY               p(nonempty)= 0.00
+      ctr_17               EMPTY               p(nonempty)= 0.00
+    Beliefs A1
+      factor               MAP                 p(MAP)    H
+      -------------------  ------------------  -------  -----
+      self_pos             w3 (g11 1,2)           1.00   0.01
+      self_orientation     W                      1.00   0.01
+      self_held            NONE                   1.00   0.01
+      other_pos            w0 (g6 1,1)            1.00   0.01
+      other_orientation    N                      1.00   0.01
+      other_held           DISH                   1.00   0.01
+      pot_state            P0                     1.00   0.01
+      ck_put1              0                      1.00   0.02   (p1= 0.00)
+      ck_put2              0                      1.00   0.01   (p1= 0.00)
+      ck_put3              0                      1.00   0.01   (p1= 0.00)
+      ck_plated            0                      1.00   0.00   (p1= 0.00)
+      ck_delivered         0                      1.00   0.00   (p1= 0.00)
+      -- counters (MAP, p(nonempty)) --
+      ctr_1                EMPTY               p(nonempty)= 0.00
+      ctr_3                EMPTY               p(nonempty)= 0.00
+      ctr_10               EMPTY               p(nonempty)= 0.00
+      ctr_14               EMPTY               p(nonempty)= 0.00
+      ctr_17               EMPTY               p(nonempty)= 0.00
+    Policy beliefs A0:
+      entropy 5.864:
+      BEST: idx=207 p=0.003  (a0:pot/interact ↔ a1:pot/interact)
+        #1 [(a0:pot/interact ↔ a1:pot/interact)]                      0.003
+        #2 [(a0:cntr5/stay ↔ a1:pot/interact)]                      0.003
+        #3 [(a0:noop/stay ↔ a1:pot/interact)]                      0.003
+        #4 [(a0:serve/interact ↔ a1:pot/interact)]                      0.003
+        #5 [(a0:dish/stay ↔ a1:pot/interact)]                      0.003
+    Policy beliefs A1:
+      entropy 3.107:
+      BEST: idx=203 p=0.047  (a0:pot/interact ↔ a1:dish/interact)
+        #1 [(a0:pot/interact ↔ a1:dish/interact)]                      0.047
+        #2 [(a0:onion1/interact ↔ a1:dish/interact)]                      0.045
+        #3 [(a0:cntr3/interact ↔ a1:dish/interact)]                      0.045
+        #4 [(a0:cntr3/stay ↔ a1:dish/interact)]                      0.045
+        #5 [(a0:onion1/stay ↔ a1:dish/interact)]                      0.045
+    A0 joint policy idx=198  ego=pot/interact  partner=onion1/stay
+    A1 joint policy idx=93  ego=dish/interact  partner=dish/stay
+    Executed primitive actions: A0=EAST  A1=SOUTH
+    Reward A0: 0.0  (cumulative: 0.0)
+    Reward A1: 0.0  (cumulative: 0.0)
+
+  --- Step 5 ---
+    Env state:  A0@1 held=dish | A1@3 held=none | pot=empty
+    Map (before action):
+      🅲 🅲 ⓪ 🅲 🅲 
+      🄾   [93m▶ [0m  🄾 
+      🅲 [38;5;208m▼ [0m    🅲 
+      🅲 🄳 🅲 🅂 🅲 
+    A0: pos(walkable)=1  holding=dish  facing=EAST
+    A1: pos(walkable)=3  holding=none  facing=SOUTH
+    Obs A0: self_pos=1 self_ori=2 self_held=2 other_pos=3 other_held=0 pot=0 delivered=0
+    Obs A1: self_pos=3 self_ori=1 self_held=0 other_pos=1 other_held=2 pot=0 delivered=0

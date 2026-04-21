@@ -95,7 +95,6 @@ DESTINATIONS = [
     "cntr3",
     "cntr4",
     "cntr5",
-    "noop",
 ]
 
 MODES = ["stay", "interact"]

@@ -15,7 +15,7 @@ Design choices
 1. Primitive actions are encoded as:
        UP=0, DOWN=1, LEFT=2, RIGHT=3, STAY=4, INTERACT=5
 2. Semantic destinations are:
-       onion1, onion2, dish, serve, pot, cntr1..cntr5, noop
+       onion1, onion2, dish, serve, pot, cntr1..cntr5
 3. Semantic modes are:
        stay, interact
 4. Destination tiles are non-walkable object/counter tiles.
@@ -95,7 +95,6 @@ DESTINATIONS = [
     "cntr3",
     "cntr4",
     "cntr5",
-    "noop",
 ]
 
 MODES = ["stay", "interact"]
@@ -502,9 +501,6 @@ def interaction_is_valid(state: Dict[str, Any], destination: str) -> bool:
     pot_n = get_pot_onions(state)
     ready = soup_ready(state)
 
-    if destination == "noop":
-        return True
-
     if destination in ("onion1", "onion2"):
         return held == "nothing"
 
@@ -701,21 +697,6 @@ def compile_semantic_policy(
 
     if not is_walkable(self_pos):
         raise ValueError(f"Self position must be on a walkable tile, got {self_pos}.")
-
-    if destination == "noop":
-        noop_action = STAY if mode == "stay" else INTERACT
-        return {
-            "destination": destination,
-            "mode": mode,
-            "target_tile": None,
-            "approach_tile": self_pos,
-            "required_facing": None,
-            "final_facing": ORIENT_TO_ACTION[get_self_orient(state)],
-            "path": [],
-            "actions": [noop_action],
-            "valid": True,
-            "reason": "semantic noop",
-        }
 
     if destination not in DESTINATION_TO_TILE:
         raise ValueError(f"Unknown destination: {destination}")

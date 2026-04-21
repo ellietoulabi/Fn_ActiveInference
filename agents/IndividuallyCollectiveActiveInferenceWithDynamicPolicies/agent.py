@@ -192,6 +192,22 @@ class Agent:
     # Dynamic policy generation
     # =============================================================================
 
+    def set_policies(self, policies, policy_lengths=None, policy_metadata=None):
+        """
+        Directly set the policy set for the next infer_policies() call.
+
+        Bypasses dynamic generation.  Used by runners that construct the policy
+        space externally — e.g. the Individually Collective runner which builds
+        all 22×22 joint semantic pair policies and injects them here.
+        """
+        self.policies = list(policies)
+        self.policy_lengths = (
+            list(policy_lengths) if policy_lengths is not None
+            else [len(p) for p in self.policies]
+        )
+        self.policy_metadata = list(policy_metadata) if policy_metadata is not None else []
+        self.q_pi = np.ones(len(self.policies), dtype=float) / max(len(self.policies), 1)
+
     def update_policies(self, policy_state):
         """
         Generate and store the current timestep's policy set.

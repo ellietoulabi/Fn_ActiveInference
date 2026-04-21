@@ -1,5 +1,10 @@
 """
-IndividuallyCollective paradigm model init for Overcooked - Cramped Room layout (Monotonic)
+Independent paradigm model init for Overcooked - Cramped Room layout (Monotonic).
+
+Each agent has a single-agent generative model.  The other agent is observed
+and inferred but not co-planned: its state factors transition as identity
+(autonomous/uncontrolled) during policy rollout.
+
 Layout:
   XXPXX
   O1  O
@@ -38,6 +43,7 @@ NORTH, SOUTH, EAST, WEST, STAY, INTERACT = 0, 1, 2, 3, 4, 5
 N_PRIMITIVE_ACTIONS = 6
 
 # Semantic macro-actions (used by planning/policies in this model)
+# Independent agent plans only over its own actions; no joint-pair or noop needed.
 DESTINATIONS = [
     "onion1",
     "onion2",
@@ -56,31 +62,8 @@ N_ACTIONS = len(SEMANTIC_ACTIONS)  # 20
 
 SELF = 0
 OTHER = 1
-N_ACTORS = 2
-
-# Interleaved step-action encoding (single integer) over semantic actions:
-# 0..N_ACTIONS-1              => (SELF, semantic_action)
-# N_ACTIONS..2*N_ACTIONS-1    => (OTHER, semantic_action)
-N_INTERLEAVED_STEP_ACTIONS = N_ACTORS * N_ACTIONS
-N_JOINT_PAIR_POLICIES = N_ACTIONS * N_ACTIONS  # 20 × 20 = 400 joint (ego, partner) semantic pairs
-
-ACTOR_NAMES = {
-    SELF: "SELF",
-    OTHER: "OTHER",
-}
 
 ACTION_NAMES = {i: f"{dst}:{mode}" for i, (dst, mode) in enumerate(SEMANTIC_ACTIONS)}
-
-
-def encode_interleaved_step(actor: int, action: int) -> int:
-    return int(actor) * N_ACTIONS + int(action)
-
-
-def decode_interleaved_step(step_action: int) -> tuple[int, int]:
-    a = int(step_action)
-    actor = a // N_ACTIONS
-    action = a % N_ACTIONS
-    return actor, action
 
 
 def semantic_action_from_index(action_idx: int) -> tuple[str, str]:
@@ -95,9 +78,7 @@ def semantic_index(dst: str, mode: str) -> int:
 
 
 def construct_semantic_policies(policy_len: int = 2) -> list[list[int]]:
-    """
-    Enumerate all semantic policies over action indices [0..N_ACTIONS-1].
-    """
+    """Enumerate all self-semantic policies over action indices [0..N_ACTIONS-1]."""
     from itertools import product
 
     if policy_len <= 0:
@@ -105,35 +86,14 @@ def construct_semantic_policies(policy_len: int = 2) -> list[list[int]]:
     return [list(p) for p in product(range(N_ACTIONS), repeat=int(policy_len))]
 
 
-# Policy step: simultaneous semantic pair for global agent_0, global agent_1.
-# Passed to B_fn as (JOINT_PAIR_LABEL, a0, a1); B_fn maps to ego frame via ego_agent_index.
-JOINT_PAIR_LABEL = "__joint_pair__"
-
 # Mark policy steps that are env primitives (0..N_PRIMITIVE_ACTIONS-1) for B_fn rollout.
-# Must match the convention used by runners that compile dynamic policies to primitives:
-#   (PRIMITIVE_POLICY_STEP, primitive_action)
+# Format: (PRIMITIVE_POLICY_STEP, a_self)
 # This disambiguates primitive 0..5 from semantic indices 0..N_ACTIONS-1 inside B_fn.
 PRIMITIVE_POLICY_STEP = "__primitive_policy_step__"
 
 
-def policy_step_to_actions(actor: int, action: int):
-    """
-    Convert one interleaved semantic policy step (actor, semantic_action)
-    into a pair of semantic action indices.
-
-    The inactive agent receives semantic action 0 (onion1/stay) as a stand-in no-op.
-    """
-    noop_sem = 0  # onion1/stay — inactive agent placeholder
-
-    if actor == SELF:
-        return int(action), int(noop_sem)
-    elif actor == OTHER:
-        return int(noop_sem), int(action)
-    return int(noop_sem), int(noop_sem)
-
-
 # For each semantic destination, define a canonical walkable index and orientation
-# such that the landmark is in front of the agent.
+# such that the landmark is in front of the agent after macro-teleport.
 SEMANTIC_DEST_TARGET_POSE = {
     "onion1": (0, WEST),   # walkable 0 (grid 6), face dispenser/counter at grid 5
     "onion2": (2, EAST),   # walkable 2 (grid 8), face dispenser at grid 9
@@ -246,30 +206,29 @@ for cf in COUNTER_FACTORS:
     observation_state_dependencies[f"{cf}_obs"] = [cf]
 
 state_state_dependencies = {
+    # Ego agent: normal action-driven transitions.
+    # self_pos still depends on other_pos for collision avoidance.
     "self_pos": ["self_pos", "other_pos"],
     "self_orientation": ["self_orientation"],
-
     "self_held": ["self_pos", "self_orientation", "self_held", "pot_state"] + COUNTER_FACTORS,
 
-    "pot_state": [
-        "self_pos", "self_orientation", "self_held",
-        "other_pos", "other_orientation", "other_held",
-        "pot_state"
-    ],
+    # Shared environment: driven by ego agent only (other assumed STAY).
+    "pot_state": ["self_pos", "self_orientation", "self_held", "pot_state"],
 
-    "ck_put1": ["ck_put1", "self_pos", "self_orientation", "self_held", "pot_state", "other_pos", "other_orientation", "other_held"],
-    "ck_put2": ["ck_put2", "self_pos", "self_orientation", "self_held", "pot_state", "other_pos", "other_orientation", "other_held"],
-    "ck_put3": ["ck_put3", "self_pos", "self_orientation", "self_held", "pot_state", "other_pos", "other_orientation", "other_held"],
-    "ck_plated": ["ck_plated", "self_pos", "self_orientation", "self_held", "pot_state", "other_pos", "other_orientation", "other_held"],
-    "ck_delivered": ["ck_delivered", "self_pos", "self_orientation", "self_held", "other_pos", "other_orientation", "other_held"],
+    "ck_put1": ["ck_put1", "self_pos", "self_orientation", "self_held", "pot_state"],
+    "ck_put2": ["ck_put2", "self_pos", "self_orientation", "self_held", "pot_state"],
+    "ck_put3": ["ck_put3", "self_pos", "self_orientation", "self_held", "pot_state"],
+    "ck_plated": ["ck_plated", "self_pos", "self_orientation", "self_held", "pot_state"],
+    "ck_delivered": ["ck_delivered", "self_pos", "self_orientation", "self_held"],
 
-    "other_pos": ["other_pos", "self_pos"],
+    # Other agent: identity transitions (observed/inferred, not controlled).
+    "other_pos": ["other_pos"],
     "other_orientation": ["other_orientation"],
-    "other_held": ["other_pos", "other_orientation", "other_held", "pot_state"] + COUNTER_FACTORS,
+    "other_held": ["other_held"],
 }
 
 for cf in COUNTER_FACTORS:
-    state_state_dependencies[cf] = [cf, "self_pos", "self_orientation", "self_held", "other_pos", "other_orientation", "other_held"]
+    state_state_dependencies[cf] = [cf, "self_pos", "self_orientation", "self_held"]
 
 
 # Utility functions

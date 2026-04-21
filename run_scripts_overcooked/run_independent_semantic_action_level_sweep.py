@@ -15,14 +15,14 @@ from pathlib import Path
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-
+sys.path.insert(0, str(PROJECT_ROOT))  # make sibling modules importable
 overcooked_src = PROJECT_ROOT / "environments" / "overcooked_ai" / "src"
 if overcooked_src.exists():
     sys.path.insert(0, str(overcooked_src))
 
-import run_individually_collective_policy_semantic_action_level as ric
+import run_independent_semantic_action_level as ind
 
-from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndividuallyCollectiveWithSemanticPoliciesActionLevel.model_init import (
+from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndependentWithSemanticPoliciesActionLevel.model_init import (
     PRIMITIVE_POLICY_STEP,
 )
 
@@ -43,8 +43,8 @@ def _run_sweep(
         raise ValueError("episode_seeds, agent0_seeds, agent1_seeds must each have length n_runs")
 
     try:
-        from agents.ActiveInferenceFixedPolicies.agent import Agent
-        from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndividuallyCollectiveWithSemanticPoliciesActionLevel import (
+        from agents.IndependentActiveInferenceWithDynamicPolicies.agent import Agent
+        from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndependentWithSemanticPoliciesActionLevel import (
             A_fn,
             B_fn,
             C_fn,
@@ -58,11 +58,11 @@ def _run_sweep(
         return
 
     model_init_agent = mon_model_init
-    if int(getattr(model_init_agent, "N_PRIMITIVE_ACTIONS", ric.N_PRIMITIVE_ACTIONS)) != ric.N_PRIMITIVE_ACTIONS:
+    if int(getattr(model_init_agent, "N_PRIMITIVE_ACTIONS", ind.N_PRIMITIVE_ACTIONS)) != ind.N_PRIMITIVE_ACTIONS:
         print(
-            "[SKIP] model_init N_PRIMITIVE_ACTIONS ({}) != ric.N_PRIMITIVE_ACTIONS ({}).".format(
+            "[SKIP] model_init N_PRIMITIVE_ACTIONS ({}) != ind.N_PRIMITIVE_ACTIONS ({}).".format(
                 getattr(model_init_agent, "N_PRIMITIVE_ACTIONS", None),
-                ric.N_PRIMITIVE_ACTIONS,
+                ind.N_PRIMITIVE_ACTIONS,
             )
         )
         return
@@ -71,7 +71,7 @@ def _run_sweep(
     state_sizes = {f: len(v) for f, v in model_init_agent.states.items()}
     observation_labels = model_init_agent.observations
     base_env_params = {"width": model_init_agent.GRID_WIDTH, "height": model_init_agent.GRID_HEIGHT}
-    policy_len = ric.PAIR_POLICY_HORIZON
+    policy_len = ind.PAIR_POLICY_HORIZON
     max_steps_per_scenario = 2000
     horizon = max_steps_per_scenario + 10
     env_layout = "cramped_room"
@@ -90,7 +90,7 @@ def _run_sweep(
             observation_labels=observation_labels,
             env_params=env_params,
             observation_state_dependencies=model_init_agent.observation_state_dependencies,
-            actions=list(range(ric.N_PRIMITIVE_ACTIONS)),
+            actions=list(range(ind.N_PRIMITIVE_ACTIONS)),
             gamma=float(gamma),
             alpha=float(alpha),
             policy_len=policy_len,
@@ -151,13 +151,13 @@ def _run_sweep(
             obs_1 = env_utils.env_obs_to_model_obs(state, 1, reward_info=prev_reward_info)
 
             if log_steps:
-                state_str = ric._state_summary(state, model_init_agent, max_agents=2)
+                state_str = ind._state_summary(state, model_init_agent, max_agents=2)
                 print("\n  --- [{}] Step {} ---".format(run_tag, step), flush=True)
                 print("    Env state:  {}".format(state_str), flush=True)
                 print("    Map (before action):", flush=True)
-                for row in ric.render_overcooked_grid(state, model_init_agent):
+                for row in ind.render_overcooked_grid(state, model_init_agent):
                     print("      " + row, flush=True)
-                for line in ric._agent_summary_lines(state, model_init_agent, max_agents=2):
+                for line in ind._agent_summary_lines(state, model_init_agent, max_agents=2):
                     print(line, flush=True)
                 print(
                     "    Obs A0: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
@@ -187,45 +187,44 @@ def _run_sweep(
             agent_0.infer_states(obs_0)
             agent_1.infer_states(obs_1)
 
-            policy_state_0 = ric.build_policy_state_for_agent(
+            policy_state_0 = ind.build_policy_state_for_agent(
                 state, agent_idx=0, env_utils=env_utils, prev_reward_info=prev_reward_info
             )
-            policy_state_1 = ric.build_policy_state_for_agent(
+            policy_state_1 = ind.build_policy_state_for_agent(
                 state, agent_idx=1, env_utils=env_utils, prev_reward_info=prev_reward_info
             )
 
             agent_0.update_policies(policy_state_0)
             agent_1.update_policies(policy_state_1)
 
-            ric._translate_agent_policies_utils_to_env(agent_0)
-            ric._translate_agent_policies_utils_to_env(agent_1)
+            ind._translate_agent_policies_utils_to_env(agent_0)
+            ind._translate_agent_policies_utils_to_env(agent_1)
 
-            _n_sem = int(model_init_agent.N_ACTIONS)
-            _stay = int(model_init_agent.STAY)
-
-            ego0_paths = list(agent_0.policies)
-            ego1_paths = list(agent_1.policies)
-
-            ego0_first_prim = ric._first_prim_per_semantic(ego0_paths, _n_sem, _stay)
-            ego1_first_prim = ric._first_prim_per_semantic(ego1_paths, _n_sem, _stay)
-
-            joint_policies_0 = ric._build_joint_primitive_policies(ego0_paths, ego1_paths, _stay)
-            joint_policies_1 = ric._build_joint_primitive_policies(ego1_paths, ego0_paths, _stay)
-
-            agent_0.set_policies(joint_policies_0)
-            agent_1.set_policies(joint_policies_1)
+            ind._wrap_policies_for_primitive_B_rollout(agent_0)
+            ind._wrap_policies_for_primitive_B_rollout(agent_1)
 
             agent_0.infer_policies()
             agent_1.infer_policies()
 
-            pol_idx_0 = ric._sample_or_argmax_policy_index(agent_0)
-            pol_idx_1 = ric._sample_or_argmax_policy_index(agent_1)
+            pol_idx_0 = ind._sample_or_argmax_policy_index(agent_0)
+            pol_idx_1 = ind._sample_or_argmax_policy_index(agent_1)
 
-            ego0_sem = int(pol_idx_0) // _n_sem
-            ego1_sem = int(pol_idx_1) // _n_sem
+            pol_0 = agent_0.policies[pol_idx_0]
+            pol_1 = agent_1.policies[pol_idx_1]
 
-            a0_prim = ego0_first_prim[ego0_sem] if 0 <= ego0_sem < len(ego0_first_prim) else _stay
-            a1_prim = ego1_first_prim[ego1_sem] if 0 <= ego1_sem < len(ego1_first_prim) else _stay
+            meta_0 = agent_0.get_policy_metadata()[pol_idx_0] if agent_0.get_policy_metadata() else None
+            meta_1 = agent_1.get_policy_metadata()[pol_idx_1] if agent_1.get_policy_metadata() else None
+
+            a0_prim = (
+                ind._env_primitive_from_policy_step(pol_0[0])
+                if len(pol_0) > 0
+                else int(model_init_agent.STAY)
+            )
+            a1_prim = (
+                ind._env_primitive_from_policy_step(pol_1[0])
+                if len(pol_1) > 0
+                else int(model_init_agent.STAY)
+            )
 
             agent_0.action = (PRIMITIVE_POLICY_STEP, int(a0_prim), int(a1_prim))
             agent_0.step_time()
@@ -243,39 +242,38 @@ def _run_sweep(
 
             if log_steps:
                 print(
-                    "    Joint pair policies: {} ({}×{})".format(
+                    "    Generated policies: A0={}  A1={}".format(
                         len(agent_0.policies or []),
-                        _n_sem,
-                        _n_sem,
+                        len(agent_1.policies or []),
                     ),
                     flush=True,
                 )
 
                 qs_0 = agent_0.get_state_beliefs()
-                print(ric._belief_table(np, qs_0, model_init_agent, title="Beliefs A0"), flush=True)
+                print(ind._belief_table(np, qs_0, model_init_agent, title="Beliefs A0"), flush=True)
 
                 qs_1 = agent_1.get_state_beliefs()
-                print(ric._belief_table(np, qs_1, model_init_agent, title="Beliefs A1"), flush=True)
+                print(ind._belief_table(np, qs_1, model_init_agent, title="Beliefs A1"), flush=True)
 
                 print("    Policy beliefs A0:", flush=True)
                 q_pi_0 = np.asarray(agent_0.get_policy_posterior(), dtype=float)
                 H_pi_0 = float(-np.sum(q_pi_0 * np.log(q_pi_0 + 1e-16)))
                 top_0 = agent_0.get_top_policies(top_k=5)
                 print("      entropy {:.3f}:".format(H_pi_0), flush=True)
-                # if top_0:
-                #     best_pol, best_prob, best_idx = top_0[0]
-                #     print(
-                #         "      BEST: idx={} p={:.3f}  {}".format(
-                #             int(best_idx),
-                #             float(best_prob),
-                #             ric._fmt_policy(best_pol),
-                #         ),
-                #         flush=True,
-                #     )
-                for rank, (_pol, prob, pidx) in enumerate(top_0, 1):
-                    lbl = ric._fmt_joint_semantic(pidx, _n_sem)
+                if top_0:
+                    best_pol, best_prob, best_idx = top_0[0]
+                    print(
+                        "      BEST: idx={} p={:.3f}  {}".format(
+                            int(best_idx),
+                            float(best_prob),
+                            ind._fmt_policy(best_pol),
+                        ),
+                        flush=True,
+                    )
+                for rank, (pol, prob, _pidx) in enumerate(top_0, 1):
+                    pol_str = ind._fmt_policy(pol)
                     bar = "█" * int(float(prob) * 20)
-                    print("        #{:d} [{:>40}] {:<20} {:.3f}".format(rank, lbl, bar, float(prob)), flush=True)
+                    print("        #{:d} [{:>24}] {:<20} {:.3f}".format(rank, pol_str, bar, float(prob)), flush=True)
 
                 print("    Policy beliefs A1:", flush=True)
                 q_pi_1 = np.asarray(agent_1.get_policy_posterior(), dtype=float)
@@ -283,22 +281,51 @@ def _run_sweep(
                 top_1 = agent_1.get_top_policies(top_k=5)
                 print("      entropy {:.3f}:".format(H_pi_1), flush=True)
                 if top_1:
-                    _, best_prob, best_idx = top_1[0]
-                    print("      BEST: idx={} p={:.3f}  {}".format(
-                        int(best_idx), float(best_prob), ric._fmt_joint_semantic(best_idx, _n_sem)
-                    ), flush=True)
-                for rank, (_pol, prob, pidx) in enumerate(top_1, 1):
-                    lbl = ric._fmt_joint_semantic(pidx, _n_sem)
+                    best_pol, best_prob, best_idx = top_1[0]
+                    print(
+                        "      BEST: idx={} p={:.3f}  {}".format(
+                            int(best_idx),
+                            float(best_prob),
+                            ind._fmt_policy(best_pol),
+                        ),
+                        flush=True,
+                    )
+                for rank, (pol, prob, _pidx) in enumerate(top_1, 1):
+                    pol_str = ind._fmt_policy(pol)
                     bar = "█" * int(float(prob) * 20)
-                    print("        #{:d} [{:>40}] {:<20} {:.3f}".format(rank, lbl, bar, float(prob)), flush=True)
+                    print("        #{:d} [{:>24}] {:<20} {:.3f}".format(rank, pol_str, bar, float(prob)), flush=True)
 
-                print("    A0 joint policy idx={}  {}".format(int(pol_idx_0), ric._fmt_joint_semantic(pol_idx_0, _n_sem)), flush=True)
-                print("    A1 joint policy idx={}  {}".format(int(pol_idx_1), ric._fmt_joint_semantic(pol_idx_1, _n_sem)), flush=True)
+                if meta_0 is not None:
+                    print(
+                        "    A0 selected policy idx={}  semantic=({}, {})".format(
+                            int(pol_idx_0),
+                            meta_0["destination"],
+                            meta_0["mode"],
+                        ),
+                        flush=True,
+                    )
+                else:
+                    print("    A0 selected policy idx={}".format(int(pol_idx_0)), flush=True)
+
+                if meta_1 is not None:
+                    print(
+                        "    A1 selected policy idx={}  semantic=({}, {})".format(
+                            int(pol_idx_1),
+                            meta_1["destination"],
+                            meta_1["mode"],
+                        ),
+                        flush=True,
+                    )
+                else:
+                    print("    A1 selected policy idx={}".format(int(pol_idx_1)), flush=True)
+
+                print("    Primitive plan A0: {}".format(ind._fmt_policy(pol_0)), flush=True)
+                print("    Primitive plan A1: {}".format(ind._fmt_policy(pol_1)), flush=True)
 
                 print(
                     "    Executed primitive actions: A0={}  A1={}".format(
-                        ric.PRIMITIVE_ACTION_NAMES.get(a0_prim, str(a0_prim)),
-                        ric.PRIMITIVE_ACTION_NAMES.get(a1_prim, str(a1_prim)),
+                        ind.PRIMITIVE_ACTION_NAMES.get(a0_prim, str(a0_prim)),
+                        ind.PRIMITIVE_ACTION_NAMES.get(a1_prim, str(a1_prim)),
                     ),
                     flush=True,
                 )

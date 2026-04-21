@@ -20,8 +20,8 @@ Important hierarchical-control fix:
 
 import numpy as np
 
-from agents.ActiveInferenceWithDynamicPolicies.agent import Agent as _BaseAgent
-from agents.ActiveInferenceWithDynamicPolicies import control, inference
+from agents.IndividuallyCollectiveActiveInferenceWithDynamicPolicies.agent import Agent as _BaseAgent
+from agents.IndividuallyCollectiveActiveInferenceWithDynamicPolicies import control, inference
 
 
 class Agent(_BaseAgent):

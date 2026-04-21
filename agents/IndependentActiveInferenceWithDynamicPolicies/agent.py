@@ -39,6 +39,7 @@ class Agent:
         inference_algorithm="VANILLA",
         num_iter=16,
         dF_tol=0.001,
+        use_action_for_state_inference: bool = False,
         dynamic_policy_generation=True,
         dynamic_destinations=None,
         dynamic_modes=None,
@@ -125,6 +126,7 @@ class Agent:
         # Inference parameters
         self.num_iter = num_iter
         self.dF_tol = dF_tol
+        self.use_action_for_state_inference = bool(use_action_for_state_inference)
 
         # Policy evaluation settings
         self.use_utility = True
@@ -255,7 +257,7 @@ class Agent:
         if self.inference_algorithm != "VANILLA":
             raise NotImplementedError("Only VANILLA inference supported")
 
-        if self.action is not None:
+        if self.use_action_for_state_inference and self.action is not None:
             prior_dict = control.get_expected_state(
                 self.B_fn, self.qs, self.action, self.env_params
             )
