@@ -264,6 +264,16 @@ class Agent:
         else:
             prior_dict = {factor: self.qs[factor].copy() for factor in self.state_factors}
 
+        # Numerical floor: avoid exact zeros in priors so direct evidence can recover
+        # factors from impossible states after long rollouts.
+        for factor in self.state_factors:
+            p = np.asarray(prior_dict[factor], dtype=float)
+            if p.size == 0:
+                continue
+            p = np.maximum(p, 1e-12)
+            z = float(np.sum(p))
+            prior_dict[factor] = p / (z if z > 0 else 1.0)
+
         map_idx = {f: int(np.argmax(prior_dict[f])) for f in self.state_factors}
         qs_fast = {f: prior_dict[f].copy() for f in self.state_factors}
 
@@ -274,7 +284,14 @@ class Agent:
             factor = modality[: -len("_obs")]
             if factor in self.state_sizes and modality in self.observation_labels:
                 if len(self.observation_labels[modality]) == self.state_sizes[factor]:
-                    direct_modalities.append((factor, modality))
+                    deps = None
+                    if self.observation_state_dependencies is not None:
+                        deps = self.observation_state_dependencies.get(modality)
+                    # Only treat as direct when the modality depends on exactly
+                    # one matching factor. If it has extra dependencies, we must
+                    # run full inference to propagate information to those factors.
+                    if deps is None or deps == [factor]:
+                        direct_modalities.append((factor, modality))
 
         for factor, modality in direct_modalities:
             obs_idx = int(obs_dict[modality])

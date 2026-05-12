@@ -192,14 +192,14 @@ for cf in COUNTER_FACTORS:
 observation_state_dependencies = {
     "self_pos_obs": ["self_pos"],
     "self_orientation_obs": ["self_orientation"],
-    "self_held_obs": ["self_held"],
-    "pot_state_obs": ["pot_state"],
+    "self_held_obs": ["self_held", "ck_plated"],
+    "pot_state_obs": ["pot_state", "ck_put1", "ck_put2", "ck_put3"],
 
-    "soup_delivered_obs": ["ck_delivered"],
+    "soup_delivered_obs": ["ck_delivered", "ck_put1", "ck_put2", "ck_put3", "ck_plated"],
 
     "other_pos_obs": ["other_pos"],
     "other_orientation_obs": ["other_orientation"],
-    "other_held_obs": ["other_held"],
+    "other_held_obs": ["other_held", "ck_plated"],
 }
 
 for cf in COUNTER_FACTORS:

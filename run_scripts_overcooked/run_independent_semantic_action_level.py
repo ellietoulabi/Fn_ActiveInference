@@ -463,8 +463,8 @@ def run_agent_vs_env_scenarios():
             env_params=env_params,
             observation_state_dependencies=model_init_agent.observation_state_dependencies,
             actions=list(range(N_PRIMITIVE_ACTIONS)),
-            gamma=16.0,
-            alpha=32.0,
+            gamma=4.0,
+            alpha=8.0,
             policy_len=policy_len,
             inference_horizon=policy_len,
             action_selection="stochastic",
@@ -478,15 +478,15 @@ def run_agent_vs_env_scenarios():
             agent.use_states_info_gain = False
         return agent
 
-    max_steps_per_scenario = 1000
+    max_steps_per_scenario = 2000
     horizon = max_steps_per_scenario + 10
 
     env = OvercookedMultiAgentEnv(config={"layout": "cramped_room", "horizon": horizon})
     if verbose:
         print("[Env] Using multi-agent env: layout=cramped_room")
 
-    agent_0 = create_agent(seed=48, ego_agent_index=0)
-    agent_1 = create_agent(seed=49, ego_agent_index=1)
+    agent_0 = create_agent(seed=78, ego_agent_index=0)
+    agent_1 = create_agent(seed=79, ego_agent_index=1)
 
     if verbose:
         print(
@@ -516,10 +516,8 @@ def run_agent_vs_env_scenarios():
         _obs, infos = env.reset(seed=seed)
         state = infos["agent_0"]["state"]
 
-        config_0 = env_utils.get_D_config_from_state(state, 0)
-        config_1 = env_utils.get_D_config_from_state(state, 1)
-        agent_0.reset(config=config_0)
-        agent_1.reset(config=config_1)
+        agent_0.reset()
+        agent_1.reset()
 
         prev_reward_info = {"sparse_reward_by_agent": [0, 0]}
         total_reward_0 = 0.0

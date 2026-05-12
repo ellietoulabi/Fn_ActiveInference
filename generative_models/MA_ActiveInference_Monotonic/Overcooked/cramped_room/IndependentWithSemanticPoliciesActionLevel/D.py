@@ -13,17 +13,7 @@ Includes:
 import numpy as np
 from . import model_init
 
-DEFAULT_START_GRID_XY = (1, 2)
-DEFAULT_OTHER_START_GRID_XY = (3, 2)
-
 CHECKBOX_FACTORS = ("ck_put1", "ck_put2", "ck_put3", "ck_plated", "ck_delivered")
-
-
-def _grid_xy_to_walkable(xy) -> int:
-    gx, gy = xy
-    grid_idx = model_init.xy_to_index(gx, gy)
-    walkable_idx = model_init.grid_idx_to_walkable_idx(grid_idx)
-    return int(walkable_idx) if walkable_idx is not None else 0
 
 
 def build_D(
@@ -32,44 +22,43 @@ def build_D(
     other_start_pos: int | None = None,
     other_start_ori: int = 0,
 ) -> dict[str, np.ndarray]:
+    """
+    Build prior belief dict.
 
-    if self_start_pos is None:
-        self_start_pos = _grid_xy_to_walkable(DEFAULT_START_GRID_XY)
-    else:
-        self_start_pos = int(self_start_pos)
-
-    if other_start_pos is None:
-        other_start_pos = _grid_xy_to_walkable(DEFAULT_OTHER_START_GRID_XY)
-    else:
-        other_start_pos = int(other_start_pos)
-
-    self_start_ori = int(self_start_ori)
-    other_start_ori = int(other_start_ori)
+    When start positions are provided (via config), beliefs are point-masses at
+    those positions.  When called with no config (``D_fn(None)``), positions are
+    left uniform so the agent infers its own location from the first observation
+    rather than starting with a hard-coded default that may be wrong.
+    """
 
     D: dict[str, np.ndarray] = {}
 
-    # self_pos
-    D["self_pos"] = np.zeros(model_init.N_WALKABLE, dtype=float)
-    idx = self_start_pos if 0 <= self_start_pos < model_init.N_WALKABLE else 0
-    D["self_pos"][idx] = 1.0
+    # self_pos — uniform when unknown, point-mass when known
+    if self_start_pos is not None and 0 <= int(self_start_pos) < model_init.N_WALKABLE:
+        D["self_pos"] = np.zeros(model_init.N_WALKABLE, dtype=float)
+        D["self_pos"][int(self_start_pos)] = 1.0
+    else:
+        D["self_pos"] = np.ones(model_init.N_WALKABLE, dtype=float) / model_init.N_WALKABLE
 
-    # self_orientation
+    # self_orientation — point-mass at ori 0 (NORTH default, corrected quickly by obs)
     D["self_orientation"] = np.zeros(model_init.N_DIRECTIONS, dtype=float)
-    ori_idx = self_start_ori if 0 <= self_start_ori < model_init.N_DIRECTIONS else 0
+    ori_idx = int(self_start_ori) if 0 <= int(self_start_ori) < model_init.N_DIRECTIONS else 0
     D["self_orientation"][ori_idx] = 1.0
 
-    # self_held
+    # self_held — known: starts empty
     D["self_held"] = np.zeros(model_init.N_HELD_TYPES, dtype=float)
     D["self_held"][model_init.HELD_NONE] = 1.0
 
-    # other_pos
-    D["other_pos"] = np.zeros(model_init.N_WALKABLE, dtype=float)
-    other_idx = other_start_pos if 0 <= other_start_pos < model_init.N_WALKABLE else 0
-    D["other_pos"][other_idx] = 1.0
+    # other_pos — uniform when unknown, point-mass when known
+    if other_start_pos is not None and 0 <= int(other_start_pos) < model_init.N_WALKABLE:
+        D["other_pos"] = np.zeros(model_init.N_WALKABLE, dtype=float)
+        D["other_pos"][int(other_start_pos)] = 1.0
+    else:
+        D["other_pos"] = np.ones(model_init.N_WALKABLE, dtype=float) / model_init.N_WALKABLE
 
-    # other_orientation
+    # other_orientation — point-mass default
     D["other_orientation"] = np.zeros(model_init.N_DIRECTIONS, dtype=float)
-    other_ori_idx = other_start_ori if 0 <= other_start_ori < model_init.N_DIRECTIONS else 0
+    other_ori_idx = int(other_start_ori) if 0 <= int(other_start_ori) < model_init.N_DIRECTIONS else 0
     D["other_orientation"][other_ori_idx] = 1.0
 
     # other_held
