@@ -90,7 +90,7 @@ def _belief_table(np_mod, qs: dict, model_init, title: str) -> str:
     def row(name: str, value_str: str, pm: float, H: float):
         lines.append("      {:<19}  {:<18}  {:>7}  {:>5.2f}".format(name, value_str, _fmt_prob(pm), H))
 
-    for f in ("self_pos", "self_orientation", "self_held", "other_pos", "other_orientation", "other_held"):
+    for f in ("self_pos", "self_orientation", "self_held", "other_pos", "other_held"):
         p = qs.get(f, None)
         if p is None:
             continue
@@ -386,7 +386,7 @@ def build_policy_state_for_agent(state, agent_idx: int, env_utils, prev_reward_i
         self_orient=ori_name[int(obs_self["self_orientation_obs"])],
         self_held=held_name[int(obs_self["self_held_obs"])],
         other_pos=int(obs_other["self_pos_obs"]),
-        other_orient=ori_name[int(obs_other["self_orientation_obs"])],
+        other_orient="NORTH",
         other_held=held_name[int(obs_other["self_held_obs"])],
         pot_state=pot_state,
         pot_onions=int(pot_onions),

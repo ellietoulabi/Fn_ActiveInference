@@ -225,10 +225,6 @@ def B_other_pos(parents: dict) -> np.ndarray:
     return normalize(np.array(parents["other_pos"], dtype=float))
 
 
-def B_other_orientation(parents: dict) -> np.ndarray:
-    return normalize(np.array(parents["other_orientation"], dtype=float))
-
-
 def B_other_held(parents: dict) -> np.ndarray:
     return normalize(np.array(parents["other_held"], dtype=float))
 
@@ -473,8 +469,6 @@ def B_fn_primitive_step(
             new_qs[factor] = B_self_held(pdeps, self_action)
         elif factor == "other_pos":
             new_qs[factor] = B_other_pos(pdeps)
-        elif factor == "other_orientation":
-            new_qs[factor] = B_other_orientation(pdeps)
         elif factor == "other_held":
             new_qs[factor] = B_other_held(pdeps)
         elif factor == "pot_state":
@@ -561,8 +555,6 @@ def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
             new_qs[factor] = B_self_held(parents, self_terminal)
         elif factor == "other_pos":
             new_qs[factor] = B_other_pos(parents)
-        elif factor == "other_orientation":
-            new_qs[factor] = B_other_orientation(parents)
         elif factor == "other_held":
             new_qs[factor] = B_other_held(parents)
         elif factor == "pot_state":

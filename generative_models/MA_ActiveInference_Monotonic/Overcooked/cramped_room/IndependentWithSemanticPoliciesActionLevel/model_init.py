@@ -165,7 +165,6 @@ states = {
     "ck_delivered": list(range(2)),
 
     "other_pos": list(range(N_WALKABLE)),
-    "other_orientation": list(range(N_DIRECTIONS)),
     "other_held": list(range(N_HELD_TYPES)),
 }
 
@@ -182,7 +181,6 @@ observations = {
     "soup_delivered_obs": [0, 1],
 
     "other_pos_obs": list(range(N_WALKABLE)),
-    "other_orientation_obs": list(range(N_DIRECTIONS)),
     "other_held_obs": list(range(N_HELD_TYPES)),
 }
 
@@ -192,14 +190,13 @@ for cf in COUNTER_FACTORS:
 observation_state_dependencies = {
     "self_pos_obs": ["self_pos"],
     "self_orientation_obs": ["self_orientation"],
-    "self_held_obs": ["self_held", "ck_plated"],
-    "pot_state_obs": ["pot_state", "ck_put1", "ck_put2", "ck_put3"],
+    "self_held_obs": ["self_held"],
+    "pot_state_obs": ["pot_state"],
 
-    "soup_delivered_obs": ["ck_delivered", "ck_put1", "ck_put2", "ck_put3", "ck_plated"],
+    "soup_delivered_obs": ["ck_delivered"],
 
     "other_pos_obs": ["other_pos"],
-    "other_orientation_obs": ["other_orientation"],
-    "other_held_obs": ["other_held", "ck_plated"],
+    "other_held_obs": ["other_held"],
 }
 
 for cf in COUNTER_FACTORS:
@@ -223,7 +220,6 @@ state_state_dependencies = {
 
     # Other agent: identity transitions (observed/inferred, not controlled).
     "other_pos": ["other_pos"],
-    "other_orientation": ["other_orientation"],
     "other_held": ["other_held"],
 }
 

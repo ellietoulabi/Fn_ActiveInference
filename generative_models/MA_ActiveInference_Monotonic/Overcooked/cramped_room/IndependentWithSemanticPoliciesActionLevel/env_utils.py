@@ -4,7 +4,7 @@ Env <-> model utilities for Independent paradigm - Cramped Room.
 
 Converts Overcooked env state to multi-agent model observations.
 - Agent position uses walkable indices 0..5 (not grid 0..19)
-- Includes self and other position / orientation / held object
+- Includes self position / orientation / held object and other position / held
 - Pot state uses 4 values: POT_0, POT_1, POT_2, POT_3 (ready); cook_time=0
 - Adds binary counter occupancy observations for MODELED_COUNTERS
 - Keeps soup_delivered_obs as an event pulse from environment reward
@@ -113,7 +113,7 @@ def env_obs_to_model_obs(env_state, agent_idx, reward_info=None):
 
     Returns dict with keys matching model_init.observations:
     self_pos_obs, self_orientation_obs, self_held_obs,
-    other_pos_obs, other_orientation_obs, other_held_obs,
+    other_pos_obs, other_held_obs,
     pot_state_obs, soup_delivered_obs,
     plus ctr_<grid>_obs for each modeled counter.
     """
@@ -127,7 +127,6 @@ def env_obs_to_model_obs(env_state, agent_idx, reward_info=None):
 
     # Other
     other_pos_walkable = _agent_pos_to_walkable(other_agent)
-    other_ori_idx = _agent_orientation_idx(other_agent)
     other_held = _agent_held_type(other_agent)
 
     pot_state = _extract_pot_state_from_env(env_state)
@@ -148,7 +147,6 @@ def env_obs_to_model_obs(env_state, agent_idx, reward_info=None):
         "self_held_obs": this_held,
 
         "other_pos_obs": other_pos_walkable,
-        "other_orientation_obs": other_ori_idx,
         "other_held_obs": other_held,
 
         "pot_state_obs": pot_state,
@@ -163,7 +161,7 @@ def env_obs_to_model_obs(env_state, agent_idx, reward_info=None):
 
 def get_D_config_from_state(state, agent_idx):
     """
-    Extract initial self/other positions and orientations from env state.
+    Extract initial self/other positions from env state.
 
     Returns a config dict for D_fn(config).
     self_start_pos and other_start_pos are in walkable space (0..5).
@@ -174,14 +172,10 @@ def get_D_config_from_state(state, agent_idx):
     this_pos_walkable = _agent_pos_to_walkable(this_agent)
     other_pos_walkable = _agent_pos_to_walkable(other_agent)
 
-    this_ori_idx = _agent_orientation_idx(this_agent)
-    other_ori_idx = _agent_orientation_idx(other_agent)
-
     return {
         "self_start_pos": this_pos_walkable,
-        "self_start_ori": this_ori_idx,
+        "self_start_ori": _agent_orientation_idx(this_agent),
         "other_start_pos": other_pos_walkable,
-        "other_start_ori": other_ori_idx,
     }
 
 

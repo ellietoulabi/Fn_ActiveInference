@@ -226,9 +226,9 @@ def _run_sweep(
                 else int(model_init_agent.STAY)
             )
 
-            agent_0.action = (PRIMITIVE_POLICY_STEP, int(a0_prim), int(a1_prim))
+            agent_0.action = (PRIMITIVE_POLICY_STEP, int(a0_prim))
             agent_0.step_time()
-            agent_1.action = (PRIMITIVE_POLICY_STEP, int(a1_prim), int(a0_prim))
+            agent_1.action = (PRIMITIVE_POLICY_STEP, int(a1_prim))
             agent_1.step_time()
 
             _observations, state, prev_reward_info, rewards, terminated, truncated, infos = (
