@@ -140,6 +140,7 @@ Swap the runner path for ic/fc as in the table above.
 
 | Problem | What to check |
 |---------|----------------|
+| `ModuleNotFoundError: No module named 'numpy'` | Pull latest `requirements-cc-sal.txt` (includes `numpy`). Alliance `scipy-stack` does not always propagate into the venv. |
 | `opencv-python` / dummy wheel error during `pip install` | Scripts must use `requirements-cc-sal.txt`, not `requirements.txt`. OpenCV is not needed for these runs (terminal logs only). |
 | `Dependencies installed` then `exit=1` with empty log | Old scripts continued after a failed `pip install`; pull latest scripts (they `exit 1` if pip fails). |
 | `ModuleNotFoundError: utils` | `PYTHONPATH` must include repo root (scripts set this on CC) |

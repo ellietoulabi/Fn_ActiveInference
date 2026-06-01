@@ -50,6 +50,11 @@ if ! pip install --no-input -r cc_scripts/requirements-cc-sal.txt; then
 fi
 echo "Dependencies installed."
 
+python -c "import numpy; import gymnasium; import dill" || {
+    echo "ERROR: post-install import check failed (numpy/gymnasium/dill)."
+    exit 1
+}
+
 SEED_IDX=${SLURM_ARRAY_TASK_ID}
 EP_SEED=$((76 + SEED_IDX))
 A0_SEED=$((1000 + SEED_IDX))
