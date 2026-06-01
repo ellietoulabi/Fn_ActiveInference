@@ -9,7 +9,7 @@
 
 # IndividuallyCollective paradigm, semantic-action level, one seed per array task.
 # IC is the most expensive paradigm (400 joint policies x 2 agents per step),
-# hence the larger --time budget. Full per-step logs go to a per-seed .log file.
+# hence the larger --time budget. Full stdout logs plus Excel-friendly step CSVs.
 #
 # Override episode length / precision at submit time, e.g.:
 #   MAX_STEPS=500 sbatch cc_scripts/ic_semantic_action_level.sh
@@ -62,6 +62,8 @@ A1_SEED=$((2000 + SEED_IDX))
 echo "---- ic seed_idx=${SEED_IDX} ep=${EP_SEED} a0=${A0_SEED} a1=${A1_SEED} max_steps=${MAX_STEPS} ----"
 
 mkdir -p "$DEST_BASE"
+CSV_DIR="$SLURM_TMPDIR/logs_sal"
+mkdir -p "$CSV_DIR"
 LOG_FILE="$SLURM_TMPDIR/ic_sal_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
 
 export PYTHONPATH="$PWD:$PWD/environments/overcooked_ai/src"
@@ -72,11 +74,16 @@ python -u run_scripts_overcooked/run_individually_collective_policy_semantic_act
   --agent1-seeds ${A1_SEED} \
   --gamma ${GAMMA} --alpha ${ALPHA} \
   --max-steps ${MAX_STEPS} \
-  --log-steps > "$LOG_FILE" 2>&1
+  --log-steps --log-csv --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
-echo "Copying logs..."
+echo "Copying logs and step CSVs..."
 cp "$LOG_FILE" "$DEST_BASE/" 2>/dev/null || echo "Warning: log file not found"
+if compgen -G "$CSV_DIR"/*.csv > /dev/null; then
+    cp "$CSV_DIR"/*.csv "$DEST_BASE/" 2>/dev/null || echo "Warning: CSV copy failed"
+else
+    echo "Warning: no step CSV files in $CSV_DIR"
+fi
 echo "Copy done"
 
 if [ $EXIT_CODE -ne 0 ]; then

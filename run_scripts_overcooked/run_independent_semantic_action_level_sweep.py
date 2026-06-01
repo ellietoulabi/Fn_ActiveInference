@@ -21,6 +21,7 @@ if overcooked_src.exists():
     sys.path.insert(0, str(overcooked_src))
 
 import run_independent_semantic_action_level as ind
+import sal_step_csv_log as sal_csv
 
 from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndependentWithSemanticPoliciesActionLevel.model_init import (
     PRIMITIVE_POLICY_STEP,
@@ -38,6 +39,8 @@ def _run_sweep(
     no_ig: bool,
     verbose: bool,
     log_steps: bool,
+    log_csv: bool = False,
+    log_dir: str | None = None,
     max_steps: int = 2000,
 ) -> None:
     if len(episode_seeds) != n_runs or len(agent0_seeds) != n_runs or len(agent1_seeds) != n_runs:
@@ -129,9 +132,22 @@ def _run_sweep(
         *,
         log_steps: bool,
         run_tag: str,
+        log_csv: bool = False,
+        log_dir: str | None = None,
+        agent0_seed: int | None = None,
+        agent1_seed: int | None = None,
     ):
         _obs, infos = env_obj.reset(seed=episode_seed)
         state = infos["agent_0"]["state"]
+
+        step_csv = None
+        if log_csv:
+            step_csv = sal_csv.open_ind_log(
+                log_dir or sal_csv._repo_logs_dir(),
+                int(episode_seed or 0),
+                int(agent0_seed or 0),
+                int(agent1_seed or 0),
+            )
 
         config_0 = env_utils.get_D_config_from_state(state, 0)
         config_1 = env_utils.get_D_config_from_state(state, 1)
@@ -241,6 +257,43 @@ def _run_sweep(
             total_reward_0 += r0
             total_reward_1 += r1
 
+            if step_csv is not None:
+                ps0 = sal_csv._policy_stats(agent_0, ind._fmt_policy)
+                ps1 = sal_csv._policy_stats(agent_1, ind._fmt_policy)
+                step_csv.write(
+                    {
+                        "paradigm": "ind",
+                        "episode_seed": int(episode_seed or 0),
+                        "agent0_seed": int(agent0_seed or 0),
+                        "agent1_seed": int(agent1_seed or 0),
+                        "step": int(step),
+                        "a0_policy_idx": int(pol_idx_0),
+                        **sal_csv._meta_cols(meta_0, "a0"),
+                        "a0_primitive": int(a0_prim),
+                        "a0_primitive_name": ind.PRIMITIVE_ACTION_NAMES.get(
+                            a0_prim, str(a0_prim)
+                        ),
+                        "a0_q_pi_entropy": ps0["q_pi_entropy"],
+                        "a0_top_policy_prob": ps0["top_policy_prob"],
+                        "a0_top_policy_plan": ps0["top_policy_plan"],
+                        "a1_policy_idx": int(pol_idx_1),
+                        **sal_csv._meta_cols(meta_1, "a1"),
+                        "a1_primitive": int(a1_prim),
+                        "a1_primitive_name": ind.PRIMITIVE_ACTION_NAMES.get(
+                            a1_prim, str(a1_prim)
+                        ),
+                        "a1_q_pi_entropy": ps1["q_pi_entropy"],
+                        "a1_top_policy_prob": ps1["top_policy_prob"],
+                        "a1_top_policy_plan": ps1["top_policy_plan"],
+                        "reward_a0": r0,
+                        "reward_a1": r1,
+                        "cumulative_reward_a0": total_reward_0,
+                        "cumulative_reward_a1": total_reward_1,
+                        "terminated": bool(terminated.get("__all__")),
+                        "truncated": bool(truncated.get("__all__")),
+                    }
+                )
+
             if log_steps:
                 print(
                     "    Generated policies: A0={}  A1={}".format(
@@ -343,14 +396,22 @@ def _run_sweep(
             print("\n  Scenario total reward A0: {}".format(total_reward_0), flush=True)
             print("  Scenario total reward A1: {}".format(total_reward_1), flush=True)
 
-        return total_reward_0, total_reward_1
+        csv_path = None
+        if step_csv is not None:
+            step_csv.close()
+            csv_path = step_csv.path
+            print("  Step CSV: {}".format(csv_path), flush=True)
+
+        return total_reward_0, total_reward_1, csv_path
 
     print(
-        "[Sweep] n_runs={} gamma={} alpha={} no_ig={} max_steps={} log_steps={}".format(
-            n_runs, gamma, alpha, no_ig, max_steps_per_scenario, log_steps
+        "[Sweep] n_runs={} gamma={} alpha={} no_ig={} max_steps={} log_steps={} log_csv={}".format(
+            n_runs, gamma, alpha, no_ig, max_steps_per_scenario, log_steps, log_csv
         ),
         flush=True,
     )
+    if log_csv:
+        print("[Sweep] CSV log dir: {}".format(log_dir or sal_csv._repo_logs_dir()), flush=True)
 
     results = []
     for i in range(n_runs):
@@ -363,7 +424,7 @@ def _run_sweep(
 
         name = "run {}/{}  episode_seed={}  agent_seeds=({}, {})".format(i + 1, n_runs, ep_seed, s0, s1)
         run_tag = "run{}/{}".format(i + 1, n_runs)
-        r0, r1 = run_one_episode(
+        r0, r1, csv_path = run_one_episode(
             env,
             agent_0,
             agent_1,
@@ -371,8 +432,12 @@ def _run_sweep(
             ep_seed,
             log_steps=log_steps,
             run_tag=run_tag,
+            log_csv=log_csv,
+            log_dir=log_dir,
+            agent0_seed=s0,
+            agent1_seed=s1,
         )
-        results.append((ep_seed, s0, s1, r0, r1))
+        results.append((ep_seed, s0, s1, r0, r1, csv_path))
         print(
             "  run {:d}: episode_seed={} agent_seeds=({}, {})  total_reward A0={:.3f} A1={:.3f}  sum={:.3f}".format(
                 i + 1, ep_seed, s0, s1, r0, r1, r0 + r1
@@ -382,6 +447,11 @@ def _run_sweep(
 
     sum_r0 = sum(t[3] for t in results)
     sum_r1 = sum(t[4] for t in results)
+    csv_paths = [t[5] for t in results if t[5] is not None]
+    if csv_paths:
+        print("\n[Sweep] Step CSV files:", flush=True)
+        for p in csv_paths:
+            print("  {}".format(p), flush=True)
     print(
         "\n[Sweep] done. Mean total_reward per run: A0={:.4f} A1={:.4f}  combined_mean={:.4f}".format(
             sum_r0 / n_runs,
@@ -436,6 +506,17 @@ def main():
         action="store_true",
         help="Per-step log like the main runner (map, obs, beliefs, policies, rewards); very verbose.",
     )
+    parser.add_argument(
+        "--log-csv",
+        action="store_true",
+        help="Write per-step CSV (Excel-friendly) under --log-dir (default: repo logs/).",
+    )
+    parser.add_argument(
+        "--log-dir",
+        type=str,
+        default=None,
+        help="Directory for step CSV files (default: <repo>/logs).",
+    )
     args = parser.parse_args()
 
     def _parse_int_list(s: str) -> list[int]:
@@ -475,6 +556,8 @@ def main():
         no_ig=bool(args.noig),
         verbose=bool(args.verbose),
         log_steps=bool(args.log_steps),
+        log_csv=bool(args.log_csv),
+        log_dir=args.log_dir,
         max_steps=int(args.max_steps),
     )
 

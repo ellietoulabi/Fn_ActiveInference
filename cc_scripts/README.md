@@ -1,6 +1,6 @@
 # Compute Canada jobs — semantic action-level (ind / ic / fc)
 
-SLURM scripts to run **Independent**, **IndividuallyCollective**, and **FullyCollective** Overcooked experiments on Alliance (Compute Canada) with full per-step logs.
+SLURM scripts to run **Independent**, **IndividuallyCollective**, and **FullyCollective** Overcooked experiments on Alliance (Compute Canada) with full per-step stdout logs **and** Excel-friendly step CSVs.
 
 ## Scripts (use these)
 
@@ -17,7 +17,7 @@ Older jobs in this folder (`two_aif_*.sh`, `eight.sh`, etc.) target legacy `run_
 Each script is a **SLURM array** with **5 tasks** (`--array=0-4`). Each task runs:
 
 - **1 episode** (`--n-runs 1`)
-- **2000 primitive steps** per episode (`MAX_STEPS=2000`, `--log-steps`)
+- **2000 primitive steps** per episode (`MAX_STEPS=2000`, `--log-steps --log-csv`)
 - Layout: `cramped_room`
 - `gamma=4.0`, `alpha=8.0`, stochastic policy selection
 
@@ -49,7 +49,7 @@ If jobs are killed for time, increase `--time` in the script or reduce `MAX_STEP
 
 2. **Account.** Scripts use `#SBATCH --account=def-jrwright`. Change this line if your allocation differs.
 
-3. **Log destination.** Full per-step logs are copied to:
+3. **Log destination.** Per-step stdout logs and step CSVs are copied to:
 
    - Independent: `/home/toulabin/projects/def-jrwright/toulabin/logs/sal_ind/`
    - IC: `.../logs/sal_ic/`
@@ -69,17 +69,37 @@ If jobs are killed for time, increase `--time` in the script or reduce `MAX_STEP
 ## What each job does
 
 1. Load `python/3.11.4` and `scipy-stack`
-2. Clone the repo into `$SLURM_TMPDIR`, create a venv, `pip install -r requirements.txt`
+2. Clone the repo into `$SLURM_TMPDIR`, create a venv, `pip install -r cc_scripts/requirements-cc-sal.txt`
 3. Set `PYTHONPATH` to the repo root and `environments/overcooked_ai/src`
-4. Run one array task with `--log-steps` (verbose: map, observations, beliefs, policy posteriors, executed primitives, rewards)
-5. Save stdout/stderr to a per-seed `.log` under `DEST_BASE`
+4. Run one array task with `--log-steps` (verbose stdout) and `--log-csv` (one row per primitive step)
+5. Save stdout to a per-seed `.log` and step CSVs under `DEST_BASE`
 6. SLURM also writes `*_sal_%A_%a.out` in the directory you submitted from
 
-Log file names look like:
+### Stdout log files
 
 - `ind_sal_ep76_a0_1000_a1_2000.log`
 - `ic_sal_ep76_a0_1000_a1_2000.log`
 - `fc_sal_ep76_brain1000.log`
+
+### Step CSV files (open in Excel)
+
+Written by `run_scripts_overcooked/sal_step_csv_log.py` via `--log-csv`. One row per env primitive step; columns include policy indices, semantic destination/mode, executed primitives, rewards, and (where applicable) policy-posterior entropy.
+
+- Independent: `sal_ind_ep76_a0_1000_a1_2000_<timestamp>.csv`
+- IC: `sal_ic_ep76_a0_1000_a1_2000_<timestamp>.csv`
+- FC: `sal_fc_ep76_brain1000_<timestamp>.csv`
+
+On the cluster, CSVs are built under `$SLURM_TMPDIR/logs_sal/` then copied next to the `.log` files in `sal_ind` / `sal_ic` / `sal_fc`.
+
+Locally:
+
+```bash
+export PYTHONPATH=.:environments/overcooked_ai/src
+python -u run_scripts_overcooked/run_independent_semantic_action_level_sweep.py \
+  --n-runs 1 --episode-seeds 76 --agent0-seeds 1000 --agent1-seeds 2000 \
+  --max-steps 10 --log-csv
+# default CSV dir: <repo>/logs/
+```
 
 ## Overrides at submit time
 
@@ -120,7 +140,7 @@ sacct -j <JOBID> --format=JobID,JobName,State,Elapsed,MaxRSS
 tail -f ind_sal_<JOBID>_<TASKID>.out    # in submit directory
 ```
 
-After completion, inspect the copied logs under `logs/sal_ind`, `sal_ic`, or `sal_fc`.
+After completion, inspect the copied `.log` and `.csv` files under `logs/sal_ind`, `sal_ic`, or `sal_fc`.
 
 ## Local dry run (same command, no SLURM)
 
@@ -131,7 +151,7 @@ export PYTHONPATH=.:environments/overcooked_ai/src
 
 python -u run_scripts_overcooked/run_independent_semantic_action_level_sweep.py \
   --n-runs 1 --episode-seeds 76 --agent0-seeds 1000 --agent1-seeds 2000 \
-  --max-steps 5 --log-steps
+  --max-steps 5 --log-steps --log-csv
 ```
 
 Swap the runner path for ic/fc as in the table above.

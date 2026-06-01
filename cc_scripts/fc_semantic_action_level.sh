@@ -9,7 +9,7 @@
 
 # FullyCollective paradigm, semantic-action level, one seed per array task.
 # One IC brain controls both agents; the brain plans over 400 joint primitive
-# policies. Full per-step logs go to a per-seed .log file.
+# policies. Full stdout logs plus Excel-friendly step CSVs.
 #
 # Override episode length / precision at submit time, e.g.:
 #   MAX_STEPS=500 sbatch cc_scripts/fc_semantic_action_level.sh
@@ -61,6 +61,8 @@ AGENT_SEED=$((1000 + SEED_IDX))
 echo "---- fc seed_idx=${SEED_IDX} ep=${EP_SEED} brain=${AGENT_SEED} max_steps=${MAX_STEPS} ----"
 
 mkdir -p "$DEST_BASE"
+CSV_DIR="$SLURM_TMPDIR/logs_sal"
+mkdir -p "$CSV_DIR"
 LOG_FILE="$SLURM_TMPDIR/fc_sal_ep${EP_SEED}_brain${AGENT_SEED}.log"
 
 export PYTHONPATH="$PWD:$PWD/environments/overcooked_ai/src"
@@ -70,11 +72,16 @@ python -u run_scripts_overcooked/run_fully_collective_semantic_action_level.py \
   --agent-seeds ${AGENT_SEED} \
   --gamma ${GAMMA} --alpha ${ALPHA} \
   --max-steps ${MAX_STEPS} \
-  --log-steps > "$LOG_FILE" 2>&1
+  --log-steps --log-csv --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
-echo "Copying logs..."
+echo "Copying logs and step CSVs..."
 cp "$LOG_FILE" "$DEST_BASE/" 2>/dev/null || echo "Warning: log file not found"
+if compgen -G "$CSV_DIR"/*.csv > /dev/null; then
+    cp "$CSV_DIR"/*.csv "$DEST_BASE/" 2>/dev/null || echo "Warning: CSV copy failed"
+else
+    echo "Warning: no step CSV files in $CSV_DIR"
+fi
 echo "Copy done"
 
 if [ $EXIT_CODE -ne 0 ]; then
