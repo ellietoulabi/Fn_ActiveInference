@@ -167,4 +167,5 @@ Swap the runner path for ic/fc as in the table above.
 | `unrecognized arguments: --max-steps` | Push/pull latest repo; ind/ic sweeps need the `--max-steps` flag |
 | Job `TIMEOUT` | Raise `#SBATCH --time` or lower `MAX_STEPS`; IC is the usual culprit |
 | Empty `DEST_BASE` | Run failed before copy; read `*_sal_%A_%a.out` on the login node |
+| `exit=1`, no CSV, little in SLURM `.out` | Python traceback is in the copied `.log` under `sal_ic/` (stdout was redirected). Re-submit after pulling latest scripts: they print the last 100 log lines on failure and run a preflight import check. Also set `PYTHONIOENCODING=utf-8` (done in `_sal_common.sh`) so `--log-steps` Unicode map bars do not crash on ASCII locales. |
 | Stale code on cluster | Jobs always clone `main`; merge and push before `sbatch` |

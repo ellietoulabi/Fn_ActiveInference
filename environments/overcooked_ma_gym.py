@@ -8,13 +8,9 @@ RLlib's multi-agent API, where each agent has its own observation and action spa
 import sys
 from pathlib import Path
 
-# Add overcooked_ai src to path
-# Use the absolute path to the overcooked_ai environment
-overcooked_ai_dir = Path("/Users/ellie/dev/thesis/Fn_ActiveInference/environments/overcooked_ai")
-if not overcooked_ai_dir.exists():
-    # Fallback to relative path if absolute doesn't exist
-    project_root = Path(__file__).parent.parent.resolve()
-    overcooked_ai_dir = project_root / "environments" / "overcooked_ai"
+# Add overcooked_ai src to path (repo-relative; works on CC and locally).
+project_root = Path(__file__).parent.parent.resolve()
+overcooked_ai_dir = project_root / "environments" / "overcooked_ai"
 
 overcooked_src = overcooked_ai_dir / "src"
 if overcooked_src.exists():

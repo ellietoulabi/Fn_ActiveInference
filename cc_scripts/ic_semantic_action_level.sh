@@ -55,6 +55,11 @@ python -c "import numpy; import gymnasium; import dill" || {
     exit 1
 }
 
+# shellcheck source=_sal_common.sh
+source cc_scripts/_sal_common.sh
+sal_setup_pythonpath
+sal_preflight ic || exit 1
+
 SEED_IDX=${SLURM_ARRAY_TASK_ID}
 EP_SEED=$((76 + SEED_IDX))
 A0_SEED=$((1000 + SEED_IDX))
@@ -66,7 +71,6 @@ CSV_DIR="$SLURM_TMPDIR/logs_sal"
 mkdir -p "$CSV_DIR"
 LOG_FILE="$SLURM_TMPDIR/ic_sal_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
 
-export PYTHONPATH="$PWD:$PWD/environments/overcooked_ai/src"
 python -u run_scripts_overcooked/run_individually_collective_policy_semantic_action_level_seed_sweep.py \
   --n-runs 1 \
   --episode-seeds ${EP_SEED} \
@@ -77,17 +81,11 @@ python -u run_scripts_overcooked/run_individually_collective_policy_semantic_act
   --log-steps --log-csv --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
-echo "Copying logs and step CSVs..."
-cp "$LOG_FILE" "$DEST_BASE/" 2>/dev/null || echo "Warning: log file not found"
-if compgen -G "$CSV_DIR"/*.csv > /dev/null; then
-    cp "$CSV_DIR"/*.csv "$DEST_BASE/" 2>/dev/null || echo "Warning: CSV copy failed"
-else
-    echo "Warning: no step CSV files in $CSV_DIR"
-fi
-echo "Copy done"
+sal_copy_artifacts "$DEST_BASE" "$LOG_FILE" "$CSV_DIR"
 
 if [ $EXIT_CODE -ne 0 ]; then
     echo "ic sweep failed (seed_idx=${SEED_IDX}) exit=${EXIT_CODE}"
+    sal_report_failure "$LOG_FILE"
     exit $EXIT_CODE
 fi
 echo "---- ic seed_idx=${SEED_IDX} complete ----"
