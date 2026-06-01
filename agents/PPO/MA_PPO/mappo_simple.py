@@ -1,13 +1,23 @@
 """
-Minimal MAPPO on Overcooked with primitive Discrete(6) actions.
+Minimal MAPPO on Overcooked with AIF-style semantic action space.
 
-No semantic policies. No reward shaping. PPO sees:
+No reward shaping. PPO sees:
   - obs: AIF-style discrete-factor observation flattened to a vector
          (self_pos, self_ori, self_held, other_pos, other_held,
           pot_state, soup_delivered, [counter contents...])
          Same factors used by the AIF agent (Independent paradigm).
-  - act: Discrete(6) primitive actions (N, S, E, W, STAY, INTERACT)
-  - reward: env's sparse delivery reward (per agent, shared)
+  - act: Discrete(N_ACTIONS=20) semantic options (destination, mode).
+         Each step we replan the chosen semantic option from the agent's
+         current state using BFS shortest-path planning, and execute ONLY
+         the FIRST primitive action of the resulting path. NO teleporting.
+  - reward: env's sparse delivery reward (per agent, shared).
+
+Shortest-path semantic controller rules (mirrors dyn_utils.compile_semantic_policy):
+  - Not at target tile  -> first primitive movement along shortest path.
+  - At target tile, wrong facing -> primitive rotation toward target.
+  - At target pose, mode=interact -> INTERACT.
+  - At target pose, mode=stay -> STAY.
+  - Path blocked (e.g., by other agent) -> retry without blocking; else STAY.
 
 Uses Ray RLlib PPO (same library stack as
 run_scripts_red_blue_doors/multi_agent/run_two_ppo_agents.py).
@@ -18,7 +28,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Tuple
 
 import numpy as np
 from gymnasium import spaces
@@ -27,6 +37,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from agents.IndependentActiveInferenceWithDynamicPolicies import utils as dyn_utils
 from environments.overcooked_ma_gym import OvercookedMultiAgentEnv
 from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndependentWithSemanticPoliciesActionLevel import (
     env_utils as aif_env_utils,
@@ -76,13 +87,90 @@ def _obs_dict_to_vec(obs_dict: Dict[str, int]) -> np.ndarray:
     return vals / OBS_NORM_DEN
 
 
+# Map utils-primitive indices (used by dyn_utils paths) to env primitives.
+#   utils: 0=N, 1=S, 2=W, 3=E, 4=STAY, 5=INTERACT
+#   env:   0=N, 1=S, 2=E, 3=W, 4=STAY, 5=INTERACT
+UTILS_TO_ENV_ACTION = {0: 0, 1: 1, 2: 3, 3: 2, 4: 4, 5: 5}
+
+# Orientation int (model_init) -> dyn_utils name
+ORI_IDX_TO_NAME = {0: "NORTH", 1: "SOUTH", 2: "EAST", 3: "WEST"}
+HELD_IDX_TO_NAME = {0: "nothing", 1: "onion", 2: "dish", 3: "soup"}
+
+
+def _extract_counter_contents(state) -> Dict[str, str]:
+    counter_contents = {name: "empty" for name in dyn_utils.COUNTER_TILES.keys()}
+    rc_to_name = {rc: name for name, rc in dyn_utils.COUNTER_TILES.items()}
+    for pos_xy, obj in state.objects.items():
+        if obj is None:
+            continue
+        obj_name = getattr(obj, "name", None)
+        if obj_name not in {"onion", "dish", "soup"}:
+            continue
+        rc = (int(pos_xy[1]), int(pos_xy[0]))
+        counter_name = rc_to_name.get(rc)
+        if counter_name is not None:
+            counter_contents[counter_name] = str(obj_name).lower()
+    return counter_contents
+
+
+def _extract_pot_status(state) -> Tuple[str, int, bool]:
+    pot_rc = dyn_utils.DESTINATION_TO_TILE["pot"]
+    pot_xy = (int(pot_rc[1]), int(pot_rc[0]))
+    obj = state.objects.get(pot_xy, None)
+    if obj is None or getattr(obj, "name", None) != "soup":
+        return "empty", 0, False
+    ingredients = getattr(obj, "ingredients", []) or []
+    onion_count = int(len(ingredients))
+    is_idle = bool(getattr(obj, "is_idle", False))
+    is_cooking = bool(getattr(obj, "is_cooking", False))
+    is_ready = bool(getattr(obj, "is_ready", False))
+    if is_ready:
+        pot_state = "ready"
+    elif is_cooking:
+        pot_state = "cooking"
+    elif onion_count <= 0:
+        pot_state = "empty"
+    elif onion_count == 1:
+        pot_state = "one_onion"
+    elif onion_count == 2:
+        pot_state = "two_onions"
+    else:
+        pot_state = "three_onions"
+    if is_idle and onion_count == 0:
+        pot_state = "empty"
+    return pot_state, onion_count, is_ready
+
+
+def _build_policy_state_for_planner(state, agent_idx: int, reward_info: Dict) -> Dict:
+    """Build the dyn_utils policy-state dict for shortest-path planning."""
+    other_idx = 1 - int(agent_idx)
+    obs_self = aif_env_utils.env_obs_to_model_obs(state, agent_idx, reward_info=reward_info)
+    obs_other = aif_env_utils.env_obs_to_model_obs(state, other_idx, reward_info=reward_info)
+    pot_state, pot_onions, ready = _extract_pot_status(state)
+    counters = _extract_counter_contents(state)
+    return dyn_utils.build_policy_state(
+        self_pos=int(obs_self["self_pos_obs"]),
+        self_orient=ORI_IDX_TO_NAME[int(obs_self["self_orientation_obs"])],
+        self_held=HELD_IDX_TO_NAME[int(obs_self["self_held_obs"])],
+        other_pos=int(obs_other["self_pos_obs"]),
+        other_orient="NORTH",
+        other_held=HELD_IDX_TO_NAME[int(obs_other["self_held_obs"])],
+        pot_state=pot_state,
+        pot_onions=pot_onions,
+        soup_ready=bool(ready),
+        counter_contents=counters,
+    )
+
+
 class AIFObsOvercookedMAEnv(MultiAgentEnv):
     """
-    RLlib MultiAgentEnv that wraps OvercookedMultiAgentEnv but exposes the same
-    discrete-factor observation the AIF Independent agent receives.
+    RLlib MultiAgentEnv: AIF-style discrete-factor obs + AIF-style semantic action space.
 
-    - Action space: Discrete(6) primitives (no semantic policies).
-    - Reward: sparse delivery reward from the base env (no shaping).
+    Action space: Discrete(N_ACTIONS=20). Each index is a (destination, mode)
+    pair in the order of dyn_utils.DESTINATIONS x dyn_utils.MODES. Each step:
+      1. Replan from current state via dyn_utils.compile_semantic_policy (BFS).
+      2. Execute ONLY the first primitive of the compiled path.
+      3. Step the real Overcooked env once. No teleporting.
     """
 
     def __init__(self, config=None, **kwargs):
@@ -96,12 +184,15 @@ class AIFObsOvercookedMAEnv(MultiAgentEnv):
         horizon = int(kwargs.get("horizon", 400))
         self.base = OvercookedMultiAgentEnv(config={"layout": layout, "horizon": horizon})
         self.reward_info = {"sparse_reward_by_agent": [0, 0]}
+        self.state = None
 
         self.agents = list(self.base.agents)
         self.possible_agents = list(self.base.possible_agents)
 
         obs_space = spaces.Box(low=0.0, high=1.0, shape=(len(OBS_KEYS),), dtype=np.float32)
-        act_space = spaces.Discrete(6)
+        n_semantic = int(len(dyn_utils.DESTINATIONS) * len(dyn_utils.MODES))
+        act_space = spaces.Discrete(n_semantic)
+        self.n_semantic = n_semantic
         self.single_observation_space = obs_space
         self.single_action_space = act_space
         self.observation_space = spaces.Dict({aid: obs_space for aid in self.agents})
@@ -116,24 +207,88 @@ class AIFObsOvercookedMAEnv(MultiAgentEnv):
             out[aid] = _obs_dict_to_vec(obs_dict)
         return out
 
+    def _build_dynamic_action_options(
+        self, agent_idx: int
+    ) -> Tuple[List[List[int]], List[Dict]]:
+        """
+        Compile all 20 semantic (destination, mode) options from the agent's
+        current state into env-primitive action sequences (shortest-path BFS).
+        """
+        policy_state = _build_policy_state_for_planner(self.state, agent_idx, self.reward_info)
+        policies_utils, metadata = dyn_utils.generate_policies_from_state(
+            state=policy_state,
+            destinations=None,
+            modes=None,
+            block_other_agent=True,
+            deduplicate=False,
+            pad=False,
+            return_metadata=True,
+        )
+        policies_env: List[List[int]] = []
+        for p in policies_utils:
+            translated = [int(UTILS_TO_ENV_ACTION.get(int(a), aif_model_init.STAY)) for a in p]
+            policies_env.append(translated if translated else [int(aif_model_init.STAY)])
+        return policies_env, metadata
+
+    def _semantic_to_primitive(
+        self, agent_idx: int, option_idx: int
+    ) -> Tuple[int, Dict]:
+        """
+        Decode the semantic option for this agent into the FIRST primitive of
+        its shortest-path plan. No teleporting.
+        """
+        policies_env, metadata = self._build_dynamic_action_options(agent_idx)
+        if not policies_env:
+            return int(aif_model_init.STAY), {
+                "option_idx": int(option_idx),
+                "destination": "?",
+                "mode": "?",
+                "primitive": int(aif_model_init.STAY),
+                "valid": False,
+                "num_options": 0,
+            }
+        idx = int(option_idx)
+        if idx < 0 or idx >= len(policies_env):
+            idx = idx % len(policies_env)
+        chosen_policy = policies_env[idx]
+        chosen_meta = metadata[idx] if idx < len(metadata) else {}
+        env_action = int(chosen_policy[0]) if chosen_policy else int(aif_model_init.STAY)
+        return env_action, {
+            "option_idx": int(idx),
+            "destination": chosen_meta.get("destination", "?"),
+            "mode": chosen_meta.get("mode", "?"),
+            "primitive": env_action,
+            "valid": bool(chosen_meta.get("valid", True)),
+            "num_options": len(policies_env),
+        }
+
     def reset(self, *, seed=None, options=None):
         _, infos = self.base.reset(seed=seed, options=options)
-        state = infos["agent_0"]["state"]
+        self.state = infos["agent_0"]["state"]
         self.reward_info = {"sparse_reward_by_agent": [0, 0]}
-        obs = self._build_obs(state)
-        out_infos = {aid: {"state": state} for aid in self.agents}
+        obs = self._build_obs(self.state)
+        out_infos = {aid: {"state": self.state} for aid in self.agents}
         return obs, out_infos
 
     def step(self, actions):
-        _, rewards, term, trunc, infos = self.base.step(actions)
-        state = infos["agent_0"]["state"]
+        primitive_actions: Dict[str, int] = {}
+        semantic_meta: Dict[str, Dict] = {}
+        for i, aid in enumerate(self.agents):
+            prim, meta = self._semantic_to_primitive(i, int(actions[aid]))
+            primitive_actions[aid] = prim
+            semantic_meta[aid] = meta
+
+        _, rewards, term, trunc, infos = self.base.step(primitive_actions)
+        self.state = infos["agent_0"]["state"]
         self.reward_info = {
             "sparse_reward_by_agent": [
                 infos["agent_0"].get("sparse_reward", 0),
                 infos["agent_1"].get("sparse_reward", 0),
             ]
         }
-        obs = self._build_obs(state)
+        obs = self._build_obs(self.state)
+        for aid in self.agents:
+            infos[aid]["semantic"] = semantic_meta[aid]
         return obs, rewards, term, trunc, infos
 
 
@@ -255,6 +410,41 @@ def _get_total_env_steps(result) -> int:
     return 0
 
 
+def _summarize_iter(result) -> Dict[str, object]:
+    """Pull useful metrics out of an RLlib train() result for logging."""
+    env_runners = result.get("env_runners", {}) or {}
+    info: Dict[str, object] = {}
+    info["episodes_completed"] = env_runners.get(
+        "num_episodes_lifetime",
+        env_runners.get("num_episodes", env_runners.get("episodes_total", 0)),
+    )
+    info["return_mean"] = env_runners.get("episode_return_mean")
+    info["return_min"] = env_runners.get("episode_return_min")
+    info["return_max"] = env_runners.get("episode_return_max")
+    info["ep_len_mean"] = env_runners.get("episode_len_mean")
+    # Reward summed across all transitions sampled this iter (works even if no
+    # episode completed yet).
+    for k in (
+        "module_episode_returns_mean",
+        "episode_reward_mean",
+        "policy_reward_mean",
+    ):
+        if k in env_runners and info["return_mean"] is None:
+            info["return_mean"] = env_runners.get(k)
+            break
+    # Sum of all per-step rewards sampled this iteration (most resilient signal).
+    iter_reward = None
+    for k in ("env_to_module_reward_sum", "rewards", "reward_total"):
+        if k in env_runners:
+            try:
+                iter_reward = float(env_runners[k])
+                break
+            except Exception:
+                pass
+    info["iter_reward_sum"] = iter_reward
+    return info
+
+
 def train(args) -> str:
     cfg = build_config(args)
     out_dir = Path(args.checkpoint_dir)
@@ -272,14 +462,15 @@ def train(args) -> str:
                 break
             result = algo.train()
             total_steps = _get_total_env_steps(result)
-            env_runners = result.get("env_runners", {}) or {}
-            ret_mean = env_runners.get("episode_return_mean")
-            ret_min = env_runners.get("episode_return_min")
-            ret_max = env_runners.get("episode_return_max")
+            summary = _summarize_iter(result)
             if i % max(1, int(args.log_every)) == 0:
                 print(
-                    f"[iter {i:04d}] steps={total_steps} return_mean={ret_mean} "
-                    f"min={ret_min} max={ret_max}"
+                    f"[iter {i:04d}] steps={total_steps} "
+                    f"episodes_done={summary['episodes_completed']} "
+                    f"return_mean={summary['return_mean']} "
+                    f"min={summary['return_min']} max={summary['return_max']} "
+                    f"ep_len_mean={summary['ep_len_mean']} "
+                    f"iter_reward_sum={summary['iter_reward_sum']}"
                 )
             if max_steps > 0 and total_steps >= max_steps:
                 print(
@@ -334,7 +525,7 @@ def evaluate(args, checkpoint_path: str) -> None:
         for step_idx in range(1, int(args.eval_steps) + 1):
             actions = {}
             top_lines = {aid: [] for aid in AGENT_IDS}
-            for aid in AGENT_IDS:
+            for i_agent, aid in enumerate(AGENT_IDS):
                 pid = "shared" if args.shared_policy else aid
                 module = algo.get_module(pid)
                 act_int, logits = _select_action(module, obs[aid], args.stochastic)
@@ -343,12 +534,19 @@ def evaluate(args, checkpoint_path: str) -> None:
                     probs = torch.softmax(logits, dim=-1).reshape(-1)
                     k = int(min(3, probs.shape[0]))
                     top_vals, top_idx = torch.topk(probs, k=k)
+                    _, metadata = env._build_dynamic_action_options(i_agent)
                     for r in range(k):
                         idx = int(top_idx[r].item())
                         p = float(top_vals[r].item())
-                        top_lines[aid].append(
-                            f"#{r + 1}: {PRIM_NAME.get(idx, idx):<8} p={p:.3f}"
-                        )
+                        if metadata and idx < len(metadata):
+                            m = metadata[idx]
+                            dst = m.get("destination", "?")
+                            mode = m.get("mode", "?")
+                            top_lines[aid].append(
+                                f"#{r + 1}: idx={idx:02d} p={p:.3f} -> {dst}:{mode}"
+                            )
+                        else:
+                            top_lines[aid].append(f"#{r + 1}: idx={idx:02d} p={p:.3f}")
 
             next_obs, rewards, term, trunc, next_infos = env.step(actions)
             post_state = next_infos["agent_0"]["state"]
@@ -366,6 +564,10 @@ def evaluate(args, checkpoint_path: str) -> None:
                     r = float(rewards[aid])
                     sparse = next_infos[aid].get("sparse_reward", 0)
                     shaped = next_infos[aid].get("shaped_reward", 0)
+                    sem = next_infos[aid].get("semantic", {})
+                    dst = sem.get("destination", "?")
+                    mode = sem.get("mode", "?")
+                    prim = sem.get("primitive", -1)
                     obs_dict = aif_env_utils.env_obs_to_model_obs(
                         pre_state, i, reward_info=env.reward_info
                     )
@@ -373,7 +575,8 @@ def evaluate(args, checkpoint_path: str) -> None:
                         f"{k.replace('_obs','')}={int(obs_dict[k])}" for k in OBS_KEYS
                     )
                     print(
-                        f"{aid}: action={PRIM_NAME.get(a, a):<8} "
+                        f"{aid}: semantic={dst}:{mode} (idx={a:02d}) "
+                        f"-> primitive={PRIM_NAME.get(prim, prim):<8} "
                         f"r={r:+.2f} sparse={sparse} shaped={shaped}"
                     )
                     print(f"  AIF obs: {obs_pairs}")
