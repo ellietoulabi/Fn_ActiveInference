@@ -1,21 +1,21 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
 #SBATCH --job-name=aif_ic_sal
-#SBATCH --array=0-4                   # one seed per array task
+#SBATCH --array=0-9                   # 10 seeds (one episode per task)
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --time=2-00:00
+#SBATCH --time=3-00:00
 #SBATCH --output=ic_sal_%A_%a.out
 
 # IndividuallyCollective paradigm, semantic-action level, one seed per array task.
 # IC is the most expensive paradigm (400 joint policies x 2 agents per step),
-# hence the larger --time budget. Full stdout logs plus Excel-friendly step CSVs.
+# hence the larger --time budget. Per-step CSV + JSONL (no --log-steps).
 #
 # Override episode length / precision at submit time, e.g.:
 #   MAX_STEPS=500 sbatch cc_scripts/ic_semantic_action_level.sh
 set -uo pipefail                      # no -e: we still copy logs on failure
 
-MAX_STEPS=${MAX_STEPS:-2000}
+MAX_STEPS=${MAX_STEPS:-1500}
 GAMMA=${GAMMA:-4.0}
 ALPHA=${ALPHA:-8.0}
 DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_ic"
@@ -74,7 +74,7 @@ python -u run_scripts_overcooked/run_individually_collective_policy_semantic_act
   --agent1-seeds ${A1_SEED} \
   --gamma ${GAMMA} --alpha ${ALPHA} \
   --max-steps ${MAX_STEPS} \
-  --log-steps --log-csv --log-jsonl --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
+  --log-csv --log-jsonl --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
 sal_copy_artifacts "$DEST_BASE" "$LOG_FILE" "$CSV_DIR"

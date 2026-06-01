@@ -1,21 +1,21 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
 #SBATCH --job-name=aif_fc_sal
-#SBATCH --array=0-4                   # one seed per array task
+#SBATCH --array=0-9                   # 10 seeds (one episode per task)
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --time=2-00:00
+#SBATCH --time=3-00:00
 #SBATCH --output=fc_sal_%A_%a.out
 
 # FullyCollective paradigm, semantic-action level, one seed per array task.
 # One IC brain controls both agents; the brain plans over 400 joint primitive
-# policies. Full stdout logs plus Excel-friendly step CSVs.
+# policies. Per-step CSV + JSONL (no --log-steps).
 #
 # Override episode length / precision at submit time, e.g.:
 #   MAX_STEPS=500 sbatch cc_scripts/fc_semantic_action_level.sh
 set -uo pipefail                      # no -e: we still copy logs on failure
 
-MAX_STEPS=${MAX_STEPS:-2000}
+MAX_STEPS=${MAX_STEPS:-1500}
 GAMMA=${GAMMA:-4.0}
 ALPHA=${ALPHA:-8.0}
 DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_fc"
@@ -72,7 +72,7 @@ python -u run_scripts_overcooked/run_fully_collective_semantic_action_level.py \
   --agent-seeds ${AGENT_SEED} \
   --gamma ${GAMMA} --alpha ${ALPHA} \
   --max-steps ${MAX_STEPS} \
-  --log-steps --log-csv --log-jsonl --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
+  --log-csv --log-jsonl --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
 sal_copy_artifacts "$DEST_BASE" "$LOG_FILE" "$CSV_DIR"

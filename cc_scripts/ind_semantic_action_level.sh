@@ -1,20 +1,20 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
 #SBATCH --job-name=aif_ind_sal
-#SBATCH --array=0-4                   # one seed per array task
+#SBATCH --array=0-9                   # 10 seeds (one episode per task)
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --time=0-3:00
+#SBATCH --time=0-6:00
 #SBATCH --output=ind_sal_%A_%a.out
 
 # Independent paradigm, semantic-action level, one seed per array task.
-# Full per-step stdout logs plus Excel-friendly step CSVs (--log-steps, --log-csv).
+# Per-step CSV + JSONL (--log-csv --log-jsonl); no verbose stdout (--log-steps).
 #
 # Override episode length / precision at submit time, e.g.:
 #   MAX_STEPS=500 sbatch cc_scripts/ind_semantic_action_level.sh
 set -uo pipefail                      # no -e: we still copy logs on failure
 
-MAX_STEPS=${MAX_STEPS:-2000}
+MAX_STEPS=${MAX_STEPS:-1500}
 GAMMA=${GAMMA:-4.0}
 ALPHA=${ALPHA:-8.0}
 DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_ind"
@@ -73,7 +73,7 @@ python -u run_scripts_overcooked/run_independent_semantic_action_level_sweep.py 
   --agent1-seeds ${A1_SEED} \
   --gamma ${GAMMA} --alpha ${ALPHA} \
   --max-steps ${MAX_STEPS} \
-  --log-steps --log-csv --log-jsonl --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
+  --log-csv --log-jsonl --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
 sal_copy_artifacts "$DEST_BASE" "$LOG_FILE" "$CSV_DIR"

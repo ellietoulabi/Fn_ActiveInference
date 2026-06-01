@@ -1,6 +1,6 @@
 # Compute Canada jobs — semantic action-level (ind / ic / fc)
 
-SLURM scripts to run **Independent**, **IndividuallyCollective**, and **FullyCollective** Overcooked experiments on Alliance (Compute Canada) with full per-step stdout logs **and** Excel-friendly step CSVs.
+SLURM scripts to run **Independent**, **IndividuallyCollective**, and **FullyCollective** Overcooked experiments on Alliance (Compute Canada) with per-step **CSV** (Excel) and **JSONL** (full beliefs / maps / q_pi). Verbose stdout (`--log-steps`) is off on the cluster for speed.
 
 ## Scripts (use these)
 
@@ -14,22 +14,21 @@ Older jobs in this folder (`two_aif_*.sh`, `eight.sh`, etc.) target legacy `run_
 
 ## Default run (what you get out of the box)
 
-Each script is a **SLURM array** with **5 tasks** (`--array=0-4`). Each task runs:
+Each script is a **SLURM array** with **10 tasks** (`--array=0-9`). Each task runs:
 
 - **1 episode** (`--n-runs 1`)
-- **2000 primitive steps** per episode (`MAX_STEPS=2000`, `--log-steps --log-csv --log-jsonl`)
+- **1500 primitive steps** per episode (`MAX_STEPS=1500`, `--log-csv --log-jsonl`)
 - Layout: `cramped_room`
 - `gamma=4.0`, `alpha=8.0`, stochastic policy selection
 
-### Seeds per array index `i` (0 … 4)
+### Seeds per array index `i` (0 … 9)
 
 | Index `i` | Episode seed | Agent 0 / brain seed | Agent 1 seed (ind & ic only) |
 |-----------|--------------|----------------------|------------------------------|
 | 0 | 76 | 1000 | 2000 |
 | 1 | 77 | 1001 | 2001 |
-| 2 | 78 | 1002 | 2002 |
-| 3 | 79 | 1003 | 2003 |
-| 4 | 80 | 1004 | 2004 |
+| … | … | … | … |
+| 9 | 85 | 1009 | 2009 |
 
 Formula: `episode = 76 + i`, `agent0/brain = 1000 + i`, `agent1 = 2000 + i`.
 
@@ -37,9 +36,9 @@ Formula: `episode = 76 + i`, `agent0/brain = 1000 + i`, `agent1 = 2000 + i`.
 
 | Script | `#SBATCH --time` | Notes |
 |--------|------------------|--------|
-| ind | `0-3:00` | Usually finishes well under this for 2000 steps |
-| fc | `2-00:00` | ~hours per 2000-step episode |
-| ic | `2-00:00` | Slowest; 2000 steps can take many hours (400 joint policies × 2 agents per step) |
+| ind | `0-6:00` | 1500 steps + JSONL; usually sufficient |
+| fc | `3-00:00` | 1500 steps + JSONL |
+| ic | `3-00:00` | Slowest; 400 joint policies × 2 agents per step |
 
 If jobs are killed for time, increase `--time` in the script or reduce `MAX_STEPS` (see below).
 
@@ -49,7 +48,7 @@ If jobs are killed for time, increase `--time` in the script or reduce `MAX_STEP
 
 2. **Account.** Scripts use `#SBATCH --account=def-jrwright`. Change this line if your allocation differs.
 
-3. **Log destination.** Per-step stdout logs and step CSVs are copied to:
+3. **Log destination.** A short per-seed `.log` (sweep summary) and step CSVs are copied to:
 
    - Independent: `/home/toulabin/projects/def-jrwright/toulabin/logs/sal_ind/`
    - IC: `.../logs/sal_ic/`
@@ -71,8 +70,8 @@ If jobs are killed for time, increase `--time` in the script or reduce `MAX_STEP
 1. Load `python/3.11.4` and `scipy-stack`
 2. Clone the repo into `$SLURM_TMPDIR`, create a venv, `pip install -r cc_scripts/requirements-cc-sal.txt`
 3. Set `PYTHONPATH` to the repo root and `environments/overcooked_ai/src`
-4. Run one array task with `--log-steps` (verbose stdout) and `--log-csv` (one row per primitive step)
-5. Save stdout to a per-seed `.log` and step CSVs under `DEST_BASE`
+4. Run one array task with `--log-csv` and `--log-jsonl` (one row / one JSON object per primitive step)
+5. Save a small stdout `.log` (banner, totals, errors) and step CSV + JSONL under `DEST_BASE`
 6. SLURM also writes `*_sal_%A_%a.out` in the directory you submitted from
 
 ### Stdout log files
@@ -89,18 +88,17 @@ Written by `run_scripts_overcooked/sal_step_csv_log.py` via `--log-csv`. One row
 - IC: `sal_ic_ep76_a0_1000_a1_2000_<timestamp>.csv`
 - FC: `sal_fc_ep76_brain1000_<timestamp>.csv`
 
+On the cluster, CSVs and JSONL are built under `$SLURM_TMPDIR/logs_sal/` then copied next to the `.log` files in `sal_ind` / `sal_ic` / `sal_fc`.
+
 ### Step JSONL files (full beliefs + maps)
 
-Written by `run_scripts_overcooked/sal_step_detail_log.py` via `--log-jsonl`. One JSON object per step with:
+Written by `run_scripts_overcooked/sal_step_detail_log.py` via `--log-jsonl`. One JSON object per step: `map_before` / `map_after`, `state_beliefs`, full `q_pi`, selected policy, rewards.
 
-- `map_before` / `map_after` (ASCII grid, newline-separated rows)
-- `state_beliefs` per agent (full probability vector per hidden factor)
-- `q_pi` (full policy posterior over all policies) plus `top_policies`
-- selected policy / primitive / rewards
+- `sal_ic_ep76_a0_1000_a1_2000_<timestamp>.jsonl` (and analogous `sal_ind_*`, `sal_fc_*`)
 
-Stdout logs (`--log-steps`) keep the **original runner format** (belief tables titled `Beliefs A0`, policy `entropy` / `BEST` / bar-chart top-k) and add **map after action**. Default top-k in stdout is 20 (`--policy-log-top-k`); use `--log-full-q-pi` to append a full index listing (very large for IC/FC).
+### Optional verbose stdout (usually off on CC)
 
-On the cluster, CSVs and JSONL are built under `$SLURM_TMPDIR/logs_sal/` then copied next to the `.log` files in `sal_ind` / `sal_ic` / `sal_fc`.
+Add `--log-steps` to the `python` line for human-readable maps and belief bars in the `.log` (much slower on IC).
 
 Locally:
 
@@ -162,7 +160,7 @@ export PYTHONPATH=.:environments/overcooked_ai/src
 
 python -u run_scripts_overcooked/run_independent_semantic_action_level_sweep.py \
   --n-runs 1 --episode-seeds 76 --agent0-seeds 1000 --agent1-seeds 2000 \
-  --max-steps 5 --log-steps --log-csv
+  --max-steps 5 --log-csv
 ```
 
 Swap the runner path for ic/fc as in the table above.
@@ -178,5 +176,5 @@ Swap the runner path for ic/fc as in the table above.
 | `unrecognized arguments: --max-steps` | Push/pull latest repo; ind/ic sweeps need the `--max-steps` flag |
 | Job `TIMEOUT` | Raise `#SBATCH --time` or lower `MAX_STEPS`; IC is the usual culprit |
 | Empty `DEST_BASE` | Run failed before copy; read `*_sal_%A_%a.out` on the login node |
-| `exit=1`, no CSV, little in SLURM `.out` | Python traceback is in the copied `.log` under `sal_ic/` (stdout was redirected). Re-submit after pulling latest scripts: they print the last 100 log lines on failure and run a preflight import check. Also set `PYTHONIOENCODING=utf-8` (done in `_sal_common.sh`) so `--log-steps` Unicode map bars do not crash on ASCII locales. |
+| `exit=1`, no CSV, little in SLURM `.out` | Python traceback is in the copied `.log` under `sal_ic/` (stdout was redirected). Re-submit after pulling latest scripts: they print the last 100 log lines on failure and run a preflight import check. If you add `--log-steps` manually, `PYTHONIOENCODING=utf-8` in `_sal_common.sh` avoids Unicode map-bar crashes on ASCII locales. |
 | Stale code on cluster | Jobs always clone `main`; merge and push before `sbatch` |
