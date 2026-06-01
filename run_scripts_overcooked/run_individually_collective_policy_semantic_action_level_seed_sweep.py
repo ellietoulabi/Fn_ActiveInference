@@ -38,6 +38,7 @@ def _run_sweep(
     no_ig: bool,
     verbose: bool,
     log_steps: bool,
+    max_steps: int = 2000,
 ) -> None:
     if len(episode_seeds) != n_runs or len(agent0_seeds) != n_runs or len(agent1_seeds) != n_runs:
         raise ValueError("episode_seeds, agent0_seeds, agent1_seeds must each have length n_runs")
@@ -72,7 +73,7 @@ def _run_sweep(
     observation_labels = model_init_agent.observations
     base_env_params = {"width": model_init_agent.GRID_WIDTH, "height": model_init_agent.GRID_HEIGHT}
     policy_len = ric.PAIR_POLICY_HORIZON
-    max_steps_per_scenario = 2000
+    max_steps_per_scenario = int(max_steps)
     horizon = max_steps_per_scenario + 10
     env_layout = "cramped_room"
 
@@ -388,6 +389,12 @@ def main():
     parser.add_argument("--gamma", type=float, default=4.0)
     parser.add_argument("--alpha", type=float, default=8.0)
     parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=2000,
+        help="Maximum primitive steps per episode (default: 2000).",
+    )
+    parser.add_argument(
         "--noig",
         action="store_true",
         help="Disable epistemic value (state information gain) in policy evaluation.",
@@ -441,6 +448,7 @@ def main():
         no_ig=bool(args.noig),
         verbose=bool(args.verbose),
         log_steps=bool(args.log_steps),
+        max_steps=int(args.max_steps),
     )
 
 

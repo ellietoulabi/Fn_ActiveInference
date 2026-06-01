@@ -1,0 +1,78 @@
+#!/bin/bash
+#SBATCH --account=def-jrwright
+#SBATCH --job-name=aif_ind_sal
+#SBATCH --array=0-4                   # one seed per array task
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --time=0-3:00
+#SBATCH --output=ind_sal_%A_%a.out
+
+# Independent paradigm, semantic-action level, one seed per array task.
+# Full per-step logs (maps, beliefs, policy posteriors, rewards) go to a
+# per-seed .log file captured from stdout.
+#
+# Override episode length / precision at submit time, e.g.:
+#   MAX_STEPS=500 sbatch cc_scripts/ind_semantic_action_level.sh
+set -uo pipefail                      # no -e: we still copy logs on failure
+
+MAX_STEPS=${MAX_STEPS:-2000}
+GAMMA=${GAMMA:-4.0}
+ALPHA=${ALPHA:-8.0}
+DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_ind"
+
+module purge
+module load python/3.11.4 scipy-stack
+
+if [ "${SLURM_TMPDIR:-}" = "" ]; then
+    echo "Error: SLURM_TMPDIR not defined"
+    exit 1
+fi
+echo "Working in SLURM_TMPDIR: $SLURM_TMPDIR"
+cd "$SLURM_TMPDIR"
+mkdir -p project virtualenvs
+
+echo "Cloning repository..."
+cd project
+git clone --quiet https://github.com/ellietoulabi/Fn_ActiveInference.git
+echo "Repository cloned."
+
+echo "Creating virtual environment..."
+cd ../virtualenvs
+python3.11 -m venv .venv
+source .venv/bin/activate
+echo "Activated virtualenv."
+
+echo "Installing dependencies..."
+cd ../project/Fn_ActiveInference/
+pip install --no-input -r requirements.txt
+echo "Dependencies installed."
+
+SEED_IDX=${SLURM_ARRAY_TASK_ID}
+EP_SEED=$((76 + SEED_IDX))
+A0_SEED=$((1000 + SEED_IDX))
+A1_SEED=$((2000 + SEED_IDX))
+echo "---- ind seed_idx=${SEED_IDX} ep=${EP_SEED} a0=${A0_SEED} a1=${A1_SEED} max_steps=${MAX_STEPS} ----"
+
+mkdir -p "$DEST_BASE"
+LOG_FILE="$SLURM_TMPDIR/ind_sal_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
+
+export PYTHONPATH="$PWD:$PWD/environments/overcooked_ai/src"
+python -u run_scripts_overcooked/run_independent_semantic_action_level_sweep.py \
+  --n-runs 1 \
+  --episode-seeds ${EP_SEED} \
+  --agent0-seeds ${A0_SEED} \
+  --agent1-seeds ${A1_SEED} \
+  --gamma ${GAMMA} --alpha ${ALPHA} \
+  --max-steps ${MAX_STEPS} \
+  --log-steps > "$LOG_FILE" 2>&1
+EXIT_CODE=$?
+
+echo "Copying logs..."
+cp "$LOG_FILE" "$DEST_BASE/" 2>/dev/null || echo "Warning: log file not found"
+echo "Copy done"
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "ind sweep failed (seed_idx=${SEED_IDX}) exit=${EXIT_CODE}"
+    exit $EXIT_CODE
+fi
+echo "---- ind seed_idx=${SEED_IDX} complete ----"
