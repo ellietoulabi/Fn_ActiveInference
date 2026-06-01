@@ -1,0 +1,13 @@
+# Minimal dependencies for semantic-action-level ind/ic/fc runs on Compute Canada.
+#
+# Do NOT use the repo-root requirements.txt here: it lists opencv-python and
+# pygame, which Alliance provides as modules (pip install of opencv-python
+# fails with the dummy wheel unless opencv is loaded before the venv).
+#
+# Load scipy-stack before creating the venv (see cc_scripts/*_semantic_action_level.sh).
+# numpy, scipy, matplotlib, pandas are taken from the cluster via
+#   python -m venv --system-site-packages
+
+gymnasium>=0.29.0
+dill>=0.4.0
+tqdm

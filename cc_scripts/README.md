@@ -45,7 +45,7 @@ If jobs are killed for time, increase `--time` in the script or reduce `MAX_STEP
 
 ## Before you submit
 
-1. **Push to GitHub.** Jobs clone `https://github.com/ellietoulabi/Fn_ActiveInference.git` on the compute node. The runners must include `--max-steps` on the ind/ic sweep scripts (already in repo if you merged those changes).
+1. **Push to GitHub.** Jobs clone `https://github.com/ellietoulabi/Fn_ActiveInference.git` on the compute node. They install **`cc_scripts/requirements-cc-sal.txt`** (not the repo-root `requirements.txt`). Push this file and the updated `*_semantic_action_level.sh` scripts before submitting.
 
 2. **Account.** Scripts use `#SBATCH --account=def-jrwright`. Change this line if your allocation differs.
 
@@ -140,6 +140,8 @@ Swap the runner path for ic/fc as in the table above.
 
 | Problem | What to check |
 |---------|----------------|
+| `opencv-python` / dummy wheel error during `pip install` | Scripts must use `requirements-cc-sal.txt`, not `requirements.txt`. OpenCV is not needed for these runs (terminal logs only). |
+| `Dependencies installed` then `exit=1` with empty log | Old scripts continued after a failed `pip install`; pull latest scripts (they `exit 1` if pip fails). |
 | `ModuleNotFoundError: utils` | `PYTHONPATH` must include repo root (scripts set this on CC) |
 | `unrecognized arguments: --max-steps` | Push/pull latest repo; ind/ic sweeps need the `--max-steps` flag |
 | Job `TIMEOUT` | Raise `#SBATCH --time` or lower `MAX_STEPS`; IC is the usual culprit |

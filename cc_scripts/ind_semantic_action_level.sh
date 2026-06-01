@@ -36,15 +36,18 @@ cd project
 git clone --quiet https://github.com/ellietoulabi/Fn_ActiveInference.git
 echo "Repository cloned."
 
-echo "Creating virtual environment..."
+echo "Creating virtual environment (system-site-packages for scipy-stack)..."
 cd ../virtualenvs
-python3.11 -m venv .venv
+python3.11 -m venv --system-site-packages .venv
 source .venv/bin/activate
 echo "Activated virtualenv."
 
-echo "Installing dependencies..."
+echo "Installing dependencies (cc_scripts/requirements-cc-sal.txt; not full requirements.txt)..."
 cd ../project/Fn_ActiveInference/
-pip install --no-input -r requirements.txt
+if ! pip install --no-input -r cc_scripts/requirements-cc-sal.txt; then
+    echo "ERROR: pip install failed. Do not use requirements.txt on Alliance (opencv-python dummy wheel)."
+    exit 1
+fi
 echo "Dependencies installed."
 
 SEED_IDX=${SLURM_ARRAY_TASK_ID}
