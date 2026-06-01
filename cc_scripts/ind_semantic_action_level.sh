@@ -51,7 +51,7 @@ echo "Dependencies installed."
 
 # shellcheck source=_sal_common.sh
 source cc_scripts/_sal_common.sh
-sal_ensure_venv_numpy || exit 1
+sal_ensure_venv_runtime_deps || exit 1
 sal_verify_imports || exit 1
 sal_preflight ind || exit 1
 

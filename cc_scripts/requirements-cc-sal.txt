@@ -6,10 +6,11 @@
 # Load python + scipy-stack before creating the venv (see *_semantic_action_level.sh).
 # numpy is listed explicitly. On Alliance, scipy-stack numpy may not be visible
 # once PYTHONPATH is set; the SLURM scripts also run:
-#   pip install --ignore-installed 'numpy>=1.20.0'
-# to install numpy into the venv proper.
+#   pip install --ignore-installed 'numpy>=1.20.0' 'scipy>=1.7.0'
+# into the venv (overcooked_ai_py needs scipy.sparse).
 
 numpy>=1.20.0
+scipy>=1.7.0
 gymnasium>=0.29.0
 dill>=0.4.0
 tqdm

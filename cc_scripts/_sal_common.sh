@@ -6,26 +6,35 @@ sal_setup_pythonpath() {
     export PYTHONIOENCODING=utf-8
 }
 
-# Alliance: scipy-stack numpy is not always visible once PYTHONPATH is set on a venv.
-# Install a wheel into the venv so imports work the same as at runtime.
-sal_ensure_venv_numpy() {
-    echo "Ensuring numpy in venv (Compute Canada scipy-stack workaround)..."
-    pip install --no-input --ignore-installed 'numpy>=1.20.0' || {
-        echo "ERROR: pip install numpy into venv failed."
+# Alliance: scipy-stack packages are not always visible once PYTHONPATH is set on a venv.
+# Install wheels into the venv so imports match runtime (overcooked needs scipy.sparse).
+sal_ensure_venv_runtime_deps() {
+    echo "Ensuring numpy+scipy in venv (Compute Canada scipy-stack workaround)..."
+    pip install --no-input --ignore-installed \
+        'numpy>=1.20.0' \
+        'scipy>=1.7.0' || {
+        echo "ERROR: pip install numpy/scipy into venv failed."
         return 1
     }
+}
+
+# Back-compat alias for scripts that have not been updated yet.
+sal_ensure_venv_numpy() {
+    sal_ensure_venv_runtime_deps
 }
 
 sal_verify_imports() {
     sal_setup_pythonpath
     python -c "
 import numpy
+import scipy.sparse
 import gymnasium
 import dill
 print('numpy:', numpy.__file__)
+print('scipy:', scipy.__file__)
 print('import check OK (with PYTHONPATH)')
 " || {
-        echo "ERROR: import check failed with PYTHONPATH set (numpy/gymnasium/dill)."
+        echo "ERROR: import check failed with PYTHONPATH set (numpy/scipy/gymnasium/dill)."
         return 1
     }
 }
