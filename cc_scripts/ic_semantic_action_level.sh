@@ -50,14 +50,10 @@ if ! pip install --no-input -r cc_scripts/requirements-cc-sal.txt; then
 fi
 echo "Dependencies installed."
 
-python -c "import numpy; import gymnasium; import dill" || {
-    echo "ERROR: post-install import check failed (numpy/gymnasium/dill)."
-    exit 1
-}
-
 # shellcheck source=_sal_common.sh
 source cc_scripts/_sal_common.sh
-sal_setup_pythonpath
+sal_ensure_venv_numpy || exit 1
+sal_verify_imports || exit 1
 sal_preflight ic || exit 1
 
 SEED_IDX=${SLURM_ARRAY_TASK_ID}

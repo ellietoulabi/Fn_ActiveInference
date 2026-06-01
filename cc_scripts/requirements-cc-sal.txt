@@ -4,8 +4,10 @@
 # pygame, jax, torch, etc. OpenCV fails via pip on Alliance (dummy wheel).
 #
 # Load python + scipy-stack before creating the venv (see *_semantic_action_level.sh).
-# numpy is listed explicitly: on Alliance, scipy-stack does not always appear
-# inside a venv even with --system-site-packages.
+# numpy is listed explicitly. On Alliance, scipy-stack numpy may not be visible
+# once PYTHONPATH is set; the SLURM scripts also run:
+#   pip install --ignore-installed 'numpy>=1.20.0'
+# to install numpy into the venv proper.
 
 numpy>=1.20.0
 gymnasium>=0.29.0

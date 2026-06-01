@@ -6,15 +6,36 @@ sal_setup_pythonpath() {
     export PYTHONIOENCODING=utf-8
 }
 
+# Alliance: scipy-stack numpy is not always visible once PYTHONPATH is set on a venv.
+# Install a wheel into the venv so imports work the same as at runtime.
+sal_ensure_venv_numpy() {
+    echo "Ensuring numpy in venv (Compute Canada scipy-stack workaround)..."
+    pip install --no-input --ignore-installed 'numpy>=1.20.0' || {
+        echo "ERROR: pip install numpy into venv failed."
+        return 1
+    }
+}
+
+sal_verify_imports() {
+    sal_setup_pythonpath
+    python -c "
+import numpy
+import gymnasium
+import dill
+print('numpy:', numpy.__file__)
+print('import check OK (with PYTHONPATH)')
+" || {
+        echo "ERROR: import check failed with PYTHONPATH set (numpy/gymnasium/dill)."
+        return 1
+    }
+}
+
 sal_preflight() {
     local paradigm="${1:?paradigm required: ind|ic|fc}"
     echo "Preflight (${paradigm}): checking imports..."
+    sal_setup_pythonpath
     python -c "
-import sys
-from pathlib import Path
-root = Path('.').resolve()
-sys.path.insert(0, str(root / 'run_scripts_overcooked'))
-sys.path.insert(0, str(root / 'environments' / 'overcooked_ai' / 'src'))
+import numpy as np  # noqa: F401 — before any repo imports
 import sal_step_csv_log  # noqa: F401
 import run_independent_semantic_action_level as ind  # noqa: F401
 from environments.overcooked_ma_gym import OvercookedMultiAgentEnv  # noqa: F401
