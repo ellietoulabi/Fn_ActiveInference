@@ -22,6 +22,7 @@ if overcooked_src.exists():
 
 import run_independent_semantic_action_level as ind
 import sal_step_csv_log as sal_csv
+import sal_step_detail_log as sal_detail
 
 from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndependentWithSemanticPoliciesActionLevel.model_init import (
     PRIMITIVE_POLICY_STEP,
@@ -40,7 +41,10 @@ def _run_sweep(
     verbose: bool,
     log_steps: bool,
     log_csv: bool = False,
+    log_jsonl: bool = False,
     log_dir: str | None = None,
+    policy_log_top_k: int = 20,
+    log_full_q_pi: bool = False,
     max_steps: int = 2000,
 ) -> None:
     if len(episode_seeds) != n_runs or len(agent0_seeds) != n_runs or len(agent1_seeds) != n_runs:
@@ -133,21 +137,43 @@ def _run_sweep(
         log_steps: bool,
         run_tag: str,
         log_csv: bool = False,
+        log_jsonl: bool = False,
         log_dir: str | None = None,
         agent0_seed: int | None = None,
         agent1_seed: int | None = None,
+        policy_log_top_k: int = 20,
+        log_full_q_pi: bool = False,
     ):
         _obs, infos = env_obj.reset(seed=episode_seed)
         state = infos["agent_0"]["state"]
 
+        log_base = log_dir or sal_csv._repo_logs_dir()
+        want_detail = bool(log_steps or log_jsonl)
+
         step_csv = None
         if log_csv:
             step_csv = sal_csv.open_ind_log(
-                log_dir or sal_csv._repo_logs_dir(),
+                log_base,
                 int(episode_seed or 0),
                 int(agent0_seed or 0),
                 int(agent1_seed or 0),
             )
+
+        step_jsonl = None
+        if log_jsonl:
+            step_jsonl = sal_detail.open_jsonl(
+                log_base,
+                "ind",
+                episode_seed=int(episode_seed or 0),
+                agent0_seed=int(agent0_seed or 0),
+                agent1_seed=int(agent1_seed or 0),
+            )
+
+        def _policy_label(pidx: int, agent) -> str:
+            pols = agent.policies or []
+            if 0 <= int(pidx) < len(pols):
+                return ind._fmt_policy(pols[int(pidx)])
+            return "policy_idx={}".format(pidx)
 
         config_0 = env_utils.get_D_config_from_state(state, 0)
         config_1 = env_utils.get_D_config_from_state(state, 1)
@@ -167,13 +193,17 @@ def _run_sweep(
             obs_0 = env_utils.env_obs_to_model_obs(state, 0, reward_info=prev_reward_info)
             obs_1 = env_utils.env_obs_to_model_obs(state, 1, reward_info=prev_reward_info)
 
+            map_before = (
+                sal_detail.map_lines(state, model_init_agent, ind.render_overcooked_grid)
+                if want_detail
+                else None
+            )
+
             if log_steps:
                 state_str = ind._state_summary(state, model_init_agent, max_agents=2)
                 print("\n  --- [{}] Step {} ---".format(run_tag, step), flush=True)
                 print("    Env state:  {}".format(state_str), flush=True)
-                print("    Map (before action):", flush=True)
-                for row in ind.render_overcooked_grid(state, model_init_agent):
-                    print("      " + row, flush=True)
+                sal_detail.print_map("Map (before action)", map_before or [])
                 for line in ind._agent_summary_lines(state, model_init_agent, max_agents=2):
                     print(line, flush=True)
                 print(
@@ -302,52 +332,30 @@ def _run_sweep(
                     ),
                     flush=True,
                 )
-
-                qs_0 = agent_0.get_state_beliefs()
-                print(ind._belief_table(np, qs_0, model_init_agent, title="Beliefs A0"), flush=True)
-
-                qs_1 = agent_1.get_state_beliefs()
-                print(ind._belief_table(np, qs_1, model_init_agent, title="Beliefs A1"), flush=True)
-
-                print("    Policy beliefs A0:", flush=True)
-                q_pi_0 = np.asarray(agent_0.get_policy_posterior(), dtype=float)
-                H_pi_0 = float(-np.sum(q_pi_0 * np.log(q_pi_0 + 1e-16)))
-                top_0 = agent_0.get_top_policies(top_k=5)
-                print("      entropy {:.3f}:".format(H_pi_0), flush=True)
-                if top_0:
-                    best_pol, best_prob, best_idx = top_0[0]
-                    print(
-                        "      BEST: idx={} p={:.3f}  {}".format(
-                            int(best_idx),
-                            float(best_prob),
-                            ind._fmt_policy(best_pol),
-                        ),
-                        flush=True,
-                    )
-                for rank, (pol, prob, _pidx) in enumerate(top_0, 1):
-                    pol_str = ind._fmt_policy(pol)
-                    bar = "█" * int(float(prob) * 20)
-                    print("        #{:d} [{:>24}] {:<20} {:.3f}".format(rank, pol_str, bar, float(prob)), flush=True)
-
-                print("    Policy beliefs A1:", flush=True)
-                q_pi_1 = np.asarray(agent_1.get_policy_posterior(), dtype=float)
-                H_pi_1 = float(-np.sum(q_pi_1 * np.log(q_pi_1 + 1e-16)))
-                top_1 = agent_1.get_top_policies(top_k=5)
-                print("      entropy {:.3f}:".format(H_pi_1), flush=True)
-                if top_1:
-                    best_pol, best_prob, best_idx = top_1[0]
-                    print(
-                        "      BEST: idx={} p={:.3f}  {}".format(
-                            int(best_idx),
-                            float(best_prob),
-                            ind._fmt_policy(best_pol),
-                        ),
-                        flush=True,
-                    )
-                for rank, (pol, prob, _pidx) in enumerate(top_1, 1):
-                    pol_str = ind._fmt_policy(pol)
-                    bar = "█" * int(float(prob) * 20)
-                    print("        #{:d} [{:>24}] {:<20} {:.3f}".format(rank, pol_str, bar, float(prob)), flush=True)
+                sal_detail.print_agent_beliefs(
+                    agent_0,
+                    np_mod=np,
+                    model_init=model_init_agent,
+                    agent_label="A0",
+                    belief_table_fn=ind._belief_table,
+                    policy_label_fn=_policy_label,
+                    policy_top_k=policy_log_top_k,
+                    policy_full=log_full_q_pi,
+                    fmt_policy=ind._fmt_policy,
+                    policy_label_width=24,
+                )
+                sal_detail.print_agent_beliefs(
+                    agent_1,
+                    np_mod=np,
+                    model_init=model_init_agent,
+                    agent_label="A1",
+                    belief_table_fn=ind._belief_table,
+                    policy_label_fn=_policy_label,
+                    policy_top_k=policy_log_top_k,
+                    policy_full=log_full_q_pi,
+                    fmt_policy=ind._fmt_policy,
+                    policy_label_width=24,
+                )
 
                 if meta_0 is not None:
                     print(
@@ -387,6 +395,42 @@ def _run_sweep(
                 print("    Reward A0: {}  (cumulative: {})".format(r0, total_reward_0), flush=True)
                 print("    Reward A1: {}  (cumulative: {})".format(r1, total_reward_1), flush=True)
 
+            if want_detail and map_before is not None:
+                map_after = sal_detail.map_lines(
+                    state, model_init_agent, ind.render_overcooked_grid
+                )
+                if log_steps:
+                    sal_detail.print_map("Map (after action)", map_after)
+                sal_detail.write_ind_step(
+                    step_jsonl,
+                    step=step,
+                    episode_seed=int(episode_seed or 0),
+                    agent0_seed=int(agent0_seed or 0),
+                    agent1_seed=int(agent1_seed or 0),
+                    map_before=map_before,
+                    map_after=map_after,
+                    agent_0=agent_0,
+                    agent_1=agent_1,
+                    policy_label_fn_0=_policy_label,
+                    policy_label_fn_1=_policy_label,
+                    pol_idx_0=int(pol_idx_0),
+                    pol_idx_1=int(pol_idx_1),
+                    a0_prim=int(a0_prim),
+                    a1_prim=int(a1_prim),
+                    a0_prim_name=ind.PRIMITIVE_ACTION_NAMES.get(a0_prim, str(a0_prim)),
+                    a1_prim_name=ind.PRIMITIVE_ACTION_NAMES.get(a1_prim, str(a1_prim)),
+                    reward_a0=r0,
+                    reward_a1=r1,
+                    cumulative_reward_a0=total_reward_0,
+                    cumulative_reward_a1=total_reward_1,
+                    terminated=bool(terminated.get("__all__")),
+                    truncated=bool(truncated.get("__all__")),
+                    policy_top_k=policy_log_top_k,
+                    include_full_q_pi=bool(log_jsonl or log_full_q_pi),
+                    meta_0=meta_0,
+                    meta_1=meta_1,
+                )
+
             if terminated.get("__all__") or truncated.get("__all__"):
                 if log_steps:
                     print("    Episode ended.", flush=True)
@@ -402,16 +446,22 @@ def _run_sweep(
             csv_path = step_csv.path
             print("  Step CSV: {}".format(csv_path), flush=True)
 
-        return total_reward_0, total_reward_1, csv_path
+        jsonl_path = None
+        if step_jsonl is not None:
+            step_jsonl.close()
+            jsonl_path = step_jsonl.path
+            print("  Step JSONL: {}".format(jsonl_path), flush=True)
+
+        return total_reward_0, total_reward_1, csv_path, jsonl_path
 
     print(
-        "[Sweep] n_runs={} gamma={} alpha={} no_ig={} max_steps={} log_steps={} log_csv={}".format(
-            n_runs, gamma, alpha, no_ig, max_steps_per_scenario, log_steps, log_csv
+        "[Sweep] n_runs={} gamma={} alpha={} no_ig={} max_steps={} log_steps={} log_csv={} log_jsonl={}".format(
+            n_runs, gamma, alpha, no_ig, max_steps_per_scenario, log_steps, log_csv, log_jsonl
         ),
         flush=True,
     )
-    if log_csv:
-        print("[Sweep] CSV log dir: {}".format(log_dir or sal_csv._repo_logs_dir()), flush=True)
+    if log_csv or log_jsonl:
+        print("[Sweep] Detail log dir: {}".format(log_dir or sal_csv._repo_logs_dir()), flush=True)
 
     results = []
     for i in range(n_runs):
@@ -424,7 +474,7 @@ def _run_sweep(
 
         name = "run {}/{}  episode_seed={}  agent_seeds=({}, {})".format(i + 1, n_runs, ep_seed, s0, s1)
         run_tag = "run{}/{}".format(i + 1, n_runs)
-        r0, r1, csv_path = run_one_episode(
+        r0, r1, csv_path, jsonl_path = run_one_episode(
             env,
             agent_0,
             agent_1,
@@ -433,11 +483,14 @@ def _run_sweep(
             log_steps=log_steps,
             run_tag=run_tag,
             log_csv=log_csv,
+            log_jsonl=log_jsonl,
             log_dir=log_dir,
             agent0_seed=s0,
             agent1_seed=s1,
+            policy_log_top_k=policy_log_top_k,
+            log_full_q_pi=log_full_q_pi,
         )
-        results.append((ep_seed, s0, s1, r0, r1, csv_path))
+        results.append((ep_seed, s0, s1, r0, r1, csv_path, jsonl_path))
         print(
             "  run {:d}: episode_seed={} agent_seeds=({}, {})  total_reward A0={:.3f} A1={:.3f}  sum={:.3f}".format(
                 i + 1, ep_seed, s0, s1, r0, r1, r0 + r1
@@ -448,9 +501,14 @@ def _run_sweep(
     sum_r0 = sum(t[3] for t in results)
     sum_r1 = sum(t[4] for t in results)
     csv_paths = [t[5] for t in results if t[5] is not None]
+    jsonl_paths = [t[6] for t in results if t[6] is not None]
     if csv_paths:
         print("\n[Sweep] Step CSV files:", flush=True)
         for p in csv_paths:
+            print("  {}".format(p), flush=True)
+    if jsonl_paths:
+        print("\n[Sweep] Step JSONL files:", flush=True)
+        for p in jsonl_paths:
             print("  {}".format(p), flush=True)
     print(
         "\n[Sweep] done. Mean total_reward per run: A0={:.4f} A1={:.4f}  combined_mean={:.4f}".format(
@@ -515,7 +573,23 @@ def main():
         "--log-dir",
         type=str,
         default=None,
-        help="Directory for step CSV files (default: <repo>/logs).",
+        help="Directory for step CSV / JSONL files (default: <repo>/logs).",
+    )
+    parser.add_argument(
+        "--log-jsonl",
+        action="store_true",
+        help="Write per-step JSONL with map snapshots, full state beliefs, and full q_pi.",
+    )
+    parser.add_argument(
+        "--policy-log-top-k",
+        type=int,
+        default=20,
+        help="Number of policies to list in stdout logs (default: 20).",
+    )
+    parser.add_argument(
+        "--log-full-q-pi",
+        action="store_true",
+        help="List every policy in stdout logs (can be huge for IC/FC). JSONL always includes full q_pi when --log-jsonl is set.",
     )
     args = parser.parse_args()
 
@@ -557,7 +631,10 @@ def main():
         verbose=bool(args.verbose),
         log_steps=bool(args.log_steps),
         log_csv=bool(args.log_csv),
+        log_jsonl=bool(args.log_jsonl),
         log_dir=args.log_dir,
+        policy_log_top_k=int(args.policy_log_top_k),
+        log_full_q_pi=bool(args.log_full_q_pi),
         max_steps=int(args.max_steps),
     )
 

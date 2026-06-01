@@ -73,7 +73,7 @@ python -u run_scripts_overcooked/run_independent_semantic_action_level_sweep.py 
   --agent1-seeds ${A1_SEED} \
   --gamma ${GAMMA} --alpha ${ALPHA} \
   --max-steps ${MAX_STEPS} \
-  --log-steps --log-csv --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
+  --log-steps --log-csv --log-jsonl --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
 sal_copy_artifacts "$DEST_BASE" "$LOG_FILE" "$CSV_DIR"

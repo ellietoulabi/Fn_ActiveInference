@@ -41,6 +41,7 @@ if overcooked_src.exists():
 
 import run_independent_semantic_action_level as ind
 import sal_step_csv_log as sal_csv
+import sal_step_detail_log as sal_detail
 
 from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.FullyCollectiveWithSemanticPoliciesActionLevel.model_init import (
     PRIMITIVE_POLICY_STEP,
@@ -129,7 +130,10 @@ def _run_fc(
     verbose: bool,
     log_steps: bool,
     log_csv: bool = False,
+    log_jsonl: bool = False,
     log_dir: str | None = None,
+    policy_log_top_k: int = 20,
+    log_full_q_pi: bool = False,
     max_steps: int = 2000,
 ) -> None:
     if len(episode_seeds) != n_runs or len(agent_seeds) != n_runs:
@@ -223,18 +227,33 @@ def _run_fc(
         log_steps: bool,
         run_tag: str,
         log_csv: bool = False,
+        log_jsonl: bool = False,
         log_dir: str | None = None,
         brain_seed: int | None = None,
+        policy_log_top_k: int = 20,
+        log_full_q_pi: bool = False,
     ):
         _obs, infos = env_obj.reset(seed=episode_seed)
         state = infos["agent_0"]["state"]
 
+        log_base = log_dir or sal_csv._repo_logs_dir()
+        want_detail = bool(log_steps or log_jsonl)
+
         step_csv = None
         if log_csv:
             step_csv = sal_csv.open_fc_log(
-                log_dir or sal_csv._repo_logs_dir(),
+                log_base,
                 int(episode_seed or 0),
                 int(brain_seed or 0),
+            )
+
+        step_jsonl = None
+        if log_jsonl:
+            step_jsonl = sal_detail.open_jsonl(
+                log_base,
+                "fc",
+                episode_seed=int(episode_seed or 0),
+                brain_seed=int(brain_seed or 0),
             )
 
         # Reset with UNIFORM position priors (no config).  This matches the
@@ -257,13 +276,17 @@ def _run_fc(
         for step in range(1, max_steps_per_scenario + 1):
             obs_0 = env_utils.env_obs_to_model_obs(state, 0, reward_info=prev_reward_info)
 
+            map_before = (
+                sal_detail.map_lines(state, fc_model_init, ind.render_overcooked_grid)
+                if want_detail
+                else None
+            )
+
             if log_steps:
                 state_str = ind._state_summary(state, fc_model_init, max_agents=2)
                 print("\n  --- [{}] Step {} ---".format(run_tag, step), flush=True)
                 print("    Env state:  {}".format(state_str), flush=True)
-                print("    Map (before action):", flush=True)
-                for row in ind.render_overcooked_grid(state, fc_model_init):
-                    print("      " + row, flush=True)
+                sal_detail.print_map("Map (before action)", map_before or [])
                 for line in ind._agent_summary_lines(state, fc_model_init, max_agents=2):
                     print(line, flush=True)
                 print(
@@ -396,6 +419,12 @@ def _run_fc(
                     }
                 )
 
+            def _fc_joint_label(pidx: int, _agent) -> str:
+                a_s, a_o = joint_pairs[int(pidx)]
+                ns = fc_model_init.ACTION_NAMES.get(int(a_s), str(int(a_s)))
+                no = fc_model_init.ACTION_NAMES.get(int(a_o), str(int(a_o)))
+                return "S:{} | O:{}".format(ns, no)
+
             if log_steps:
                 print(
                     "    Compiled libraries: self_plans={}  other_plans={}".format(
@@ -404,33 +433,19 @@ def _run_fc(
                     ),
                     flush=True,
                 )
-
-                qs_brain = brain.get_state_beliefs()
-                print(
-                    ind._belief_table(np, qs_brain, fc_model_init, title="Beliefs (brain, ego=A0)"),
-                    flush=True,
+                sal_detail.print_agent_beliefs(
+                    brain,
+                    np_mod=np,
+                    model_init=fc_model_init,
+                    agent_label="brain",
+                    belief_table_fn=ind._belief_table,
+                    policy_label_fn=_fc_joint_label,
+                    policy_top_k=policy_log_top_k,
+                    policy_full=log_full_q_pi,
+                    state_belief_title="Beliefs (brain, ego=A0)",
+                    policy_belief_title="Policy beliefs (brain)",
+                    policy_label_width=34,
                 )
-
-                q_pi = np.asarray(brain.get_policy_posterior(), dtype=float)
-                H_pi = float(-np.sum(q_pi * np.log(q_pi + 1e-16)))
-                top_k = 5
-                if q_pi.size > 0:
-                    order = np.argsort(-q_pi)[: int(top_k)]
-                else:
-                    order = []
-                print("    Policy beliefs (brain) entropy {:.3f}:".format(H_pi), flush=True)
-                for rank, jp_idx in enumerate(order, 1):
-                    a_s, a_o = joint_pairs[int(jp_idx)]
-                    name_s = fc_model_init.ACTION_NAMES.get(int(a_s), str(int(a_s)))
-                    name_o = fc_model_init.ACTION_NAMES.get(int(a_o), str(int(a_o)))
-                    pol_str = "S:{} | O:{}".format(name_s, name_o)
-                    bar = "█" * int(float(q_pi[int(jp_idx)]) * 20)
-                    print(
-                        "        #{:d} [{:>34}] {:<20} {:.3f}".format(
-                            rank, pol_str, bar, float(q_pi[int(jp_idx)])
-                        ),
-                        flush=True,
-                    )
 
                 name_s = fc_model_init.ACTION_NAMES.get(int(a_self_sem), str(int(a_self_sem)))
                 name_o = fc_model_init.ACTION_NAMES.get(int(a_other_sem), str(int(a_other_sem)))
@@ -475,6 +490,38 @@ def _run_fc(
                 print("    Reward A0: {}  (cumulative: {})".format(r0, total_reward_0), flush=True)
                 print("    Reward A1: {}  (cumulative: {})".format(r1, total_reward_1), flush=True)
 
+            if want_detail and map_before is not None:
+                map_after = sal_detail.map_lines(state, fc_model_init, ind.render_overcooked_grid)
+                if log_steps:
+                    sal_detail.print_map("Map (after action)", map_after)
+                sal_detail.write_fc_step(
+                    step_jsonl,
+                    step=step,
+                    episode_seed=int(episode_seed or 0),
+                    brain_seed=int(brain_seed or 0),
+                    map_before=map_before,
+                    map_after=map_after,
+                    brain=brain,
+                    joint_label_fn=_fc_joint_label,
+                    joint_pairs=joint_pairs,
+                    joint_idx=int(joint_idx),
+                    a_self_sem=int(a_self_sem),
+                    a_other_sem=int(a_other_sem),
+                    a0_prim=int(a0_prim),
+                    a1_prim=int(a1_prim),
+                    a0_prim_name=ind.PRIMITIVE_ACTION_NAMES.get(a0_prim, str(a0_prim)),
+                    a1_prim_name=ind.PRIMITIVE_ACTION_NAMES.get(a1_prim, str(a1_prim)),
+                    action_names=fc_model_init.ACTION_NAMES,
+                    reward_a0=r0,
+                    reward_a1=r1,
+                    cumulative_reward_a0=total_reward_0,
+                    cumulative_reward_a1=total_reward_1,
+                    terminated=bool(terminated.get("__all__")),
+                    truncated=bool(truncated.get("__all__")),
+                    policy_top_k=policy_log_top_k,
+                    include_full_q_pi=bool(log_jsonl or log_full_q_pi),
+                )
+
             if terminated.get("__all__") or truncated.get("__all__"):
                 if log_steps:
                     print("    Episode ended.", flush=True)
@@ -490,16 +537,22 @@ def _run_fc(
             csv_path = step_csv.path
             print("  Step CSV: {}".format(csv_path), flush=True)
 
-        return total_reward_0, total_reward_1, csv_path
+        jsonl_path = None
+        if step_jsonl is not None:
+            step_jsonl.close()
+            jsonl_path = step_jsonl.path
+            print("  Step JSONL: {}".format(jsonl_path), flush=True)
+
+        return total_reward_0, total_reward_1, csv_path, jsonl_path
 
     print(
-        "[FC] n_runs={} gamma={} alpha={} no_ig={} max_steps={} log_steps={} log_csv={}".format(
-            n_runs, gamma, alpha, no_ig, max_steps_per_scenario, log_steps, log_csv
+        "[FC] n_runs={} gamma={} alpha={} no_ig={} max_steps={} log_steps={} log_csv={} log_jsonl={}".format(
+            n_runs, gamma, alpha, no_ig, max_steps_per_scenario, log_steps, log_csv, log_jsonl
         ),
         flush=True,
     )
-    if log_csv:
-        print("[FC] CSV log dir: {}".format(log_dir or sal_csv._repo_logs_dir()), flush=True)
+    if log_csv or log_jsonl:
+        print("[FC] Detail log dir: {}".format(log_dir or sal_csv._repo_logs_dir()), flush=True)
 
     results = []
     for i in range(n_runs):
@@ -510,7 +563,7 @@ def _run_fc(
 
         name = "run {}/{}  episode_seed={}  brain_seed={}".format(i + 1, n_runs, ep_seed, s_brain)
         run_tag = "run{}/{}".format(i + 1, n_runs)
-        r0, r1, csv_path = run_one_episode(
+        r0, r1, csv_path, jsonl_path = run_one_episode(
             env,
             brain,
             name,
@@ -518,10 +571,13 @@ def _run_fc(
             log_steps=log_steps,
             run_tag=run_tag,
             log_csv=log_csv,
+            log_jsonl=log_jsonl,
             log_dir=log_dir,
             brain_seed=s_brain,
+            policy_log_top_k=policy_log_top_k,
+            log_full_q_pi=log_full_q_pi,
         )
-        results.append((ep_seed, s_brain, r0, r1, csv_path))
+        results.append((ep_seed, s_brain, r0, r1, csv_path, jsonl_path))
         print(
             "  run {:d}: episode_seed={} brain_seed={}  total_reward A0={:.3f} A1={:.3f}  sum={:.3f}".format(
                 i + 1, ep_seed, s_brain, r0, r1, r0 + r1
@@ -532,9 +588,14 @@ def _run_fc(
     sum_r0 = sum(t[2] for t in results)
     sum_r1 = sum(t[3] for t in results)
     csv_paths = [t[4] for t in results if t[4] is not None]
+    jsonl_paths = [t[5] for t in results if t[5] is not None]
     if csv_paths:
         print("\n[FC] Step CSV files:", flush=True)
         for p in csv_paths:
+            print("  {}".format(p), flush=True)
+    if jsonl_paths:
+        print("\n[FC] Step JSONL files:", flush=True)
+        for p in jsonl_paths:
             print("  {}".format(p), flush=True)
     print(
         "\n[FC] done. Mean total_reward per run: A0={:.4f} A1={:.4f}  combined_mean={:.4f}".format(
@@ -598,7 +659,23 @@ def main():
         "--log-dir",
         type=str,
         default=None,
-        help="Directory for step CSV files (default: <repo>/logs).",
+        help="Directory for step CSV / JSONL files (default: <repo>/logs).",
+    )
+    parser.add_argument(
+        "--log-jsonl",
+        action="store_true",
+        help="Write per-step JSONL with map snapshots, full state beliefs, and full q_pi.",
+    )
+    parser.add_argument(
+        "--policy-log-top-k",
+        type=int,
+        default=20,
+        help="Number of policies to list in stdout logs (default: 20).",
+    )
+    parser.add_argument(
+        "--log-full-q-pi",
+        action="store_true",
+        help="List every policy in stdout logs (can be huge for IC/FC). JSONL always includes full q_pi when --log-jsonl is set.",
     )
     args = parser.parse_args()
 
@@ -635,7 +712,10 @@ def main():
         verbose=bool(args.verbose),
         log_steps=bool(args.log_steps),
         log_csv=bool(args.log_csv),
+        log_jsonl=bool(args.log_jsonl),
         log_dir=args.log_dir,
+        policy_log_top_k=int(args.policy_log_top_k),
+        log_full_q_pi=bool(args.log_full_q_pi),
         max_steps=int(args.max_steps),
     )
 

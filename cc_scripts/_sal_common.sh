@@ -85,5 +85,8 @@ sal_copy_artifacts() {
     else
         echo "Warning: no step CSV files in ${csv_dir}"
     fi
+    if compgen -G "${csv_dir}"/*.jsonl > /dev/null 2>&1; then
+        cp "${csv_dir}"/*.jsonl "$dest_base/" 2>/dev/null || echo "Warning: JSONL copy failed"
+    fi
     echo "Copy done"
 }

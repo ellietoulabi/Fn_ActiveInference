@@ -17,7 +17,7 @@ Older jobs in this folder (`two_aif_*.sh`, `eight.sh`, etc.) target legacy `run_
 Each script is a **SLURM array** with **5 tasks** (`--array=0-4`). Each task runs:
 
 - **1 episode** (`--n-runs 1`)
-- **2000 primitive steps** per episode (`MAX_STEPS=2000`, `--log-steps --log-csv`)
+- **2000 primitive steps** per episode (`MAX_STEPS=2000`, `--log-steps --log-csv --log-jsonl`)
 - Layout: `cramped_room`
 - `gamma=4.0`, `alpha=8.0`, stochastic policy selection
 
@@ -89,7 +89,18 @@ Written by `run_scripts_overcooked/sal_step_csv_log.py` via `--log-csv`. One row
 - IC: `sal_ic_ep76_a0_1000_a1_2000_<timestamp>.csv`
 - FC: `sal_fc_ep76_brain1000_<timestamp>.csv`
 
-On the cluster, CSVs are built under `$SLURM_TMPDIR/logs_sal/` then copied next to the `.log` files in `sal_ind` / `sal_ic` / `sal_fc`.
+### Step JSONL files (full beliefs + maps)
+
+Written by `run_scripts_overcooked/sal_step_detail_log.py` via `--log-jsonl`. One JSON object per step with:
+
+- `map_before` / `map_after` (ASCII grid, newline-separated rows)
+- `state_beliefs` per agent (full probability vector per hidden factor)
+- `q_pi` (full policy posterior over all policies) plus `top_policies`
+- selected policy / primitive / rewards
+
+Stdout logs (`--log-steps`) keep the **original runner format** (belief tables titled `Beliefs A0`, policy `entropy` / `BEST` / bar-chart top-k) and add **map after action**. Default top-k in stdout is 20 (`--policy-log-top-k`); use `--log-full-q-pi` to append a full index listing (very large for IC/FC).
+
+On the cluster, CSVs and JSONL are built under `$SLURM_TMPDIR/logs_sal/` then copied next to the `.log` files in `sal_ind` / `sal_ic` / `sal_fc`.
 
 Locally:
 
@@ -140,7 +151,7 @@ sacct -j <JOBID> --format=JobID,JobName,State,Elapsed,MaxRSS
 tail -f ind_sal_<JOBID>_<TASKID>.out    # in submit directory
 ```
 
-After completion, inspect the copied `.log` and `.csv` files under `logs/sal_ind`, `sal_ic`, or `sal_fc`.
+After completion, inspect the copied `.log`, `.csv`, and `.jsonl` files under `logs/sal_ind`, `sal_ic`, or `sal_fc`.
 
 ## Local dry run (same command, no SLURM)
 
