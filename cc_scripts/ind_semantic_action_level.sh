@@ -2,9 +2,9 @@
 #SBATCH --account=def-jrwright
 #SBATCH --job-name=aif_ind_sal
 #SBATCH --array=0-9                   # 10 seeds (one episode per task)
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=12
 #SBATCH --mem=8G
-#SBATCH --time=0-6:00
+#SBATCH --time=1-6:00
 #SBATCH --output=ind_sal_%A_%a.out
 
 # Independent paradigm, semantic-action level, one seed per array task.

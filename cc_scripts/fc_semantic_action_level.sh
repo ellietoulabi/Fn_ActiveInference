@@ -2,7 +2,7 @@
 #SBATCH --account=def-jrwright
 #SBATCH --job-name=aif_fc_sal
 #SBATCH --array=0-9                   # 10 seeds (one episode per task)
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=12
 #SBATCH --mem=8G
 #SBATCH --time=3-00:00
 #SBATCH --output=fc_sal_%A_%a.out
