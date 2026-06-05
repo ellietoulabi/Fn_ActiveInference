@@ -182,6 +182,7 @@ class AIFObsOvercookedMAEnv(MultiAgentEnv):
 
         layout = kwargs.get("layout", "cramped_room")
         horizon = int(kwargs.get("horizon", 400))
+        self.fixed_reset_seed = kwargs.get("fixed_reset_seed")
         self.base = OvercookedMultiAgentEnv(config={"layout": layout, "horizon": horizon})
         self.reward_info = {"sparse_reward_by_agent": [0, 0]}
         self.state = None
@@ -263,6 +264,8 @@ class AIFObsOvercookedMAEnv(MultiAgentEnv):
         }
 
     def reset(self, *, seed=None, options=None):
+        if self.fixed_reset_seed is not None:
+            seed = int(self.fixed_reset_seed)
         _, infos = self.base.reset(seed=seed, options=options)
         self.state = infos["agent_0"]["state"]
         self.reward_info = {"sparse_reward_by_agent": [0, 0]}
@@ -345,6 +348,9 @@ def _format_state_line(state) -> str:
 
 def build_config(args):
     env_config = {"layout": args.layout, "horizon": args.horizon}
+    episode_seed = getattr(args, "episode_seed", None)
+    if episode_seed is not None:
+        env_config["fixed_reset_seed"] = int(episode_seed)
     sample = AIFObsOvercookedMAEnv(env_config)
     obs_space = sample.single_observation_space
     act_space = sample.single_action_space
@@ -451,8 +457,12 @@ def train(args) -> str:
     if not out_dir.is_absolute():
         out_dir = (PROJECT_ROOT / out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
+    run_label = getattr(args, "run_label", None)
+    prefix = f"[{run_label}] " if run_label else ""
     algo = cfg.build_algo()
     max_steps = int(args.max_train_steps) if args.max_train_steps else 0
+    save_every = int(getattr(args, "checkpoint_every", 0) or 0)
+    last_saved_at = 0
     try:
         i = 0
         total_steps = 0
@@ -465,7 +475,7 @@ def train(args) -> str:
             summary = _summarize_iter(result)
             if i % max(1, int(args.log_every)) == 0:
                 print(
-                    f"[iter {i:04d}] steps={total_steps} "
+                    f"{prefix}[iter {i:04d}] steps={total_steps} "
                     f"episodes_done={summary['episodes_completed']} "
                     f"return_mean={summary['return_mean']} "
                     f"min={summary['return_min']} max={summary['return_max']} "
@@ -474,16 +484,24 @@ def train(args) -> str:
                 )
             if max_steps > 0 and total_steps >= max_steps:
                 print(
-                    f"Reached max-train-steps cap "
+                    f"{prefix}Reached max-train-steps cap "
                     f"({total_steps} >= {max_steps}); stopping training."
                 )
                 break
+            if (
+                save_every > 0
+                and total_steps >= save_every
+                and total_steps - last_saved_at >= save_every
+            ):
+                algo.save(str(out_dir))
+                last_saved_at = total_steps
+                print(f"{prefix}Intermediate checkpoint at {total_steps} env steps -> {out_dir}")
         save_obj = algo.save(str(out_dir))
         if hasattr(save_obj, "checkpoint") and hasattr(save_obj.checkpoint, "path"):
             ckpt = str(save_obj.checkpoint.path)
         else:
             ckpt = str(save_obj)
-        print(f"Saved checkpoint: {ckpt}")
+        print(f"{prefix}Saved checkpoint: {ckpt}")
         return ckpt
     finally:
         algo.stop()

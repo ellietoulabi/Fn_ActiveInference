@@ -2,13 +2,14 @@
 Single-Agent Red–Blue Doors: 9-algorithm evaluation plots.
 
 Implements the evaluation & plotting spec:
-- Plot A: Mean episode return vs episodes (learning curve, 95% bootstrap CI)
-- Plot B: Mean success rate vs episodes (learning curve, 95% bootstrap CI)
-- Plot: Mean episode length (steps) vs episodes (95% bootstrap CI)
+- Plot A: Mean episode return vs episodes (learning curve, bootstrap CI)
+- Plot B: Mean success rate vs episodes (learning curve, bootstrap CI)
+- Plot: Mean episode length (steps) vs episodes (bootstrap CI)
 - Plot C: ECDF of time to first success
 - Plot D: ECDF of time to stable success
 
-Each plot is saved to a separate file.
+Each learning-curve metric is saved in five layouts (overlaid with light CI,
+means-only, 3x3 facet, sparse error bars, grouped panels). ECDF plots unchanged.
 Expects CSV from compare_nine_agents.py (columns: seed, agent, episode, step, reward, ...).
 
 
@@ -33,7 +34,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -46,7 +47,20 @@ W_CURVE = 50       # Rolling window for learning curve smoothing
 W_STABLE = 50      # Rolling window for stable success
 THETA = 0.8        # Stable success threshold
 BOOTSTRAP_N = 1000
-CI_PERCENT = 95    # 95% CI -> 2.5 and 97.5 percentiles
+CI_PERCENT = 95    # bootstrap percentile interval
+
+# Overlaid vs alternate layouts (see run_all_plots)
+CI_FILL_ALPHA_OVERLAID = 0.12
+CI_FILL_ALPHA_FACET = 0.35
+SPARSE_CI_EVERY_EPISODES = 25
+CONTEXT_LINE_COLOR = '#bbbbbb'
+CONTEXT_LINE_LW = 0.8
+
+# Grouped panels: Recency sweep vs everything else
+AGENT_GROUPS: List[Tuple[str, List[str]]] = [
+    ('Recency variants', ['Recency0.99', 'Recency0.95', 'Recency0.9', 'Recency0.85']),
+    ('Baselines & other', ['AIF', 'QLearning', 'Vanilla', 'TrajSampling', 'OPSRL']),
+]
 
 # Default for experiments: 200 episodes, change config every 25 episodes, max_step 50
 EPISODES_PER_CONFIG_DEFAULT = 25
@@ -188,139 +202,345 @@ def add_config_boundaries(ax, max_ep: float, episodes_per_config: Optional[int])
             ax.axvline(x=config_ep, color='gray', linestyle=':', linewidth=0.8, alpha=0.5, zorder=1)
 
 
-def _draw_ci_if_visible(ax, episodes: np.ndarray, ci_low: np.ndarray, ci_high: np.ndarray, valid: np.ndarray, color: str, alpha: float = 0.3):
+def _draw_ci_if_visible(
+    ax,
+    episodes: np.ndarray,
+    ci_low: np.ndarray,
+    ci_high: np.ndarray,
+    valid: np.ndarray,
+    color: str,
+    alpha: float = CI_FILL_ALPHA_OVERLAID,
+):
     """Only draw fill_between when CI has positive width (e.g. when n_seeds >= 2)."""
     if np.any(np.greater(ci_high[valid] - ci_low[valid], 1e-9)):
         ax.fill_between(episodes[valid], ci_low[valid], ci_high[valid], color=color, alpha=alpha, zorder=2)
 
 
-def plot_a_episode_return(
-    returns_per_agent: dict,
-    success_per_agent: dict,
+def _ci_title_suffix(n_seeds: int) -> str:
+    if n_seeds == 1:
+        return ' (1 seed — no CI)'
+    return f' ({CI_PERCENT}% bootstrap CI)'
+
+
+def prepare_smoothed_curves(
+    curves_per_agent: dict,
+    agent_names: np.ndarray,
+    smoothing_window: int = W_CURVE,
+    n_bootstrap: int = BOOTSTRAP_N,
+) -> Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+    """Per algorithm: (mean, ci_low, ci_high, valid mask)."""
+    out: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
+    for alg in agent_names:
+        mean, ci_low, ci_high = bootstrap_ci(curves_per_agent[alg], n_bootstrap=n_bootstrap)
+        if smoothing_window > 0:
+            smooth_curves(mean, ci_low, ci_high, w=smoothing_window)
+        out[alg] = (mean, ci_low, ci_high, ~np.isnan(mean))
+    return out
+
+
+def _facet_grid_shape(n: int) -> Tuple[int, int]:
+    ncols = int(np.ceil(np.sqrt(n)))
+    nrows = int(np.ceil(n / ncols))
+    return nrows, ncols
+
+
+def _draw_sparse_ci(
+    ax,
+    episodes: np.ndarray,
+    mean: np.ndarray,
+    ci_low: np.ndarray,
+    ci_high: np.ndarray,
+    valid: np.ndarray,
+    color: str,
+    every: int = SPARSE_CI_EVERY_EPISODES,
+):
+    """Error bars at sparse episode indices instead of continuous fill."""
+    idx = np.where(valid)[0]
+    if len(idx) == 0:
+        return
+    ep_vals = episodes[idx]
+    if every > 0 and len(ep_vals) > 1:
+        tick_eps = np.unique(np.arange(ep_vals.min(), ep_vals.max() + 1, every, dtype=int))
+        sel = idx[np.isin(ep_vals.astype(int), tick_eps)]
+        if len(sel) == 0:
+            sel = idx[:: max(1, len(idx) // 8)]
+    else:
+        sel = idx
+    yerr = np.vstack([mean[sel] - ci_low[sel], ci_high[sel] - mean[sel]])
+    if np.any(np.greater(ci_high[sel] - ci_low[sel], 1e-9)):
+        ax.errorbar(
+            episodes[sel],
+            mean[sel],
+            yerr=yerr,
+            color=color,
+            fmt='none',
+            capsize=2,
+            elinewidth=1,
+            alpha=0.85,
+            zorder=2,
+        )
+
+
+def plot_learning_curve_means_only(
+    prepared: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
     agent_names: np.ndarray,
     episodes: np.ndarray,
     output_path: Path,
+    ylabel: str,
+    title_base: str,
+    n_seeds: int,
     episodes_per_config: Optional[int] = EPISODES_PER_CONFIG_DEFAULT,
-    smoothing_window: int = W_CURVE,
-    n_bootstrap: int = BOOTSTRAP_N,
+    ylim: Optional[Tuple[float, float]] = None,
 ) -> None:
-    """
-    Plot A: Mean episode return vs episodes.
-    One curve per algorithm, shaded 95% bootstrap CI, optional rolling mean.
-    """
+    """Single axes: mean lines only (no CI bands)."""
     fig, ax = plt.subplots(figsize=(10, 6))
     max_ep = float(episodes.max())
-    n_seeds = returns_per_agent[agent_names[0]].shape[0]
-    title_suffix = " (1 seed — no CI)" if n_seeds == 1 else " (95% bootstrap CI)"
-
     for alg in agent_names:
-        ret = returns_per_agent[alg]
-        mean, ci_low, ci_high = bootstrap_ci(ret, n_bootstrap=n_bootstrap)
-        if smoothing_window > 0:
-            smooth_curves(mean, ci_low, ci_high, w=smoothing_window)
-        valid = ~np.isnan(mean)
+        mean, _, _, valid = prepared[alg]
         if not np.any(valid):
             continue
         color = AGENT_COLORS.get(alg, '#888')
         ax.plot(episodes[valid], mean[valid], color=color, lw=2, label=alg, zorder=3)
-        _draw_ci_if_visible(ax, episodes, ci_low, ci_high, valid, color)
-
     add_config_boundaries(ax, max_ep, episodes_per_config)
     ax.set_xlabel('Episode')
-    ax.set_ylabel('Mean episode return')
-    ax.set_title('Mean episode return vs episodes' + title_suffix)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title_base + ' (means only)')
     ax.legend(loc='best', ncol=3, fontsize=8)
     ax.grid(True, alpha=0.3)
     ax.set_xlim(0, max_ep + 1)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
     plt.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
 
 
-def plot_b_mean_success(
-    success_per_agent: dict,
+def plot_learning_curve_facet(
+    prepared: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
     agent_names: np.ndarray,
     episodes: np.ndarray,
     output_path: Path,
+    ylabel: str,
+    title_base: str,
+    n_seeds: int,
     episodes_per_config: Optional[int] = EPISODES_PER_CONFIG_DEFAULT,
-    smoothing_window: int = W_CURVE,
-    n_bootstrap: int = BOOTSTRAP_N,
+    ylim: Optional[Tuple[float, float]] = None,
 ) -> None:
-    """
-    Plot B: Mean success rate vs episodes.
-    One curve per algorithm, shaded 95% bootstrap CI.
-    """
-    fig, ax = plt.subplots(figsize=(10, 6))
+    """Small multiples: one panel per algorithm; others as gray context lines."""
+    n = len(agent_names)
+    nrows, ncols = _facet_grid_shape(n)
     max_ep = float(episodes.max())
-    n_seeds = success_per_agent[agent_names[0]].shape[0]
-    title_suffix = " (1 seed — no CI)" if n_seeds == 1 else " (95% bootstrap CI)"
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3.2 * nrows), sharex=True, sharey=True)
+    axes_flat = np.atleast_1d(axes).ravel()
 
-    for alg in agent_names:
-        suc = success_per_agent[alg]
-        mean, ci_low, ci_high = bootstrap_ci(suc, n_bootstrap=n_bootstrap)
-        if smoothing_window > 0:
-            smooth_curves(mean, ci_low, ci_high, w=smoothing_window)
-        valid = ~np.isnan(mean)
-        if not np.any(valid):
-            continue
-        color = AGENT_COLORS.get(alg, '#888')
-        ax.plot(episodes[valid], mean[valid], color=color, lw=2, label=alg, zorder=3)
-        _draw_ci_if_visible(ax, episodes, ci_low, ci_high, valid, color)
+    for i, focus_alg in enumerate(agent_names):
+        ax = axes_flat[i]
+        for alg in agent_names:
+            mean, ci_low, ci_high, valid = prepared[alg]
+            if not np.any(valid):
+                continue
+            color = AGENT_COLORS.get(alg, '#888')
+            if alg == focus_alg:
+                ax.plot(episodes[valid], mean[valid], color=color, lw=2, zorder=3)
+                _draw_ci_if_visible(
+                    ax, episodes, ci_low, ci_high, valid, color, alpha=CI_FILL_ALPHA_FACET
+                )
+            else:
+                ax.plot(
+                    episodes[valid],
+                    mean[valid],
+                    color=CONTEXT_LINE_COLOR,
+                    lw=CONTEXT_LINE_LW,
+                    alpha=0.85,
+                    zorder=1,
+                )
+        add_config_boundaries(ax, max_ep, episodes_per_config)
+        ax.set_title(focus_alg, fontsize=10, color=AGENT_COLORS.get(focus_alg, '#333'))
+        ax.grid(True, alpha=0.3)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
 
-    add_config_boundaries(ax, max_ep, episodes_per_config)
-    ax.set_xlabel('Episode')
-    ax.set_ylabel('Mean success rate')
-    ax.set_title('Mean success rate vs episodes' + title_suffix)
-    ax.legend(loc='best', ncol=3, fontsize=8)
-    ax.set_ylim(-0.05, 1.05)
-    ax.grid(True, alpha=0.3)
-    ax.set_xlim(0, max_ep + 1)
+    for j in range(n, len(axes_flat)):
+        axes_flat[j].set_visible(False)
+
+    fig.supxlabel('Episode')
+    fig.supylabel(ylabel)
+    fig.suptitle(title_base + _ci_title_suffix(n_seeds) + ' — faceted', fontsize=12, y=1.02)
+    axes_flat[0].set_xlim(0, max_ep + 1)
     plt.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
 
 
-def plot_episode_length(
-    length_per_agent: dict,
+def plot_learning_curve_sparse_ci(
+    prepared: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
     agent_names: np.ndarray,
     episodes: np.ndarray,
     output_path: Path,
+    ylabel: str,
+    title_base: str,
+    n_seeds: int,
     episodes_per_config: Optional[int] = EPISODES_PER_CONFIG_DEFAULT,
-    smoothing_window: int = W_CURVE,
-    n_bootstrap: int = BOOTSTRAP_N,
+    ylim: Optional[Tuple[float, float]] = None,
+    sparse_every: int = SPARSE_CI_EVERY_EPISODES,
 ) -> None:
-    """
-    Mean episode length (steps) vs episodes.
-    One curve per algorithm, shaded 95% bootstrap CI.
-    """
+    """Single axes: means + sparse error bars (no filled bands)."""
     fig, ax = plt.subplots(figsize=(10, 6))
     max_ep = float(episodes.max())
-    n_seeds = length_per_agent[agent_names[0]].shape[0]
-    title_suffix = " (1 seed — no CI)" if n_seeds == 1 else " (95% bootstrap CI)"
-
     for alg in agent_names:
-        length = length_per_agent[alg]
-        mean, ci_low, ci_high = bootstrap_ci(length, n_bootstrap=n_bootstrap)
-        if smoothing_window > 0:
-            smooth_curves(mean, ci_low, ci_high, w=smoothing_window)
-        valid = ~np.isnan(mean)
+        mean, ci_low, ci_high, valid = prepared[alg]
         if not np.any(valid):
             continue
         color = AGENT_COLORS.get(alg, '#888')
         ax.plot(episodes[valid], mean[valid], color=color, lw=2, label=alg, zorder=3)
-        _draw_ci_if_visible(ax, episodes, ci_low, ci_high, valid, color)
-
+        _draw_sparse_ci(ax, episodes, mean, ci_low, ci_high, valid, color, every=sparse_every)
     add_config_boundaries(ax, max_ep, episodes_per_config)
     ax.set_xlabel('Episode')
-    ax.set_ylabel('Mean episode length (steps)')
-    ax.set_title('Mean episode length vs episodes' + title_suffix)
+    ax.set_ylabel(ylabel)
+    ax.set_title(
+        title_base
+        + _ci_title_suffix(n_seeds)
+        + f' — sparse error bars (every {sparse_every} ep.)'
+    )
     ax.legend(loc='best', ncol=3, fontsize=8)
     ax.grid(True, alpha=0.3)
     ax.set_xlim(0, max_ep + 1)
-    ax.set_ylim(bottom=0)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
     plt.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
+
+
+def plot_learning_curve_grouped(
+    prepared: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+    agent_names: np.ndarray,
+    episodes: np.ndarray,
+    output_path: Path,
+    ylabel: str,
+    title_base: str,
+    n_seeds: int,
+    episodes_per_config: Optional[int] = EPISODES_PER_CONFIG_DEFAULT,
+    ylim: Optional[Tuple[float, float]] = None,
+    ci_alpha: float = CI_FILL_ALPHA_OVERLAID,
+) -> None:
+    """One subplot per agent group (fewer overlapping bands per panel)."""
+    max_ep = float(episodes.max())
+    panels: List[Tuple[str, List[str]]] = []
+    placed = set()
+    for group_title, members in AGENT_GROUPS:
+        algs = [a for a in members if a in agent_names]
+        if algs:
+            panels.append((group_title, algs))
+            placed.update(algs)
+    extras = [a for a in agent_names if a not in placed]
+    if extras:
+        panels.append(('Other', list(extras)))
+
+    fig, axes = plt.subplots(1, len(panels), figsize=(6 * len(panels), 5), sharex=True, sharey=True)
+    if len(panels) == 1:
+        axes = [axes]
+
+    for ax, (group_title, algs) in zip(axes, panels):
+        for alg in algs:
+            mean, ci_low, ci_high, valid = prepared[alg]
+            if not np.any(valid):
+                continue
+            color = AGENT_COLORS.get(alg, '#888')
+            ax.plot(episodes[valid], mean[valid], color=color, lw=2, label=alg, zorder=3)
+            _draw_ci_if_visible(ax, episodes, ci_low, ci_high, valid, color, alpha=ci_alpha)
+        add_config_boundaries(ax, max_ep, episodes_per_config)
+        ax.set_title(group_title)
+        ax.legend(loc='best', fontsize=8)
+        ax.grid(True, alpha=0.3)
+        if ylim is not None:
+            ax.set_ylim(*ylim)
+
+    axes[0].set_ylabel(ylabel)
+    fig.supxlabel('Episode')
+    fig.suptitle(title_base + _ci_title_suffix(n_seeds) + ' — grouped', fontsize=12, y=1.02)
+    axes[-1].set_xlim(0, max_ep + 1)
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+
+def plot_learning_curve_overlaid(
+    prepared: Dict[str, Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]],
+    agent_names: np.ndarray,
+    episodes: np.ndarray,
+    output_path: Path,
+    ylabel: str,
+    title_base: str,
+    n_seeds: int,
+    episodes_per_config: Optional[int] = EPISODES_PER_CONFIG_DEFAULT,
+    ylim: Optional[Tuple[float, float]] = None,
+    ci_alpha: float = CI_FILL_ALPHA_OVERLAID,
+) -> None:
+    """Original layout: all algorithms on one axes with light CI fills."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    max_ep = float(episodes.max())
+    for alg in agent_names:
+        mean, ci_low, ci_high, valid = prepared[alg]
+        if not np.any(valid):
+            continue
+        color = AGENT_COLORS.get(alg, '#888')
+        ax.plot(episodes[valid], mean[valid], color=color, lw=2, label=alg, zorder=3)
+        _draw_ci_if_visible(ax, episodes, ci_low, ci_high, valid, color, alpha=ci_alpha)
+    add_config_boundaries(ax, max_ep, episodes_per_config)
+    ax.set_xlabel('Episode')
+    ax.set_ylabel(ylabel)
+    ax.set_title(title_base + _ci_title_suffix(n_seeds))
+    ax.legend(loc='best', ncol=3, fontsize=8)
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim(0, max_ep + 1)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+    elif ylabel.startswith('Mean episode length'):
+        ax.set_ylim(bottom=0)
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+
+def save_all_learning_curve_variants(
+    curves_per_agent: dict,
+    agent_names: np.ndarray,
+    episodes: np.ndarray,
+    output_dir: Path,
+    stem: str,
+    ylabel: str,
+    title_base: str,
+    episodes_per_config: Optional[int] = EPISODES_PER_CONFIG_DEFAULT,
+    smoothing_window: int = W_CURVE,
+    ylim: Optional[Tuple[float, float]] = None,
+) -> None:
+    """Write overlaid, means-only, facet, sparse-CI, and grouped PNGs for one metric."""
+    n_seeds = curves_per_agent[agent_names[0]].shape[0]
+    prepared = prepare_smoothed_curves(
+        curves_per_agent, agent_names, smoothing_window=smoothing_window
+    )
+    variants = [
+        ('', plot_learning_curve_overlaid),
+        ('_means_only', plot_learning_curve_means_only),
+        ('_facet', plot_learning_curve_facet),
+        ('_sparse_ci', plot_learning_curve_sparse_ci),
+        ('_grouped', plot_learning_curve_grouped),
+    ]
+    for suffix, plot_fn in variants:
+        path = output_dir / f'{stem}{suffix}.png'
+        plot_fn(
+            prepared,
+            agent_names,
+            episodes,
+            path,
+            ylabel=ylabel,
+            title_base=title_base,
+            n_seeds=n_seeds,
+            episodes_per_config=episodes_per_config,
+            ylim=ylim,
+        )
+        print(f'  Saved {path}')
 
 
 def time_to_first_success(success_per_seed_episode: np.ndarray, episodes: np.ndarray) -> np.ndarray:
@@ -485,7 +705,8 @@ def run_all_plots(
     """
     if not log_files:
         raise ValueError("Need at least one log file")
-    output_dir = output_dir or Path(log_files[0]).parent
+    output_dir = Path(output_dir or Path(log_files[0]).parent)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     episode_df, agent_names, episodes = load_episode_data(log_files)
     returns_per_agent, success_per_agent, length_per_agent = build_curves_per_seed(episode_df, agent_names, episodes)
@@ -497,36 +718,42 @@ def run_all_plots(
             order.append(a)
     agent_names = np.array(order)
 
-    plot_a_episode_return(
+    save_all_learning_curve_variants(
         returns_per_agent,
-        success_per_agent,
         agent_names,
         episodes,
-        output_dir / "plot_a_episode_return.png",
+        output_dir,
+        stem='plot_a_episode_return',
+        ylabel='Mean episode return',
+        title_base='Mean episode return vs episodes',
         episodes_per_config=episodes_per_config,
         smoothing_window=smoothing_window,
     )
-    print(f"  Saved {output_dir / 'plot_a_episode_return.png'}")
 
-    plot_b_mean_success(
+    save_all_learning_curve_variants(
         success_per_agent,
         agent_names,
         episodes,
-        output_dir / "plot_b_mean_success.png",
+        output_dir,
+        stem='plot_b_mean_success',
+        ylabel='Mean success rate',
+        title_base='Mean success rate vs episodes',
         episodes_per_config=episodes_per_config,
         smoothing_window=smoothing_window,
+        ylim=(-0.05, 1.05),
     )
-    print(f"  Saved {output_dir / 'plot_b_mean_success.png'}")
 
-    plot_episode_length(
+    save_all_learning_curve_variants(
         length_per_agent,
         agent_names,
         episodes,
-        output_dir / "plot_episode_length.png",
+        output_dir,
+        stem='plot_episode_length',
+        ylabel='Mean episode length (steps)',
+        title_base='Mean episode length vs episodes',
         episodes_per_config=episodes_per_config,
         smoothing_window=smoothing_window,
     )
-    print(f"  Saved {output_dir / 'plot_episode_length.png'}")
 
     plot_c_ecdf_first_success(
         success_per_agent,
@@ -579,7 +806,11 @@ def main():
         w_stable=args.w_stable,
         theta=args.theta,
     )
-    print("Done. Five files: plot_a_episode_return.png, plot_b_mean_success.png, plot_episode_length.png, plot_c_ecdf_first_success.png, plot_d_ecdf_stable_success.png")
+    print(
+        "Done. Learning curves (5 layouts each): plot_a_episode_return*, plot_b_mean_success*, "
+        "plot_episode_length*; suffixes: (default), _means_only, _facet, _sparse_ci, _grouped. "
+        "Plus plot_c_ecdf_first_success.png, plot_d_ecdf_stable_success.png"
+    )
 
 
 if __name__ == "__main__":

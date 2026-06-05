@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
 #SBATCH --job-name=three_plus_ppo
-#SBATCH --array=0-4              # seeds 0..4 as separate jobs
+#SBATCH --array=0-9              # seeds 0..4 as separate jobs
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
 #SBATCH --time=0-8:59

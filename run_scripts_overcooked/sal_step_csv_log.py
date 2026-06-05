@@ -30,6 +30,14 @@ def make_log_path(
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     if paradigm == "fc":
         name = "sal_fc_ep{}_brain{}_{}.csv".format(int(episode_seed), int(brain_seed), ts)
+    elif paradigm in ("ind", "ic", "mappo"):
+        name = "sal_{}_ep{}_a0_{}_a1_{}_{}.csv".format(
+            paradigm,
+            int(episode_seed),
+            int(agent0_seed),
+            int(agent1_seed),
+            ts,
+        )
     else:
         name = "sal_{}_ep{}_a0_{}_a1_{}_{}.csv".format(
             paradigm,
@@ -214,6 +222,18 @@ def open_ic_log(log_dir, episode_seed, agent0_seed, agent1_seed) -> StepCsvLog:
         agent1_seed=agent1_seed,
     )
     return StepCsvLog(path, IC_FIELDS)
+
+
+def open_mappo_log(log_dir, episode_seed, agent0_seed, agent1_seed) -> StepCsvLog:
+    """MAPPO eval logs (IND-compatible columns; paradigm='mappo')."""
+    path = make_log_path(
+        log_dir,
+        "mappo",
+        episode_seed=episode_seed,
+        agent0_seed=agent0_seed,
+        agent1_seed=agent1_seed,
+    )
+    return StepCsvLog(path, IND_FIELDS)
 
 
 def open_fc_log(log_dir, episode_seed, brain_seed) -> StepCsvLog:
