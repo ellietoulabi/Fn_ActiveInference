@@ -13,8 +13,7 @@ Includes:
 import numpy as np
 from . import model_init
 
-# A_NOISE_LEVEL = 0.001
-A_NOISE_LEVEL = 0.001
+A_NOISE_LEVEL = 0.01
 
 
 def _noisy_categorical(idx: int, n: int, noise_level: float = A_NOISE_LEVEL) -> np.ndarray:

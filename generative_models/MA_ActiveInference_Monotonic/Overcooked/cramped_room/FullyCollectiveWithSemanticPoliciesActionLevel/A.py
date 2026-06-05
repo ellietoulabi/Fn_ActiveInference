@@ -17,13 +17,8 @@ Includes:
 import numpy as np
 from . import model_init
 
-# Noise level matched to the Independent paradigm — the FC brain needs enough
-# obs-likelihood spread that uniform position priors don't collapse to a
-# perfect Dirac after `infer_states`, so the IG computation inside policy
-# evaluation has factors that exceed its "dynamic factor" entropy threshold
-# (~0.01).  With FC's lower 0.001 noise the post-inference entropy was ~0 and
-# every joint pair received identical EFE → uniform q_pi over 400 pairs.
-A_NOISE_LEVEL = 0.005
+# Observation noise matched across SAL paradigms (IND / IC / FC).
+A_NOISE_LEVEL = 0.01
 
 
 def _noisy_categorical(idx: int, n: int, noise_level: float = A_NOISE_LEVEL) -> np.ndarray:
