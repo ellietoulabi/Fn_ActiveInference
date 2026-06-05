@@ -4,7 +4,7 @@ Prior beliefs (D) for Independent paradigm — Cramped Room.
 
 Includes:
 - self position / orientation / held
-- other agent position / held
+- other agent position / orientation / held
 - pot state
 - checkbox factors
 - binary counter occupancy factors (all start EMPTY)
@@ -20,6 +20,7 @@ def build_D(
     self_start_pos: int | None = None,
     self_start_ori: int = 0,
     other_start_pos: int | None = None,
+    other_start_ori: int = 0,
 ) -> dict[str, np.ndarray]:
     """
     Build prior belief dict.
@@ -59,6 +60,14 @@ def build_D(
     D["other_held"] = np.zeros(model_init.N_HELD_TYPES, dtype=float)
     D["other_held"][model_init.HELD_NONE] = 1.0
 
+    # other_orientation — uniform when partner position unknown, else point-mass at known ori
+    if other_start_pos is not None and 0 <= int(other_start_pos) < model_init.N_WALKABLE:
+        other_ori_idx = int(other_start_ori) if 0 <= int(other_start_ori) < model_init.N_DIRECTIONS else 0
+        D["other_orientation"] = np.zeros(model_init.N_DIRECTIONS, dtype=float)
+        D["other_orientation"][other_ori_idx] = 1.0
+    else:
+        D["other_orientation"] = np.ones(model_init.N_DIRECTIONS, dtype=float) / model_init.N_DIRECTIONS
+
     # pot_state
     D["pot_state"] = np.zeros(model_init.N_POT_STATES, dtype=float)
     D["pot_state"][model_init.POT_0] = 1.0
@@ -91,4 +100,5 @@ def D_fn(config: dict | None = None) -> dict[str, np.ndarray]:
         self_start_pos=config.get("self_start_pos"),
         self_start_ori=config.get("self_start_ori", 0),
         other_start_pos=config.get("other_start_pos"),
+        other_start_ori=config.get("other_start_ori", 0),
     )

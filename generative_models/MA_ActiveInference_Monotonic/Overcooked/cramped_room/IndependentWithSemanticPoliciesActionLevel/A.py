@@ -4,7 +4,7 @@ Observation likelihoods p(o | state) model (A) for Independent paradigm — Cram
 
 Includes:
 - self position / orientation / held observations
-- other agent position / held observations
+- other agent position / orientation / held observations
 - pot state observation
 - soup delivered observation (event pulse: delivered this step)
 - counter occupancy observations for modeled counters
@@ -44,6 +44,11 @@ def A_self_held_obs(self_held: int) -> np.ndarray:
 def A_other_pos_obs(other_pos: int) -> np.ndarray:
     n = len(model_init.observations["other_pos_obs"])
     return _noisy_categorical(int(other_pos), n, A_NOISE_LEVEL)
+
+
+def A_other_orientation_obs(other_orientation: int) -> np.ndarray:
+    n = len(model_init.observations["other_orientation_obs"])
+    return _noisy_categorical(int(other_orientation), n, A_NOISE_LEVEL)
 
 
 def A_other_held_obs(other_held: int) -> np.ndarray:
@@ -88,6 +93,7 @@ def A_fn(state_indices: dict) -> dict[str, np.ndarray]:
     obs["self_held_obs"] = A_self_held_obs(state_indices["self_held"])
 
     obs["other_pos_obs"] = A_other_pos_obs(state_indices["other_pos"])
+    obs["other_orientation_obs"] = A_other_orientation_obs(state_indices["other_orientation"])
     obs["other_held_obs"] = A_other_held_obs(state_indices["other_held"])
     obs["pot_state_obs"] = A_pot_state_obs(pot_state)
 

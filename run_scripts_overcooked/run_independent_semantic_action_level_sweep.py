@@ -14,9 +14,11 @@ from pathlib import Path
 
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(PROJECT_ROOT))  # make sibling modules importable
-overcooked_src = PROJECT_ROOT / "environments" / "overcooked_ai" / "src"
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(SCRIPT_DIR))  # sibling modules (sal_step_csv_log, etc.)
+overcooked_src = REPO_ROOT / "environments" / "overcooked_ai" / "src"
 if overcooked_src.exists():
     sys.path.insert(0, str(overcooked_src))
 
@@ -207,11 +209,12 @@ def _run_sweep(
                 for line in ind._agent_summary_lines(state, model_init_agent, max_agents=2):
                     print(line, flush=True)
                 print(
-                    "    Obs A0: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
+                    "    Obs A0: self_pos={} self_ori={} self_held={} other_pos={} other_ori={} other_held={} pot={} delivered={}".format(
                         obs_0["self_pos_obs"],
                         obs_0["self_orientation_obs"],
                         obs_0["self_held_obs"],
                         obs_0["other_pos_obs"],
+                        obs_0["other_orientation_obs"],
                         obs_0["other_held_obs"],
                         obs_0["pot_state_obs"],
                         obs_0["soup_delivered_obs"],
@@ -219,11 +222,12 @@ def _run_sweep(
                     flush=True,
                 )
                 print(
-                    "    Obs A1: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
+                    "    Obs A1: self_pos={} self_ori={} self_held={} other_pos={} other_ori={} other_held={} pot={} delivered={}".format(
                         obs_1["self_pos_obs"],
                         obs_1["self_orientation_obs"],
                         obs_1["self_held_obs"],
                         obs_1["other_pos_obs"],
+                        obs_1["other_orientation_obs"],
                         obs_1["other_held_obs"],
                         obs_1["pot_state_obs"],
                         obs_1["soup_delivered_obs"],

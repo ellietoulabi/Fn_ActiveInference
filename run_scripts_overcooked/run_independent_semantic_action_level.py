@@ -4,10 +4,12 @@ from pathlib import Path
 
 import numpy as np
 
-# Project root
-PROJECT_ROOT = Path(__file__).resolve().parent
+# Repo root (parent of run_scripts_overcooked/)
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+sys.path.insert(0, str(REPO_ROOT))
 
-overcooked_src = PROJECT_ROOT / "environments" / "overcooked_ai" / "src"
+overcooked_src = REPO_ROOT / "environments" / "overcooked_ai" / "src"
 if overcooked_src.exists():
     sys.path.insert(0, str(overcooked_src))
 
@@ -90,7 +92,7 @@ def _belief_table(np_mod, qs: dict, model_init, title: str) -> str:
     def row(name: str, value_str: str, pm: float, H: float):
         lines.append("      {:<19}  {:<18}  {:>7}  {:>5.2f}".format(name, value_str, _fmt_prob(pm), H))
 
-    for f in ("self_pos", "self_orientation", "self_held", "other_pos", "other_held"):
+    for f in ("self_pos", "self_orientation", "self_held", "other_pos", "other_orientation", "other_held"):
         p = qs.get(f, None)
         if p is None:
             continue
@@ -386,7 +388,7 @@ def build_policy_state_for_agent(state, agent_idx: int, env_utils, prev_reward_i
         self_orient=ori_name[int(obs_self["self_orientation_obs"])],
         self_held=held_name[int(obs_self["self_held_obs"])],
         other_pos=int(obs_other["self_pos_obs"]),
-        other_orient="NORTH",
+        other_orient=ori_name[int(obs_other["self_orientation_obs"])],
         other_held=held_name[int(obs_other["self_held_obs"])],
         pot_state=pot_state,
         pot_onions=int(pot_onions),
@@ -544,22 +546,24 @@ def run_agent_vs_env_scenarios():
                 for line in _agent_summary_lines(state, model_init_agent, max_agents=2):
                     print(line)
                 print(
-                    "    Obs A0: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
+                    "    Obs A0: self_pos={} self_ori={} self_held={} other_pos={} other_ori={} other_held={} pot={} delivered={}".format(
                         obs_0["self_pos_obs"],
                         obs_0["self_orientation_obs"],
                         obs_0["self_held_obs"],
                         obs_0["other_pos_obs"],
+                        obs_0["other_orientation_obs"],
                         obs_0["other_held_obs"],
                         obs_0["pot_state_obs"],
                         obs_0["soup_delivered_obs"],
                     )
                 )
                 print(
-                    "    Obs A1: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
+                    "    Obs A1: self_pos={} self_ori={} self_held={} other_pos={} other_ori={} other_held={} pot={} delivered={}".format(
                         obs_1["self_pos_obs"],
                         obs_1["self_orientation_obs"],
                         obs_1["self_held_obs"],
                         obs_1["other_pos_obs"],
+                        obs_1["other_orientation_obs"],
                         obs_1["other_held_obs"],
                         obs_1["pot_state_obs"],
                         obs_1["soup_delivered_obs"],
