@@ -256,13 +256,8 @@ def _run_fc(
                 brain_seed=int(brain_seed or 0),
             )
 
-        # Reset with UNIFORM position priors (no config).  This matches the
-        # Independent runner's pattern and is required for the IG component of
-        # EFE to differentiate joint pairs: starting from a Dirac D collapses
-        # `self_pos` / `other_pos` entropy to ~0 after `infer_states`, which
-        # falls below the IG "dynamic factor" threshold and makes every joint
-        # pair receive identical EFE → uniform q_pi over 400 policies.
-        brain.reset()
+        config = env_utils.get_D_config_from_state(state, 0)
+        brain.reset(config=config)
 
         prev_reward_info = {"sparse_reward_by_agent": [0, 0]}
         total_reward_0 = 0.0

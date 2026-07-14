@@ -7,6 +7,10 @@ Usage:
     python utils/plotting/plot_sal_triple_comparison.py \\
         --fc logs/sal_fc --ind logs/sal_ind --mappo logs/sal_mappo \\
         -o results/Overcooked/compare_fc_ind_mappo
+
+    python utils/plotting/plot_sal_triple_comparison.py \\
+        --fc logs/sal_fc --ind logs/sal_ind --ic logs/sal_ic --mappo logs/sal_mappo \\
+        -o results/Overcooked/compare_fc_ind_ic_mappo --smooth-window 50
 """
 
 from __future__ import annotations
@@ -29,8 +33,9 @@ from plot_sal_pair_comparison import (  # noqa: E402
     cumulative_soup_curves,
     runs_dataframe,
     savefig,
+    smooth_curve,
 )
-from plot_sal_semantic_action_level import load_seed_csvs  # noqa: E402
+from plot_sal_semantic_action_level import W_CURVE, load_seed_csvs  # noqa: E402
 
 DPI = 150
 COLORS = {
@@ -79,6 +84,7 @@ def plot_cumulative_soups(
     curves: list[tuple[np.ndarray, np.ndarray, str]],
     path: Path,
     labels: tuple[str, ...],
+    smoothing_window: int = 1,
 ) -> None:
     fig, ax = plt.subplots(figsize=(10, 6))
     for mean, err, label in curves:
@@ -88,7 +94,10 @@ def plot_cumulative_soups(
             ax.fill_between(steps, mean - err, mean + err, color=color, alpha=0.2)
     ax.set_xlabel("Timestep within episode")
     ax.set_ylabel("Cumulative soups delivered (mean across matched runs)")
-    ax.set_title(f"{' vs '.join(labels)}: cumulative deliveries")
+    title = f"{' vs '.join(labels)}: cumulative deliveries"
+    if smoothing_window > 1:
+        title += f" (smoothed, window={smoothing_window})"
+    ax.set_title(title)
     ax.legend()
     ax.grid(True, alpha=0.3)
     savefig(fig, path)
@@ -168,6 +177,7 @@ def run_comparison(
     log_dirs: dict[str, Path],
     output_dir: Path,
     labels: tuple[str, ...],
+    smoothing_window: int = W_CURVE,
 ) -> None:
     output_dir = Path(output_dir)
     (output_dir / "tables").mkdir(parents=True, exist_ok=True)
@@ -214,11 +224,21 @@ def run_comparison(
             steps = steps_ref[:n]
             mat = mat[:, :n]
         mean, err = aggregate_curve(mat)
+        mean, err = smooth_curve(mean, err, smoothing_window)
         curves.append((mean, err, label))
 
     plots = output_dir / "plots"
     print(f"\nSaving plots → {plots}")
-    plot_cumulative_soups(steps_ref, curves, plots / "compare_cumulative_soups.png", labels)
+    if smoothing_window > 1:
+        print(f"  Cumulative curve smoothing: rolling window = {smoothing_window}")
+    plot_steps = steps_ref[: len(curves[0][0])]
+    plot_cumulative_soups(
+        plot_steps,
+        curves,
+        plots / "compare_cumulative_soups.png",
+        labels,
+        smoothing_window=smoothing_window,
+    )
     plot_mean_soups_bar(runs_by_label, labels, plots / "compare_mean_soups.png")
     plot_soups_by_seed(wide, labels, plots / "compare_soups_by_seed.png")
     plot_paired_lines(wide, labels, plots / "compare_paired_soups.png")
@@ -237,6 +257,12 @@ def main() -> None:
     parser.add_argument("--label-ic", default="IC")
     parser.add_argument("--label-mappo", default="MAPPO")
     parser.add_argument("-o", "--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--smooth-window",
+        type=int,
+        default=W_CURVE,
+        help=f"Rolling window for compare_cumulative_soups (default: {W_CURVE}; use 1 for raw)",
+    )
     args = parser.parse_args()
 
     if args.ic is not None:
@@ -255,7 +281,7 @@ def main() -> None:
             args.label_mappo: args.mappo,
         }
 
-    run_comparison(log_dirs, args.output_dir, labels=labels)
+    run_comparison(log_dirs, args.output_dir, labels=labels, smoothing_window=args.smooth_window)
     print(f"\nDone. Tables in {args.output_dir / 'tables'}, plots in {args.output_dir / 'plots'}")
 
 

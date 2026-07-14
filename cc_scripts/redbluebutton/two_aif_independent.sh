@@ -7,7 +7,7 @@
 #SBATCH --time=0-2:00
 
 # This script runs the Independent paradigm (SA model) for two AIF agents.
-# It mirrors the pattern used in cc_scripts/eight.sh.
+# It mirrors the pattern used in cc_scripts/redbluebutton/eight.sh.
 
 set -euo pipefail
 
@@ -37,14 +37,20 @@ echo "Activated virtualenv."
 
 echo "Installing dependencies..."
 cd ../project/Fn_ActiveInference/
-pip install --no-input -r requirements.txt
+# Exclude opencv-python: Compute Canada provides OpenCV via a module (pip package is a dummy that fails).
+# RedBlueButton two-agent AIF runs do not need OpenCV.
+grep -v 'opencv-python' requirements.txt > requirements_cc.txt
+pip install --no-input -r requirements_cc.txt
 echo "Dependencies installed."
 
 SEED_IDX=${SLURM_ARRAY_TASK_ID}
 echo "---- Starting seed index ${SEED_IDX} ----"
 
+# Reproducible runs: seed is passed via --seed; Python script uses it directly.
+export PYTHONHASHSEED=0
+
 # You can tweak episodes/configs below if desired
-python -u run_scripts/multi_agent/run_two_aif_agents_independent.py \
+python -u run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_independent.py \
   --seed ${SEED_IDX} \
   --episodes 200 \
   --episodes-per-config 25 \
@@ -62,11 +68,12 @@ if [ $EXIT_CODE -ne 0 ]; then
 fi
 
 # Copy output files to home directory
-DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs"
+DEST_BASE="${HOME}/projects/def-jrwright/toulabin/logs"
 mkdir -p "${DEST_BASE}"
 
 echo "Copying logs..."
-cp logs/two_aif_agents_seeds*_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
+cp logs/two_aif_agents_independent_seeds*_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
+cp logs/two_aif_agents_independent_seeds*_ep*_*_stats.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: stats JSON file not found"
 
 echo "Copy done"
 echo "---- Independent paradigm seed index ${SEED_IDX} complete ----"

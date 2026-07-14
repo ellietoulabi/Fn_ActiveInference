@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
-#SBATCH --job-name=aif_fullcoll
+#SBATCH --job-name=aif_indivcoll
 #SBATCH --array=0-4                   # seeds 0..4
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
 #SBATCH --time=0-2:00
 
-# Runs the FullyCollective paradigm (centralized joint model).
+# Runs the IndividuallyCollective paradigm (two agents, joint model each).
 
 set -euo pipefail
 
@@ -36,15 +36,21 @@ echo "Activated virtualenv."
 
 echo "Installing dependencies..."
 cd ../project/Fn_ActiveInference/
-pip install --no-input -r requirements.txt
+# Exclude opencv-python: Compute Canada provides OpenCV via a module (pip package is a dummy that fails).
+# RedBlueButton two-agent AIF runs do not need OpenCV.
+grep -v 'opencv-python' requirements.txt > requirements_cc.txt
+pip install --no-input -r requirements_cc.txt
 echo "Dependencies installed."
 
 SEED_IDX=${SLURM_ARRAY_TASK_ID}
 echo "---- Starting seed index ${SEED_IDX} ----"
 
-python -u run_scripts/multi_agent/run_two_aif_agents_fully_collective.py \
+# Reproducible runs: seed is passed via --seed; Python script uses it directly.
+export PYTHONHASHSEED=0
+
+python -u run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_individually_collective.py \
   --seed ${SEED_IDX} \
-  --episodes 200 \
+  --episodes 2000 \
   --episodes-per-config 25 \
   --max-steps 50 \
   --verbose \
@@ -55,16 +61,17 @@ python -u run_scripts/multi_agent/run_two_aif_agents_fully_collective.py \
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -ne 0 ]; then
-    echo "run_two_aif_agents_fully_collective.py failed for seed index $SEED_IDX with exit code $EXIT_CODE"
+    echo "run_two_aif_agents_individually_collective.py failed for seed index $SEED_IDX with exit code $EXIT_CODE"
     exit $EXIT_CODE
 fi
 
-DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs"
+DEST_BASE="${HOME}/projects/def-jrwright/toulabin/logs"
 mkdir -p "${DEST_BASE}"
 
 echo "Copying logs..."
-cp logs/two_aif_agents_fully_collective_seeds*_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
+cp logs/two_aif_agents_individually_collective_seeds*_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
+cp logs/two_aif_agents_individually_collective_seeds*_ep*_*_stats.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: stats JSON file not found"
 
 echo "Copy done"
-echo "---- FullyCollective paradigm seed index ${SEED_IDX} complete ----"
+echo "---- IndividuallyCollective paradigm seed index ${SEED_IDX} complete ----"
 

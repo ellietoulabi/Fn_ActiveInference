@@ -13,6 +13,10 @@ Usage:
 
     python utils/plotting/plot_sal_pair_comparison.py \\
         logs/sal_fc logs/sal_ind -o results/Overcooked/compare_fc_ind
+
+    python utils/plotting/plot_sal_pair_comparison.py \\
+        --a logs/sal_fc --b logs/sal_ind -o results/Overcooked/compare_fc_ind \\
+        --smooth-window 50
 """
 
 from __future__ import annotations
@@ -31,8 +35,10 @@ import pandas as pd
 
 from plot_sal_semantic_action_level import (  # noqa: E402
     PARADIGM_TITLES,
+    W_CURVE,
     detect_paradigm,
     load_seed_csvs,
+    rolling_mean,
 )
 
 DELIVERY_REWARD = 20.0
@@ -108,6 +114,19 @@ def aggregate_curve(mat: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return mean, err
 
 
+def smooth_curve(
+    mean: np.ndarray,
+    err: np.ndarray,
+    smoothing_window: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Rolling-mean smooth of mean curve and error band (matches individual SAL plots)."""
+    if smoothing_window <= 1:
+        return mean, err
+    return rolling_mean(np.asarray(mean, dtype=float), smoothing_window), rolling_mean(
+        np.asarray(err, dtype=float), smoothing_window
+    )
+
+
 def paired_table(runs_a: pd.DataFrame, runs_b: pd.DataFrame) -> pd.DataFrame:
     a = runs_a.set_index("episode_seed")
     b = runs_b.set_index("episode_seed")
@@ -144,6 +163,7 @@ def plot_cumulative_soups(
     label_a: str,
     label_b: str,
     path: Path,
+    smoothing_window: int = 1,
 ) -> None:
     fig, ax = plt.subplots(figsize=(10, 6))
     for mean, err, label, color in (
@@ -155,7 +175,10 @@ def plot_cumulative_soups(
             ax.fill_between(steps, mean - err, mean + err, color=color, alpha=0.2)
     ax.set_xlabel("Timestep within episode")
     ax.set_ylabel("Cumulative soups delivered (mean across matched runs)")
-    ax.set_title("Paired comparison: cumulative deliveries")
+    title = "Paired comparison: cumulative deliveries"
+    if smoothing_window > 1:
+        title += f" (smoothed, window={smoothing_window})"
+    ax.set_title(title)
     ax.legend()
     ax.grid(True, alpha=0.3)
     savefig(fig, path)
@@ -238,6 +261,7 @@ def run_comparison(
     label_b: str | None = None,
     paradigm_a: str | None = None,
     paradigm_b: str | None = None,
+    smoothing_window: int = W_CURVE,
 ) -> None:
     output_dir = Path(output_dir)
     (output_dir / "tables").mkdir(parents=True, exist_ok=True)
@@ -260,16 +284,17 @@ def run_comparison(
 
     steps_a, mat_a, _ = cumulative_soup_curves(dfs_a_m)
     steps_b, mat_b, _ = cumulative_soup_curves(dfs_b_m)
+    steps = steps_a
     if len(steps_a) != len(steps_b) or not np.array_equal(steps_a, steps_b):
         print("WARNING: step grids differ between conditions; using shared min–max intersection")
-        steps = np.arange(max(steps_a[0], steps_b[0]), min(steps_a[-1], steps_b[-1]) + 1)
-        # reindex mats — keep simple: use shorter logic
         steps = steps_a if len(steps_a) <= len(steps_b) else steps_b
         mat_a = mat_a[:, : len(steps)]
         mat_b = mat_b[:, : len(steps)]
 
     mean_a, err_a = aggregate_curve(mat_a)
     mean_b, err_b = aggregate_curve(mat_b)
+    mean_a, err_a = smooth_curve(mean_a, err_a, smoothing_window)
+    mean_b, err_b = smooth_curve(mean_b, err_b, smoothing_window)
 
     runs_a_m = runs_a[runs_a["episode_seed"].isin(match_eps)].sort_values("episode_seed")
     runs_b_m = runs_b[runs_b["episode_seed"].isin(match_eps)].sort_values("episode_seed")
@@ -281,9 +306,12 @@ def run_comparison(
     runs_b_m.to_csv(output_dir / "tables" / f"runs_{par_b}.csv", index=False)
 
     print(f"\nSaving plots → {output_dir / 'plots'}")
+    if smoothing_window > 1:
+        print(f"  Cumulative curve smoothing: rolling window = {smoothing_window}")
     plot_cumulative_soups(
-        steps_a, mean_a, err_a, mean_b, err_b, label_a, label_b,
+        steps, mean_a, err_a, mean_b, err_b, label_a, label_b,
         output_dir / "plots" / "compare_cumulative_soups.png",
+        smoothing_window=smoothing_window,
     )
     plot_soups_bar(runs_a_m, runs_b_m, label_a, label_b, output_dir / "plots" / "compare_mean_soups.png")
     plot_paired_dots(paired, label_a, label_b, output_dir / "plots" / "compare_paired_soups.png")
@@ -301,6 +329,12 @@ def main() -> None:
     parser.add_argument("--paradigm-a", choices=["fc", "ind", "ic", "mappo"], default=None)
     parser.add_argument("--paradigm-b", choices=["fc", "ind", "ic", "mappo"], default=None)
     parser.add_argument("-o", "--output-dir", type=Path, required=True, help="Output directory")
+    parser.add_argument(
+        "--smooth-window",
+        type=int,
+        default=W_CURVE,
+        help=f"Rolling window for compare_cumulative_soups (default: {W_CURVE}; use 1 for raw)",
+    )
     args = parser.parse_args()
 
     logs_a = args.logs_a_flag or args.logs_a
@@ -316,6 +350,7 @@ def main() -> None:
         label_b=args.label_b,
         paradigm_a=args.paradigm_a,
         paradigm_b=args.paradigm_b,
+        smoothing_window=args.smooth_window,
     )
     print(f"\nDone. Tables in {args.output_dir / 'tables'}, plots in {args.output_dir / 'plots'}")
 

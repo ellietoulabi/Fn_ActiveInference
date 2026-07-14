@@ -1,24 +1,24 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
-#SBATCH --job-name=aif_ic_sal
+#SBATCH --job-name=aif_fc_sal
 #SBATCH --array=0-9                   # 10 seeds (one episode per task)
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=8G
 #SBATCH --time=3-00:00
-#SBATCH --output=ic_sal_%A_%a.out
+#SBATCH --output=fc_sal_%A_%a.out
 
-# IndividuallyCollective paradigm, semantic-action level, one seed per array task.
-# IC is the most expensive paradigm (400 joint policies x 2 agents per step),
-# hence the larger --time budget. Per-step CSV + JSONL (no --log-steps).
+# FullyCollective paradigm, semantic-action level, one seed per array task.
+# One IC brain controls both agents; the brain plans over 400 joint primitive
+# policies. Per-step CSV + JSONL (no --log-steps).
 #
 # Override episode length / precision at submit time, e.g.:
-#   MAX_STEPS=500 sbatch cc_scripts/ic_semantic_action_level.sh
+#   MAX_STEPS=500 sbatch cc_scripts/overcooked/fc_semantic_action_level.sh
 set -uo pipefail                      # no -e: we still copy logs on failure
 
 MAX_STEPS=${MAX_STEPS:-1500}
 GAMMA=${GAMMA:-4.0}
 ALPHA=${ALPHA:-8.0}
-DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_ic"
+DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_fc"
 
 module purge
 module load python/3.11.4 scipy-stack
@@ -42,36 +42,34 @@ python3.11 -m venv --system-site-packages .venv
 source .venv/bin/activate
 echo "Activated virtualenv."
 
-echo "Installing dependencies (cc_scripts/requirements-cc-sal.txt; not full requirements.txt)..."
+echo "Installing dependencies (cc_scripts/overcooked/requirements-cc-sal.txt; not full requirements.txt)..."
 cd ../project/Fn_ActiveInference/
-if ! pip install --no-input -r cc_scripts/requirements-cc-sal.txt; then
+if ! pip install --no-input -r cc_scripts/overcooked/requirements-cc-sal.txt; then
     echo "ERROR: pip install failed. Do not use requirements.txt on Alliance (opencv-python dummy wheel)."
     exit 1
 fi
 echo "Dependencies installed."
 
-# shellcheck source=_sal_common.sh
-source cc_scripts/_sal_common.sh
+# shellcheck source=overcooked/_sal_common.sh
+source cc_scripts/overcooked/_sal_common.sh
 sal_ensure_venv_runtime_deps || exit 1
 sal_verify_imports || exit 1
-sal_preflight ic || exit 1
+sal_preflight fc || exit 1
 
 SEED_IDX=${SLURM_ARRAY_TASK_ID}
 EP_SEED=$((76 + SEED_IDX))
-A0_SEED=$((1000 + SEED_IDX))
-A1_SEED=$((2000 + SEED_IDX))
-echo "---- ic seed_idx=${SEED_IDX} ep=${EP_SEED} a0=${A0_SEED} a1=${A1_SEED} max_steps=${MAX_STEPS} ----"
+AGENT_SEED=$((1000 + SEED_IDX))
+echo "---- fc seed_idx=${SEED_IDX} ep=${EP_SEED} brain=${AGENT_SEED} max_steps=${MAX_STEPS} ----"
 
 mkdir -p "$DEST_BASE"
 CSV_DIR="$SLURM_TMPDIR/logs_sal"
 mkdir -p "$CSV_DIR"
-LOG_FILE="$SLURM_TMPDIR/ic_sal_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
+LOG_FILE="$SLURM_TMPDIR/fc_sal_ep${EP_SEED}_brain${AGENT_SEED}.log"
 
-python -u run_scripts_overcooked/run_individually_collective_policy_semantic_action_level_seed_sweep.py \
+python -u run_scripts_overcooked/run_fully_collective_semantic_action_level.py \
   --n-runs 1 \
   --episode-seeds ${EP_SEED} \
-  --agent0-seeds ${A0_SEED} \
-  --agent1-seeds ${A1_SEED} \
+  --agent-seeds ${AGENT_SEED} \
   --gamma ${GAMMA} --alpha ${ALPHA} \
   --max-steps ${MAX_STEPS} \
   --log-csv --log-jsonl --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
@@ -80,8 +78,8 @@ EXIT_CODE=$?
 sal_copy_artifacts "$DEST_BASE" "$LOG_FILE" "$CSV_DIR"
 
 if [ $EXIT_CODE -ne 0 ]; then
-    echo "ic sweep failed (seed_idx=${SEED_IDX}) exit=${EXIT_CODE}"
+    echo "fc run failed (seed_idx=${SEED_IDX}) exit=${EXIT_CODE}"
     sal_report_failure "$LOG_FILE"
     exit $EXIT_CODE
 fi
-echo "---- ic seed_idx=${SEED_IDX} complete ----"
+echo "---- fc seed_idx=${SEED_IDX} complete ----"

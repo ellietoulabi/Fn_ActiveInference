@@ -43,14 +43,20 @@ echo "Activated virtualenv."
 
 echo "Installing dependencies..."
 cd ../project/Fn_ActiveInference/
-pip install -r requirements.txt
+# Exclude opencv-python: Compute Canada provides OpenCV via a module (pip package is a dummy that fails).
+# compare_eight_agents does not need OpenCV (RedBlueButton env only).
+grep -v 'opencv-python' requirements.txt > requirements_cc.txt
+pip install -r requirements_cc.txt
 echo "Dependencies installed"
 
 SEED_IDX=$SLURM_ARRAY_TASK_ID
 echo "---- Starting seed index ${SEED_IDX} ----"
 
+# Reproducible runs: seed is passed via --seed_idx; Python script uses BASE_SEED + seed_idx.
+export PYTHONHASHSEED=0
+
 # Run the comparison script for this seed
-python run_scripts/compare_agents/compare_eight_agents.py --seed_idx ${SEED_IDX} --num_seeds 30
+python run_scripts_red_blue_doors/compare_agents/compare_eight_agents.py --seed_idx ${SEED_IDX} --num_seeds 30
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -ne 0 ]; then
@@ -59,7 +65,7 @@ if [ $EXIT_CODE -ne 0 ]; then
 fi
 
 # Copy output files to home directory
-DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs"
+DEST_BASE="${HOME}/projects/def-jrwright/toulabin/logs"
 mkdir -p "${DEST_BASE}"
 
 echo "Copying logs and Q-tables to home directory..."

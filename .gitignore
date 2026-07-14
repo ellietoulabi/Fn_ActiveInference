@@ -3,11 +3,14 @@ __pycache__/
 .env/
 
 # Logs and data files
+oldlogs
 logs
 logs/
 *.log
 *.csv
 old_logs
+mainlogs
+main_logs/
 
 # Images and plots
 # *.png
