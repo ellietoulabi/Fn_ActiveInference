@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
-#SBATCH --job-name=aif_indivcoll
-#SBATCH --array=0-4                   # seeds 0..4
-#SBATCH --cpus-per-task=4
+#SBATCH --job-name=ma_redblue_aif_ic
+#SBATCH --array=0-14                  # seeds 0..14
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=8G
-#SBATCH --time=0-2:00
+#SBATCH --time=0-10:00
 
 # Runs the IndividuallyCollective paradigm (two agents, joint model each).
 
@@ -50,9 +50,9 @@ export PYTHONHASHSEED=0
 
 python -u run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_individually_collective.py \
   --seed ${SEED_IDX} \
-  --episodes 2000 \
+  --episodes 200 \
   --episodes-per-config 25 \
-  --max-steps 50 \
+  --max-steps 30 \
   --verbose \
   --episode-progress \
   --show-beliefs \

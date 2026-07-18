@@ -4,7 +4,7 @@
 #SBATCH --array=0-4                   # seeds 0..4
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --time=0-2:00
+#SBATCH --time=0-5:00
 
 # Runs the FullyCollective paradigm (centralized joint model).
 
@@ -52,7 +52,7 @@ python -u run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_fully_collec
   --seed ${SEED_IDX} \
   --episodes 200 \
   --episodes-per-config 25 \
-  --max-steps 50 \
+  --max-steps 30 \
   --verbose \
   --episode-progress \
   --show-beliefs \

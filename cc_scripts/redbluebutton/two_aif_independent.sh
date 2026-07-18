@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
-#SBATCH --job-name=aif_indep
-#SBATCH --array=0-4                   # seeds 0..4
-#SBATCH --cpus-per-task=4
+#SBATCH --job-name=ma_redblue_aif_ind
+#SBATCH --array=0-14                   # seeds 0..4
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=8G
-#SBATCH --time=0-2:00
+#SBATCH --time=0-5:00
 
 # This script runs the Independent paradigm (SA model) for two AIF agents.
 # It mirrors the pattern used in cc_scripts/redbluebutton/eight.sh.
@@ -54,7 +54,7 @@ python -u run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_independent.
   --seed ${SEED_IDX} \
   --episodes 200 \
   --episodes-per-config 25 \
-  --max-steps 50 \
+  --max-steps 30 \
   --verbose \
   --episode-progress \
   --show-beliefs \

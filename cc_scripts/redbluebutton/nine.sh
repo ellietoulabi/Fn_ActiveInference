@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
-#SBATCH --job-name=nine_agents
-#SBATCH --array=0-4
+#SBATCH --job-name=sa_redblue_nine_agents
+#SBATCH --array=0-14
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --time=0-2:59
+#SBATCH --time=0-3:59
 
 module purge
 module load python/3.11.4  scipy-stack

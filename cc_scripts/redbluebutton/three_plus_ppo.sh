@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
 #SBATCH --job-name=three_plus_ppo
-#SBATCH --array=0-9              # seeds 0..4 as separate jobs
-#SBATCH --cpus-per-task=8
+#SBATCH --array=0-14              # seeds 0..14 as separate jobs
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=16G
-#SBATCH --time=0-8:59
+#SBATCH --time=0-12:59
 
 # Compare three AIF pairings + PPO on RedBlueButton
 # Settings: 5 seeds, 200 episodes/seed, map change every 25 episodes, max 30 steps.
@@ -41,6 +41,20 @@ cd ../project/Fn_ActiveInference/
 grep -v 'opencv-python' requirements.txt > requirements_cc.txt
 pip install --no-input -r requirements_cc.txt
 echo "Dependencies installed."
+
+echo "Installing ray[rllib] (needed for PPO baseline; not in requirements.txt per its own comment)..."
+if ! pip install --no-input "ray[rllib]>=2.0.0"; then
+    echo "ERROR: pip install ray[rllib] failed."
+    exit 1
+fi
+echo "ray[rllib] installed."
+
+python -c "import ray; from ray.rllib.algorithms.ppo import PPOConfig; import torch; print('ray/rllib/torch import OK')" || {
+    echo "ERROR: ray/rllib/torch import check failed after install."
+    exit 1
+}
+
+echo "ray/rllib/torch import check OK."
 
 SEED_IDX=${SLURM_ARRAY_TASK_ID}
 echo "---- Starting compare_three_pairings_plus_ppo for seed index ${SEED_IDX} ----"
