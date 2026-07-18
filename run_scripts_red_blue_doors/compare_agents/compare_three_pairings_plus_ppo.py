@@ -1,13 +1,23 @@
 """
 Compare the three two-agent AIF pairings on RedBlueButton plus PPO under the same settings.
 
-Runs Fully Collective, Individually Collective, Independent, and PPO paradigms with
+Runs Fully Collective, Individually Collective, Independent, and two PPO conditions with
 identical seeds, episodes, episodes-per-config, and max-steps, then prints a
 comparison table and optionally saves CSV/plots.
 
 Fair comparison: all AIF scripts use policy_len=2, gamma=2.0, alpha=1.0, num_iter=16,
 same env (TwoAgentRedBlueButton 3x3), and same config generation. PPO sees the same
 state as the Fully Collective AIF agent (env_obs_to_model_obs flattened).
+
+The two PPO conditions (see run_two_ppo_agents.py --mode) represent different training
+budgets, since a naive single "PPO" row is not directly comparable to the AIF paradigms'
+episode counts (AIF's episodes are its *entire* experience; PPO would otherwise get a
+much larger, hidden, offline pretraining budget on top of the reported episode count):
+  - "PPO (pretrained)": generous offline training on domain-randomized maps, then frozen-
+    policy evaluation (same episodes/config schedule as the AIF paradigms).
+  - "PPO (online)": training env-steps capped to roughly match the AIF paradigms' total
+    experience budget (episodes * max-steps), trained on the same map schedule used for
+    evaluation, as a budget-matched approximation of online learning.
 """
 
 import sys
@@ -22,11 +32,19 @@ project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 MULTI_AGENT_DIR = project_root / "run_scripts_red_blue_doors" / "multi_agent"
+PPO_SCRIPT = MULTI_AGENT_DIR / "run_two_ppo_agents.py"
 SCRIPTS = {
     "Fully Collective": MULTI_AGENT_DIR / "run_two_aif_agents_fully_collective.py",
     "Individually Collective": MULTI_AGENT_DIR / "run_two_aif_agents_individually_collective.py",
     "Independent": MULTI_AGENT_DIR / "run_two_aif_agents_independent.py",
-    "PPO": MULTI_AGENT_DIR / "run_two_ppo_agents.py",
+    "PPO (pretrained)": PPO_SCRIPT,
+    "PPO (online)": PPO_SCRIPT,
+}
+# Extra CLI args appended for paradigms that need them beyond the shared seeds/episodes/
+# episodes-per-config/max-steps/stats-output flags (see run_two_ppo_agents.py --mode).
+EXTRA_ARGS = {
+    "PPO (pretrained)": ["--mode", "pretrained"],
+    "PPO (online)": ["--mode", "online"],
 }
 
 
@@ -40,6 +58,7 @@ def run_paradigm(
     stats_output: Path,
     quiet: bool = True,
     episode_progress: bool = False,
+    extra_args: list[str] | None = None,
 ) -> dict:
     """Run one paradigm script and return parsed stats JSON."""
     cmd = [sys.executable, str(script_path)]
@@ -59,6 +78,8 @@ def run_paradigm(
     ]
     if episode_progress:
         cmd.append("--episode-progress")
+    if extra_args:
+        cmd += extra_args
     result = subprocess.run(
         cmd,
         cwd=str(project_root),
@@ -76,8 +97,8 @@ def run_paradigm(
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "Compare Fully Collective, Individually Collective, Independent, and PPO "
-            "two-agent pairings on RedBlueButton."
+            "Compare Fully Collective, Individually Collective, Independent, and two PPO "
+            "conditions (pretrained, online-budget) as two-agent pairings on RedBlueButton."
         )
     )
     parser.add_argument("--seeds", type=int, default=3, help="Number of seeds (default: 3)")
@@ -124,8 +145,14 @@ def main():
         output_dir = project_root / "logs" / f"compare_three_pairings_plus_ppo_{timestamp}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    def _slug(name: str) -> str:
+        raw = "".join(c if c.isalnum() else "_" for c in name.lower())
+        while "__" in raw:
+            raw = raw.replace("__", "_")
+        return raw.strip("_")
+
     stats_files = {
-        name: output_dir / f"stats_{name.lower().replace(' ', '_')}.json"
+        name: output_dir / f"stats_{_slug(name)}.json"
         for name in SCRIPTS
     }
 
@@ -160,6 +187,7 @@ def main():
                 stats_output=stats_files[name],
                 quiet=not args.verbose,
                 episode_progress=args.episode_progress,
+                extra_args=EXTRA_ARGS.get(name),
             )
         print("  Done.\n")
 
