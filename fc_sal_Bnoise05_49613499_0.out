@@ -1,0 +1,41 @@
+The following modules were not unloaded:
+  (Use "module --force purge" to unload all):
+
+  1) CCconfig        6)  ucx/1.14.1         11) flexiblas/3.3.1
+  2) gentoo/2023     7)  libfabric/1.18.0   12) aocl-blas/5.1
+  3) gcccore/.12.3   8)  pmix/4.2.4         13) aocl-lapack/5.1
+  4) gcc/12.3        9)  ucc/1.2.0          14) StdEnv/2023
+  5) hwloc/2.9.1     10) openmpi/4.1.5
+Working in SLURM_TMPDIR: /localscratch/toulabin.49614947.0
+Cloning repository...
+Repository cloned.
+Creating virtual environment (system-site-packages for scipy-stack)...
+Activated virtualenv.
+Installing dependencies (cc_scripts/overcooked/requirements-cc-sal.txt; not full requirements.txt)...
+Looking in links: /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo2023/x86-64-v4, /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo2023/x86-64-v3, /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo2023/generic, /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/generic
+Requirement already satisfied: numpy>=1.20.0 in /cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v4/Compiler/gcccore/scipy-stack/2026a/lib/python3.11/site-packages (from -r cc_scripts/overcooked/requirements-cc-sal.txt (line 12)) (2.4.2+computecanada)
+Requirement already satisfied: scipy>=1.7.0 in /cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v4/Compiler/gcccore/scipy-stack/2026a/lib/python3.11/site-packages (from -r cc_scripts/overcooked/requirements-cc-sal.txt (line 13)) (1.17.0+computecanada)
+Processing /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/generic/gymnasium-1.3.0+computecanada-py3-none-any.whl (from -r cc_scripts/overcooked/requirements-cc-sal.txt (line 14))
+Processing /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/generic/dill-0.4.1+computecanada-py3-none-any.whl (from -r cc_scripts/overcooked/requirements-cc-sal.txt (line 15))
+Collecting tqdm (from -r cc_scripts/overcooked/requirements-cc-sal.txt (line 16))
+  Obtaining dependency information for tqdm from https://files.pythonhosted.org/packages/fe/21/99a0cdaf54eb35e77623c41b5a2c9472ee4404bba687052791fe2aba6773/tqdm-4.69.0-py3-none-any.whl.metadata
+  Using cached tqdm-4.69.0-py3-none-any.whl.metadata (57 kB)
+Processing /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/generic/cloudpickle-3.1.2+computecanada-py3-none-any.whl (from gymnasium>=0.29.0->-r cc_scripts/overcooked/requirements-cc-sal.txt (line 14))
+Requirement already satisfied: typing-extensions>=4.3.0 in /cvmfs/soft.computecanada.ca/easybuild/software/2023/x86-64-v4/Compiler/gcccore/python/3.11.5/lib/python3.11/site-packages (from gymnasium>=0.29.0->-r cc_scripts/overcooked/requirements-cc-sal.txt (line 14)) (4.7.1)
+Processing /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/generic/farama_notifications-0.0.6+computecanada-py3-none-any.whl (from gymnasium>=0.29.0->-r cc_scripts/overcooked/requirements-cc-sal.txt (line 14))
+Using cached tqdm-4.69.0-py3-none-any.whl (676 kB)
+Installing collected packages: farama-notifications, tqdm, dill, cloudpickle, gymnasium
+Successfully installed cloudpickle-3.1.2+computecanada dill-0.4.1+computecanada farama-notifications-0.0.6+computecanada gymnasium-1.3.0+computecanada tqdm-4.69.0
+Dependencies installed.
+Ensuring numpy+scipy in venv (Compute Canada scipy-stack workaround)...
+Looking in links: /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo2023/x86-64-v4, /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo2023/x86-64-v3, /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo2023/generic, /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/generic
+Processing /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo2023/generic/numpy-2.4.2+computecanada-cp311-cp311-linux_x86_64.whl
+Processing /cvmfs/soft.computecanada.ca/custom/python/wheelhouse/gentoo2023/generic/scipy-1.17.0+computecanada-cp311-cp311-linux_x86_64.whl
+Installing collected packages: numpy, scipy
+Successfully installed numpy-2.4.2+computecanada scipy-1.17.0+computecanada
+numpy: /localscratch/toulabin.49614947.0/virtualenvs/.venv/lib/python3.11/site-packages/numpy/__init__.py
+scipy: /localscratch/toulabin.49614947.0/virtualenvs/.venv/lib/python3.11/site-packages/scipy/__init__.py
+import check OK (with PYTHONPATH)
+Preflight (fc): checking imports...
+Preflight OK: fc
+---- fc seed_idx=0 ep=76 brain=1000 max_steps=1500 ----
