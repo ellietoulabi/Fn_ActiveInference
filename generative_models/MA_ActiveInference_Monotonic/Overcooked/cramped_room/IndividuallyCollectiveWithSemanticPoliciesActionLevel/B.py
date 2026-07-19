@@ -731,7 +731,7 @@ def B_fn_primitive_step(
     qs: dict,
     self_action: int,
     other_action: int,
-    B_NOISE_LEVEL: float = 0.05,
+    B_NOISE_LEVEL: float = 0.0,
     **kwargs,
 ) -> dict:
     """
@@ -789,7 +789,7 @@ def B_fn_primitive_step(
     return new_qs
 
 
-def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.05, **kwargs) -> dict:
+def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
     """
     Main transition model p(s' | s, a) for all hidden state factors.
 
