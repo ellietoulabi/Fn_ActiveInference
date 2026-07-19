@@ -2,10 +2,10 @@
 #SBATCH --account=def-jrwright
 #SBATCH --job-name=aif_ic_sal_Bnoise05alpha4
 #SBATCH --array=0-9                   # 10 seeds (one episode per task)
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=8G
-#SBATCH --time=3-00:00
-#SBATCH --output=ic_sal_%A_%a.out
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=16G
+#SBATCH --time=4-00:00
+#SBATCH --output=ic_sal_Bnoise05alpha4_%A_%a.out
 
 # IndividuallyCollective paradigm, semantic-action level, one seed per array task.
 # IC is the most expensive paradigm (400 joint policies x 2 agents per step),
@@ -65,7 +65,7 @@ echo "---- ic seed_idx=${SEED_IDX} ep=${EP_SEED} a0=${A0_SEED} a1=${A1_SEED} max
 mkdir -p "$DEST_BASE"
 CSV_DIR="$SLURM_TMPDIR/logs_sal"
 mkdir -p "$CSV_DIR"
-LOG_FILE="$SLURM_TMPDIR/ic_sal_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
+LOG_FILE="$SLURM_TMPDIR/ic_sal__Bnoise05alpha4_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
 
 python -u run_scripts_overcooked/run_individually_collective_policy_semantic_action_level_seed_sweep.py \
   --n-runs 1 \
