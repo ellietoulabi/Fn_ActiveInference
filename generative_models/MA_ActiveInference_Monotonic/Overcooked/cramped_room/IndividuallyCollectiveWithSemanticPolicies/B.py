@@ -706,7 +706,7 @@ def B_checkboxes(
     }
 
 
-def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
+def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.05, **kwargs) -> dict:
     """
     Main transition model p(s' | s, a) for all hidden state factors.
 

@@ -739,7 +739,7 @@ def B_fn_primitive_step(
     qs: dict,
     self_action: int,
     other_action: int,
-    B_NOISE_LEVEL: float = 0.0,
+    B_NOISE_LEVEL: float = 0.05,
     **kwargs,
 ) -> dict:
     """
@@ -797,7 +797,7 @@ def B_fn_primitive_step(
     return new_qs
 
 
-def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
+def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.05, **kwargs) -> dict:
     """
     Main transition model p(s' | s, a) for all hidden state factors.
 
@@ -823,7 +823,7 @@ def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
     qs_macro = {k: np.array(v, dtype=float) for k, v in qs.items()}
 
     # Macro navigation stage:
-    # overwrite only for agents that actually receive a semantic macro.
+    # overwrite only for agen      ts that actually receive a semantic macro.
     if self_semantic is not None:
         self_pos, self_ori, self_terminal = _semantic_to_target_pose(self_semantic)
         qs_macro["self_pos"] = np.eye(model_init.N_WALKABLE, dtype=float)[self_pos]

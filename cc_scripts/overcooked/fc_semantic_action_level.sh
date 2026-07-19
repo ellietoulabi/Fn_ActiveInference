@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH --account=def-jrwright
-#SBATCH --job-name=aif_fc_sal
+#SBATCH --job-name=aif_fc_sal_Bnoise05
 #SBATCH --array=0-9                   # 10 seeds (one episode per task)
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=8G
-#SBATCH --time=3-00:00
-#SBATCH --output=fc_sal_%A_%a.out
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=16G
+#SBATCH --time=4-00:00
+#SBATCH --output=fc_sal_Bnoise05_%A_%a.out
 
 # FullyCollective paradigm, semantic-action level, one seed per array task.
 # One IC brain controls both agents; the brain plans over 400 joint primitive
@@ -64,7 +64,7 @@ echo "---- fc seed_idx=${SEED_IDX} ep=${EP_SEED} brain=${AGENT_SEED} max_steps=$
 mkdir -p "$DEST_BASE"
 CSV_DIR="$SLURM_TMPDIR/logs_sal"
 mkdir -p "$CSV_DIR"
-LOG_FILE="$SLURM_TMPDIR/fc_sal_ep${EP_SEED}_brain${AGENT_SEED}.log"
+LOG_FILE="$SLURM_TMPDIR/fc_sal__Bnoise05_ep${EP_SEED}_brain${AGENT_SEED}.log"
 
 python -u run_scripts_overcooked/run_fully_collective_semantic_action_level.py \
   --n-runs 1 \

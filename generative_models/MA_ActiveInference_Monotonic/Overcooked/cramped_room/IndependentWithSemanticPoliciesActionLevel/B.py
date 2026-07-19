@@ -440,7 +440,7 @@ def _try_primitive_policy_step(action) -> int | None:
 def B_fn_primitive_step(
     qs: dict,
     self_action: int,
-    B_NOISE_LEVEL: float = 0.0,
+    B_NOISE_LEVEL: float = 0.05,
     **kwargs,
 ) -> dict:
     """
@@ -503,7 +503,7 @@ def B_fn_primitive_step(
 # Main B_fn — semantic macro-action for ego only
 # ---------------------------------------------------------------------------
 
-def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
+def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.05, **kwargs) -> dict:
     """
     Transition model p(s' | s, a) for the independent agent.
 
