@@ -40,13 +40,29 @@ echo "Installing dependencies..."
 cd ../project/Fn_ActiveInference/
 # Exclude opencv-python for Compute Canada; not needed for RedBlueButton + PPO.
 grep -v 'opencv-python' requirements.txt > requirements_cc.txt
+# Keep pip build/cache off $HOME (quota) and away from tiny /tmp.
+export TMPDIR="${SLURM_TMPDIR}/pip_tmp"
+export PIP_CACHE_DIR="${SLURM_TMPDIR}/pip_cache"
+mkdir -p "${TMPDIR}" "${PIP_CACHE_DIR}"
+pip install --no-input --upgrade pip setuptools wheel
 pip install --no-input -r requirements_cc.txt
 echo "Dependencies installed."
 
 echo "Installing ray[rllib] (needed for PPO baseline; not in requirements.txt per its own comment)..."
-if ! pip install --no-input "ray[rllib]>=2.0.0"; then
-    echo "ERROR: pip install ray[rllib] failed."
-    exit 1
+# Pin a version with manylinux wheels for Python 3.11. Prefer binary wheels so
+# Alliance jobs don't try to compile dm-tree/lz4 from source (common failure mode).
+RAY_VER="2.40.0"
+if ! pip install --no-input --prefer-binary "ray[rllib]==${RAY_VER}"; then
+    echo "WARN: pip install ray[rllib]==${RAY_VER} failed; trying split install (ray + RLlib deps)..."
+    if ! pip install --no-input --prefer-binary "ray==${RAY_VER}"; then
+        echo "ERROR: pip install ray==${RAY_VER} failed."
+        exit 1
+    fi
+    if ! pip install --no-input --prefer-binary \
+        "dm-tree" "lz4" "tensorboardX" "gymnasium" "pyarrow" "pandas"; then
+        echo "ERROR: pip install of RLlib dependencies failed."
+        exit 1
+    fi
 fi
 echo "ray[rllib] installed."
 
