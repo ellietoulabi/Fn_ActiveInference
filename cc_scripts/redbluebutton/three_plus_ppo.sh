@@ -14,6 +14,10 @@ set -euo pipefail
 
 module purge
 module load python/3.11.4 scipy-stack
+# Ray/RLlib depends on pyarrow. On Alliance, `pip install pyarrow` hits a dummy wheel that
+# always fails; the real package comes from the Arrow module. Load it BEFORE creating /
+# activating the venv (see https://docs.alliancecan.ca/wiki/Arrow).
+module load gcc arrow
 
 if [ "${SLURM_TMPDIR:-}" = "" ]; then
     echo "Error: SLURM_TMPDIR not defined"
@@ -48,30 +52,34 @@ pip install --no-input --upgrade pip setuptools wheel
 pip install --no-input -r requirements_cc.txt
 echo "Dependencies installed."
 
-echo "Installing ray[rllib] (needed for PPO baseline; not in requirements.txt per its own comment)..."
-# Pin a version with manylinux wheels for Python 3.11. Prefer binary wheels so
-# Alliance jobs don't try to compile dm-tree/lz4 from source (common failure mode).
-RAY_VER="2.40.0"
-if ! pip install --no-input --prefer-binary "ray[rllib]==${RAY_VER}"; then
-    echo "WARN: pip install ray[rllib]==${RAY_VER} failed; trying split install (ray + RLlib deps)..."
-    if ! pip install --no-input --prefer-binary "ray==${RAY_VER}"; then
-        echo "ERROR: pip install ray==${RAY_VER} failed."
-        exit 1
-    fi
-    if ! pip install --no-input --prefer-binary \
-        "dm-tree" "lz4" "tensorboardX" "gymnasium" "pyarrow" "pandas"; then
-        echo "ERROR: pip install of RLlib dependencies failed."
-        exit 1
-    fi
-fi
-echo "ray[rllib] installed."
-
-python -c "import ray; from ray.rllib.algorithms.ppo import PPOConfig; import torch; print('ray/rllib/torch import OK')" || {
-    echo "ERROR: ray/rllib/torch import check failed after install."
+echo "Checking pyarrow from Arrow module (must work before ray install)..."
+python -c "import pyarrow; print('pyarrow OK', getattr(pyarrow, '__version__', '?'))" || {
+    echo "ERROR: pyarrow not importable. Load 'gcc arrow' before activating the venv."
     exit 1
 }
 
-echo "ray/rllib/torch import check OK."
+echo "Installing ray + RLlib deps (needed for PPO; not in requirements.txt per its own comment)..."
+# Do NOT use pip's ray[rllib] extra on Alliance: it pulls pyarrow, and Alliance's
+# wheelhouse only has a dummy pyarrow that always fails. Real pyarrow comes from
+# 'module load gcc arrow' above. Install ray + the other RLlib deps explicitly.
+RAY_VER="2.40.0"
+if ! pip install --no-input --prefer-binary "ray==${RAY_VER}"; then
+    echo "ERROR: pip install ray==${RAY_VER} failed."
+    exit 1
+fi
+if ! pip install --no-input --prefer-binary \
+    "dm-tree" "lz4" "tensorboardX" "gymnasium" "pandas"; then
+    echo "ERROR: pip install of RLlib dependencies failed."
+    exit 1
+fi
+echo "ray + RLlib deps installed (pyarrow from Arrow module)."
+
+python -c "import pyarrow; import ray; from ray.rllib.algorithms.ppo import PPOConfig; import torch; print('ray/rllib/torch/pyarrow import OK')" || {
+    echo "ERROR: ray/rllib/torch/pyarrow import check failed after install."
+    exit 1
+}
+
+echo "ray/rllib/torch/pyarrow import check OK."
 
 SEED_IDX=${SLURM_ARRAY_TASK_ID}
 OUT_DIR="logs/compare_three_pairings_plus_ppo_seed${SEED_IDX}"
