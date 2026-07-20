@@ -133,7 +133,8 @@ def get_expected_obs_from_beliefs(
         -np.sum(qs_dict_np[f] * np.log(qs_dict_np[f] + 1e-16))
         for f in state_factors
     )
-    ENTROPY_THRESHOLD = min(0.1, max(0.01, max_entropy_observed * 0.1))
+    # ENTROPY_THRESHOLD = min(0.1, max(0.01, max_entropy_observed * 0.1))
+    ENTROPY_THRESHOLD = min(0.1, max(1e-3, max_entropy_observed * 0.1))
 
     dynamic_factors = set()
     for f in state_factors:
@@ -280,7 +281,8 @@ def get_expected_obs_and_info_gain_unified(
             -np.sum(qs_dict_np[f] * np.log(qs_dict_np[f] + 1e-16))
             for f in state_factors
         )
-        ENTROPY_THRESHOLD = min(0.1, max(0.01, max_entropy_observed * 0.1))
+        # ENTROPY_THRESHOLD = min(0.1, max(0.01, max_entropy_observed * 0.1))
+        ENTROPY_THRESHOLD = min(0.1, max(1e-3, max_entropy_observed * 0.1))
 
         dynamic_factors = set()
         for f in state_factors:
