@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright
-#SBATCH --job-name=aif_fc_sal_alpha4
+#SBATCH --account=def-jrwright  
+#SBATCH --job-name=aif_fc_sal_alpha8_entropy_threshold1e-3
 #SBATCH --array=0-9                   # 10 seeds (one episode per task)
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=16G
 #SBATCH --time=4-00:00
-#SBATCH --output=fc_sal_alpha4_%A_%a.out
+#SBATCH --output=fc_sal_alpha8_entropy_threshold1e-3_%A_%a.out
 
 # FullyCollective paradigm, semantic-action level, one seed per array task.
 # One IC brain controls both agents; the brain plans over 400 joint primitive
@@ -17,7 +17,7 @@ set -uo pipefail                      # no -e: we still copy logs on failure
 
 MAX_STEPS=${MAX_STEPS:-1500}
 GAMMA=${GAMMA:-4.0}
-ALPHA=${ALPHA:-4.0}
+ALPHA=${ALPHA:-8.0}
 DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_fc"
 
 module purge
@@ -64,7 +64,7 @@ echo "---- fc seed_idx=${SEED_IDX} ep=${EP_SEED} brain=${AGENT_SEED} max_steps=$
 mkdir -p "$DEST_BASE"
 CSV_DIR="$SLURM_TMPDIR/logs_sal"
 mkdir -p "$CSV_DIR"
-LOG_FILE="$SLURM_TMPDIR/fc_sal__alpha4_ep${EP_SEED}_brain${AGENT_SEED}.log"
+LOG_FILE="$SLURM_TMPDIR/fc_sal__alpha8_entropy_threshold1e-3_ep${EP_SEED}_brain${AGENT_SEED}.log"
 
 python -u run_scripts_overcooked/run_fully_collective_semantic_action_level.py \
   --n-runs 1 \
