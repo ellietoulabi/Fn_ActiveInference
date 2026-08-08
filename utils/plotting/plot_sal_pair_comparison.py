@@ -6,15 +6,15 @@ team_reward = max(reward_a0, reward_a1) per step to avoid double-counting
 shared delivery credit (same as overcooked_log_metrics).
 
 Usage:
-    python utils/plotting/plot_sal_pair_comparison.py \\
+    python3 utils/plotting/plot_sal_pair_comparison.py \\
         --a logs/sal_fc --b logs/sal_ind \\
         --label-a FC --label-b IND \\
         -o results/Overcooked/compare_fc_ind
 
-    python utils/plotting/plot_sal_pair_comparison.py \\
+    python3 utils/plotting/plot_sal_pair_comparison.py \\
         logs/sal_fc logs/sal_ind -o results/Overcooked/compare_fc_ind
 
-    python utils/plotting/plot_sal_pair_comparison.py \\
+    python3 utils/plotting/plot_sal_pair_comparison.py \\
         --a logs/sal_fc --b logs/sal_ind -o results/Overcooked/compare_fc_ind \\
         --smooth-window 50
 """

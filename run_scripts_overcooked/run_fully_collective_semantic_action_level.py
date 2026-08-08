@@ -574,14 +574,18 @@ def _run_fc(
         )
         results.append((ep_seed, s_brain, r0, r1, csv_path, jsonl_path))
         print(
-            "  run {:d}: episode_seed={} brain_seed={}  total_reward A0={:.3f} A1={:.3f}  sum={:.3f}".format(
-                i + 1, ep_seed, s_brain, r0, r1, r0 + r1
+            "  run {:d}: episode_seed={} brain_seed={}  total_reward A0={:.3f} A1={:.3f}  team_return={:.3f}".format(
+                i + 1, ep_seed, s_brain, r0, r1, max(r0, r1)
             ),
             flush=True,
         )
 
+    # Overcooked pays the same shared team reward to both agents each step
+    # (see environments/overcooked_ma_gym.py), so r0 == r1 per episode and the
+    # true team return is max(r0, r1), NOT r0 + r1 (which double-counts).
     sum_r0 = sum(t[2] for t in results)
     sum_r1 = sum(t[3] for t in results)
+    team_returns = [max(t[2], t[3]) for t in results]
     csv_paths = [t[4] for t in results if t[4] is not None]
     jsonl_paths = [t[5] for t in results if t[5] is not None]
     if csv_paths:
@@ -593,10 +597,10 @@ def _run_fc(
         for p in jsonl_paths:
             print("  {}".format(p), flush=True)
     print(
-        "\n[FC] done. Mean total_reward per run: A0={:.4f} A1={:.4f}  combined_mean={:.4f}".format(
+        "\n[FC] done. Mean total_reward per run: A0={:.4f} A1={:.4f}  team_return_mean={:.4f}".format(
             sum_r0 / n_runs,
             sum_r1 / n_runs,
-            (sum_r0 + sum_r1) / n_runs,
+            sum(team_returns) / n_runs,
         ),
         flush=True,
     )

@@ -11,6 +11,8 @@ logs/
 old_logs
 mainlogs
 main_logs/
+logs_v1/
+
 
 # Images and plots
 # *.png
@@ -44,4 +46,16 @@ test_overcooked_qlearning.py
 test_overcooked_collaboration.py
 main_simple.py
 q_tables/
+
+.cursor/
+.claude/
+ai/*
+ai/
+
+CLAUDE.md
+
+.matplotlib_cache/
+
+2indrb.out
+2indrb2.out
 

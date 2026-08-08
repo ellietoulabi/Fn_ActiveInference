@@ -137,12 +137,15 @@ def env_obs_to_model_obs(env_state, agent_idx, reward_info=None):
 
     pot_state = _extract_pot_state_from_env(env_state)
 
-    # Event pulse from reward
+    # Event pulse from reward. This is a JOINT observation: either agent's
+    # delivery must register here, not just the ego's own, since IC/FC's
+    # generative model reasons over joint state and is meant to value team
+    # outcomes regardless of which physical agent produced them.
     soup_delivered = 0
     if reward_info is not None:
         sparse_reward = reward_info.get("sparse_reward_by_agent", None)
-        if sparse_reward is not None and len(sparse_reward) > agent_idx:
-            soup_delivered = 1 if sparse_reward[agent_idx] > 0 else 0
+        if sparse_reward is not None:
+            soup_delivered = 1 if sum(sparse_reward) > 0 else 0
         else:
             r = reward_info.get("sparse_reward", 0)
             soup_delivered = 1 if r > 0 else 0

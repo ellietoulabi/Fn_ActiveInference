@@ -329,8 +329,11 @@ def run_sweep(args) -> list[Path]:
                     layout=args.layout,
                     horizon=args.horizon,
                 )
+                # Overcooked pays the same shared team reward to both agents each
+                # step, so r0 == r1 per episode and the true team return is
+                # max(r0, r1), NOT r0 + r1 (which double-counts).
                 print(
-                    f"  total_reward A0={r0:.1f} A1={r1:.1f} sum={r0 + r1:.1f}  -> {path.name}"
+                    f"  total_reward A0={r0:.1f} A1={r1:.1f} team_return={max(r0, r1):.1f}  -> {path.name}"
                 )
                 csv_paths.append(path)
             finally:

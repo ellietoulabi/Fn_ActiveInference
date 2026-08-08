@@ -151,11 +151,13 @@ class Agent:
         
         # Build new beliefs, preserving specified factors
         if keep_factors is not None and hasattr(self, 'qs'):
+            old_qs = self.qs
             self.qs = {}
             for factor in self.state_factors:
-                if factor in keep_factors:
+                if factor in keep_factors and factor in old_qs:
                     # Keep belief from previous episode
-                    self.qs[factor] = self.qs.get(factor, D[factor]).copy()
+                    # self.qs[factor] = self.qs.get(factor, D[factor]).copy()
+                    self.qs[factor] = old_qs[factor].copy()
                 else:
                     # Reset to prior
                     self.qs[factor] = D[factor].copy()

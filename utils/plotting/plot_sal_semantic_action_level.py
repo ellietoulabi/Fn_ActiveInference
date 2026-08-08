@@ -148,7 +148,9 @@ def episode_summary(df: pd.DataFrame) -> dict:
     last = df.iloc[-1]
     total_a0 = float(last["cumulative_reward_a0"])
     total_a1 = float(last["cumulative_reward_a1"])
-    total = total_a0 + total_a1
+    # Delivery reward is shared: both agents log the same team credit, so
+    # summing them would double-count. Team total = max, not sum.
+    total = max(total_a0, total_a1)
     steps = int(last["step"])
     terminated = bool(last["terminated"])
     return {
@@ -175,8 +177,10 @@ def build_step_series(seed_dfs: list[pd.DataFrame]) -> dict[str, np.ndarray]:
             s = int(row["step"]) - 1
             if s < 0 or s >= max_steps:
                 continue
-            r = float(row["reward_a0"]) + float(row["reward_a1"])
-            cum_team[i, s] = float(row["cumulative_reward_a0"]) + float(row["cumulative_reward_a1"])
+            r = max(float(row["reward_a0"]), float(row["reward_a1"]))
+            cum_team[i, s] = max(
+                float(row["cumulative_reward_a0"]), float(row["cumulative_reward_a1"])
+            )
             step_team[i, s] = r
             delivered[i, s] = 1.0 if r > 0 else 0.0
 
@@ -235,7 +239,7 @@ def _title_suffix(n_runs: int) -> str:
 
 
 def time_to_first_delivery(df: pd.DataFrame) -> float:
-    team = df["reward_a0"].values + df["reward_a1"].values
+    team = np.maximum(df["reward_a0"].values, df["reward_a1"].values)
     hits = np.nonzero(team > 0)[0]
     if len(hits) == 0:
         return np.inf
@@ -243,7 +247,9 @@ def time_to_first_delivery(df: pd.DataFrame) -> float:
 
 
 def time_to_stable_delivery(df: pd.DataFrame, w_stable: int, theta: float) -> float:
-    delivered = (df["reward_a0"].values + df["reward_a1"].values > 0).astype(float)
+    delivered = (
+        np.maximum(df["reward_a0"].values, df["reward_a1"].values) > 0
+    ).astype(float)
     steps = df["step"].values
     for i in range(w_stable - 1, len(delivered)):
         if np.mean(delivered[i - w_stable + 1 : i + 1]) >= theta:
@@ -475,7 +481,7 @@ def plot_per_seed_trajectories(
     cmap = plt.cm.viridis(np.linspace(0.15, 0.85, n_seeds))
     fig, ax = plt.subplots(figsize=(10, 6))
     for i, df in enumerate(seed_dfs):
-        team_cum = df["cumulative_reward_a0"] + df["cumulative_reward_a1"]
+        team_cum = df[["cumulative_reward_a0", "cumulative_reward_a1"]].max(axis=1)
         ax.plot(df["step"], team_cum, lw=1.5, color=cmap[i], alpha=0.85, label=seed_labels[i])
     ax.set_xlabel("Environment step")
     ax.set_ylabel("Cumulative team return")
@@ -586,7 +592,7 @@ def print_summary(seed_dfs: list[pd.DataFrame], seed_labels: list[str], paradigm
     print("\n" + "=" * 80)
     print(f"SUMMARY — {PARADIGM_TITLES.get(paradigm, paradigm.upper())} ({len(seed_dfs)} seeds)")
     print("=" * 80)
-    print(f"\n{'Seed':<22} {'Steps':>6} {'R_a0':>8} {'R_a1':>8} {'Total':>8} {'Success':>8}")
+    print(f"\n{'Seed':<22} {'Steps':>6} {'R_a0':>8} {'R_a1':>8} {'Team':>8} {'Success':>8}")
     print("-" * 70)
     for label, s in zip(seed_labels, summaries):
         ok = "yes" if s["success"] else "no"
@@ -596,7 +602,7 @@ def print_summary(seed_dfs: list[pd.DataFrame], seed_labels: list[str], paradigm
         )
     totals = [s["total_reward"] for s in summaries]
     successes = [s["success"] for s in summaries]
-    print(f"\nMean total reward: {np.mean(totals):.1f} ± {np.std(totals, ddof=1):.1f}")
+    print(f"\nMean team reward: {np.mean(totals):.1f} ± {np.std(totals, ddof=1):.1f}")
     print(f"Success rate: {100 * np.mean(successes):.1f}% ({sum(successes)}/{len(successes)})")
 
 

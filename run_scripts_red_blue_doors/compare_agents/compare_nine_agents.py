@@ -30,6 +30,7 @@ sys.path.insert(0, str(project_root))
 import random
 import numpy as np
 import csv
+import json
 from datetime import datetime
 from tqdm import tqdm
 from environments.RedBlueButton.SingleAgentRedBlueButton import SingleAgentRedBlueButtonEnv
@@ -49,8 +50,50 @@ def grid_to_string(grid):
     return '|'.join([''.join(row) for row in grid])
 
 
-def run_aif_episode(env, agent, agent_name, episode_num, max_steps=50, csv_writer=None):
-    """Run one Active Inference episode."""
+def serialize_state_beliefs_for_json(agent):
+    """Full per-factor state beliefs (probabilities, MAP state, entropy) for JSONL logging."""
+    qs = agent.get_state_beliefs()
+    out = {}
+    for factor in agent.state_factors:
+        p = np.array(qs[factor], dtype=float)
+        out[factor] = {
+            "probabilities": p.tolist(),
+            "map_state": int(np.argmax(p)),
+            "map_prob": float(p[int(np.argmax(p))]),
+            "entropy": float(-np.sum(p * np.log(p + 1e-16))),
+        }
+    return out
+
+
+def serialize_policy_posterior_for_json(agent, top_k=5, action_names=None):
+    """Policy posterior (full q_pi, entropy, top-k policies) for JSONL logging."""
+    if action_names is None:
+        action_names = {0: "UP", 1: "DOWN", 2: "LEFT", 3: "RIGHT", 4: "PRESS", 5: "NOOP"}
+    q_pi = np.array(agent.get_policy_posterior(), dtype=float)
+    top = agent.get_top_policies(top_k=top_k)
+    return {
+        "entropy": float(-np.sum(q_pi * np.log(q_pi + 1e-16))),
+        "q_pi": q_pi.tolist(),
+        "top_k": [
+            {
+                "policy_idx": int(idx),
+                "policy": [int(a) for a in pol],
+                "actions": [action_names.get(int(a), str(a)) for a in pol],
+                "prob": float(prob),
+            }
+            for (pol, prob, idx) in top
+        ],
+    }
+
+
+def run_aif_episode(env, agent, agent_name, episode_num, max_steps=50, csv_writer=None,
+                     belief_log_fh=None, config_idx=None, policy_top_k=5):
+    """Run one Active Inference episode.
+
+    If belief_log_fh is provided, writes one JSONL line per step with the
+    agent's full state beliefs (per-factor probabilities, MAP state, entropy)
+    and policy posterior (full q_pi, entropy, top-k policies).
+    """
     # Reset environment
     env_obs, _ = env.reset()
     
@@ -94,13 +137,28 @@ def run_aif_episode(env, agent, agent_name, episode_num, max_steps=50, csv_write
                 'map': map_str,
                 'reward': reward
             })
-        
+
+        # Log AIF belief/policy state (state beliefs, policy posterior, entropy)
+        if belief_log_fh is not None:
+            log_entry = {
+                'episode': episode_num,
+                'step': step,
+                'config_idx': config_idx,
+                'action': action,
+                'action_name': action_names[action],
+                'reward': reward,
+                'state_beliefs': serialize_state_beliefs_for_json(agent),
+                'policy': serialize_policy_posterior_for_json(agent, top_k=policy_top_k, action_names=action_names),
+            }
+            belief_log_fh.write(json.dumps(log_entry) + "\n")
+            belief_log_fh.flush()
+
         obs_dict = env_utils.env_obs_to_model_obs(env_obs)
-        
+
         if done:
             outcome = info.get('result', 'neutral')
             break
-    
+
     return {
         'outcome': outcome,
         'reward': episode_reward,
@@ -265,12 +323,21 @@ def run_opsrl_episode(env, agent, agent_name, episode_num, max_steps=50, csv_wri
         # Get map before action
         grid = env.render(mode="array")
         map_str = grid_to_string(grid)
-        
+
         # Get state
         state = agent._obs_to_state(obs)
-        
+
+        # hh is the elapsed-step index into the finite-horizon backward-induction
+        # table (matches OPSRLAgent._run_episode()'s own `for hh in range(horizon)`
+        # loop). Using a hardcoded hh=0 here previously meant every action was
+        # chosen from the "full horizon remaining" Q-table regardless of how many
+        # steps had actually elapsed, which is wrong whenever Q[0] != Q[hh] (it can
+        # differ substantially under gamma<1 backward induction). Capped at
+        # horizon-1 defensively in case max_steps and agent.horizon ever diverge.
+        hh = min(step - 1, agent.horizon - 1)
+
         # Choose action using sampling policy (Q-values from backward induction above)
-        action = agent._get_action(state, hh=0)
+        action = agent._get_action(state, hh=hh)
         
         # Execute action in environment
         step_result = env.step(action)
@@ -298,7 +365,7 @@ def run_opsrl_episode(env, agent, agent_name, episode_num, max_steps=50, csv_wri
         
         # STEP 3: Update agent's posterior during episode
         next_state = agent._obs_to_state(next_obs) if not done else None
-        agent._update(state, action, next_state, reward, hh=0)
+        agent._update(state, action, next_state, reward, hh=hh)
         
         # Update for next iteration
         obs = next_obs
@@ -324,13 +391,16 @@ def main():
     parser = argparse.ArgumentParser(description='Compare 9 agents on RedBlueButton environment')
     parser.add_argument('--seed_idx', type=int, required=True,
                         help='Seed index to run (0-based). Will use BASE_SEED + seed_idx as the actual seed.')
-    parser.add_argument('--num_seeds', type=int, default=1,
-                        help='Total number of seeds (for filename generation, default: 30)')
+    parser.add_argument('--log-aif-beliefs', action='store_true',
+                        help='Write a JSONL log of the AIF agent\'s per-step state beliefs '
+                             '(per-factor probabilities, MAP state, entropy) and policy posterior '
+                             '(full q_pi, entropy, top-k policies).')
+    parser.add_argument('--aif-belief-top-k', type=int, default=5,
+                        help='Number of top policies to include per step in the AIF belief JSONL log (default: 5).')
     args = parser.parse_args()
-    
+
     seed_idx = args.seed_idx
-    NUM_SEEDS = args.num_seeds
-    
+
     print("="*80)
     print("COMPARING: 9 Agents - Active Inference, Q-Learning, Dyna-Q variants, Trajectory Sampling, OPSRL")
     print("Same Environment Configurations - Fair Comparison")
@@ -360,14 +430,22 @@ def main():
     base_qtable_name = csv_filename.replace("_comparison_", "_qtable_").replace(".csv", "")
     
     csv_file = open(csv_path, 'w', newline='')
-    csv_writer = csv.DictWriter(csv_file, 
+    csv_writer = csv.DictWriter(csv_file,
                                 fieldnames=['seed', 'agent', 'episode', 'step', 'action', 'action_name', 'map', 'reward'])
     csv_writer.writeheader()
-    
+
     # Show relative path for portability
     csv_path_relative = csv_path.relative_to(project_root)
     print(f"\nLogging to: logs/{csv_path_relative.name}")
     print(f"  Full path: {csv_path}")
+
+    # Optional: AIF state-belief / policy-posterior JSONL log
+    aif_belief_fh = None
+    if args.log_aif_beliefs:
+        aif_belief_filename = csv_filename.replace("_comparison_", "_aif_beliefs_").replace(".csv", ".jsonl")
+        aif_belief_path = log_dir / aif_belief_filename
+        aif_belief_fh = open(aif_belief_path, 'w')
+        print(f"  AIF belief JSONL: logs/{aif_belief_path.relative_to(project_root).name}")
     
     # Agent names (consistent across all seeds) - 9 agents total
     agent_names = ['AIF', 'QLearning', 'Vanilla', 'Recency0.99', 'Recency0.95', 'Recency0.9', 'Recency0.85', 'TrajSampling', 'OPSRL']
@@ -407,7 +485,7 @@ def main():
     
     # 2. Q-Learning (baseline, no planning)
     print("\n2. Q-Learning (baseline, no planning)...")
-    q_table_path_ql = log_dir / f"{base_qtable_name}_ql_seed{current_seed}.json"
+    q_table_path_ql = log_dir / f"{base_qtable_name}_ql.json"
     ql_agent = QLearningAgent(
         action_space_size=6,
         q_table_path=str(q_table_path_ql),
@@ -423,7 +501,7 @@ def main():
     
     # 3. Vanilla Dyna-Q
     print("\n3. Vanilla Dyna-Q...")
-    q_table_path_vanilla = log_dir / f"{base_qtable_name}_vanilla_seed{current_seed}.json"
+    q_table_path_vanilla = log_dir / f"{base_qtable_name}_vanilla.json"
     vanilla_agent = VanillaDynaQ(
         action_space_size=6,
         planning_steps=PLANNING_STEPS,
@@ -441,7 +519,7 @@ def main():
     # 4-7. Dyna-Q with different recency biases
     for i, decay in enumerate(RECENCY_DECAYS, start=4):
         print(f"\n{i}. Dyna-Q with Recency Bias (decay={decay})...")
-        q_table_path_recency = log_dir / f"{base_qtable_name}_recency{decay}_seed{current_seed}.json"
+        q_table_path_recency = log_dir / f"{base_qtable_name}_recency{decay}.json"
         recency_agent = RecencyDynaQ(
             action_space_size=6,
             planning_steps=PLANNING_STEPS,
@@ -459,7 +537,7 @@ def main():
     
     # 8. Trajectory Sampling Dyna-Q (long trajectories)
     print("\n8. Trajectory Sampling Dyna-Q...")
-    q_table_path_traj = log_dir / f"{base_qtable_name}_traj_seed{current_seed}.json"
+    q_table_path_traj = log_dir / f"{base_qtable_name}_traj.json"
     traj_agent = TrajectorySamplingDynaQ(
         action_space_size=6,
         planning_steps=PLANNING_STEPS,
@@ -580,8 +658,10 @@ def main():
             
             # Run episode (use appropriate function for each agent type)
             if agent_name == 'AIF':
-                result = run_aif_episode(env, agent, agent_name, episode, 
-                                       max_steps=MAX_STEPS, csv_writer=csv_writer)
+                result = run_aif_episode(env, agent, agent_name, episode,
+                                       max_steps=MAX_STEPS, csv_writer=csv_writer,
+                                       belief_log_fh=aif_belief_fh, config_idx=config_idx,
+                                       policy_top_k=args.aif_belief_top_k)
             elif agent_name == 'OPSRL':
                 result = run_opsrl_episode(env, agent, agent_name, episode, 
                                          max_steps=MAX_STEPS, csv_writer=csv_writer)
@@ -612,6 +692,10 @@ def main():
     print(f"\n✓ Seed {current_seed} (index {seed_idx}) completed")
     print(f"✓ Log saved to: logs/{csv_path_relative.name}")
     print(f"  Full path: {csv_path}")
+
+    if aif_belief_fh is not None:
+        aif_belief_fh.close()
+        print(f"✓ AIF belief JSONL saved to: logs/{aif_belief_path.relative_to(project_root).name}")
     
     # Print summary statistics for this seed
     print("\n" + "="*80)

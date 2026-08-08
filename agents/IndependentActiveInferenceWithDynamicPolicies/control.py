@@ -20,6 +20,66 @@ from . import maths
 from . import utils
 
 
+
+# =============================================================================
+# Entropy threshold alternative: TOP-K 
+# =============================================================================
+# --- EFE marginalization budget ------------------------------------------
+IG_TOP_K = 4           # how many state factors to marginalize over
+IG_MAX_STATES = 64     # hard cap on enumerated joint state combinations
+IG_MIN_ENTROPY = 0  # below this a factor is a delta; enumerating it is wasted work
+
+
+def select_dynamic_factors(
+    qs_dict_np,
+    observation_state_dependencies,
+    skip_modalities,
+    top_k=IG_TOP_K,
+    max_states=IG_MAX_STATES,
+    min_entropy=IG_MIN_ENTROPY,
+):
+    """
+    Choose which state factors to marginalize over when computing expected
+    observations and information gain.
+
+    Replaces the adaptive entropy threshold, which could select zero factors
+    (collapsing info gain to exactly 0) or, at the other extreme, select enough
+    factors to blow up the enumeration. Ranks factors by belief entropy and
+    keeps the most uncertain ones under a fixed budget. Ties break by factor
+    name so runs stay reproducible.
+    """
+    eligible = {
+        dep
+        for modality, deps in observation_state_dependencies.items()
+        if modality not in skip_modalities
+        for dep in deps
+        if dep in qs_dict_np
+    }
+    if not eligible:
+        return []
+
+    entropy = {
+        f: float(-np.sum(qs_dict_np[f] * np.log(qs_dict_np[f] + 1e-16)))
+        for f in eligible
+    }
+
+    chosen = []
+    n_states = 1
+    for f in sorted(eligible, key=lambda name: (-entropy[name], name)):
+        if len(chosen) >= top_k:
+            break
+        if entropy[f] < min_entropy:
+            break
+        size = len(qs_dict_np[f])
+        if n_states * size > max_states:
+            continue
+        chosen.append(f)
+        n_states *= size
+
+    return chosen
+
+
+
 # =============================================================================
 # Expected State Prediction (using B_fn)
 # =============================================================================
@@ -128,29 +188,34 @@ def get_expected_obs_from_beliefs(
     # (We still use held observations for state inference, just not for EFE scoring computations here.)
     SKIP_MODALITIES.add("agent_held_obs")
 
-    # Adaptive entropy threshold based on belief concentration
-    max_entropy_observed = max(
-        -np.sum(qs_dict_np[f] * np.log(qs_dict_np[f] + 1e-16))
-        for f in state_factors
+    # # Adaptive entropy threshold based on belief concentration
+    # max_entropy_observed = max(
+    #     -np.sum(qs_dict_np[f] * np.log(qs_dict_np[f] + 1e-16))
+    #     for f in state_factors
+    # )
+    # # ENTROPY_THRESHOLD = min(0.1, max(0.01, max_entropy_observed * 0.1))
+    # ENTROPY_THRESHOLD = min(0.1, max(1e-3, max_entropy_observed * 0.1))
+
+    # dynamic_factors = set()
+    # for f in state_factors:
+    #     q_f = qs_dict_np[f]
+    #     entropy = -np.sum(q_f * np.log(q_f + 1e-16))
+    #     if entropy > ENTROPY_THRESHOLD:
+    #         dynamic_factors.add(f)
+
+    # # Find deps that are actually dynamic
+    # all_deps = set()
+    # for modality, deps in observation_state_dependencies.items():
+    #     if modality not in SKIP_MODALITIES:
+    #         for dep in deps:
+    #             if dep in dynamic_factors:
+    #                 all_deps.add(dep)
+
+    all_deps = set(
+        select_dynamic_factors(
+            qs_dict_np, observation_state_dependencies, SKIP_MODALITIES
+        )
     )
-    # ENTROPY_THRESHOLD = min(0.1, max(0.01, max_entropy_observed * 0.1))
-    ENTROPY_THRESHOLD = min(0.1, max(1e-3, max_entropy_observed * 0.1))
-
-    dynamic_factors = set()
-    for f in state_factors:
-        q_f = qs_dict_np[f]
-        entropy = -np.sum(q_f * np.log(q_f + 1e-16))
-        if entropy > ENTROPY_THRESHOLD:
-            dynamic_factors.add(f)
-
-    # Find deps that are actually dynamic
-    all_deps = set()
-    for modality, deps in observation_state_dependencies.items():
-        if modality not in SKIP_MODALITIES:
-            for dep in deps:
-                if dep in dynamic_factors:
-                    all_deps.add(dep)
-
     # Enumerate combinations of dynamic factors only
     dep_list = sorted(all_deps)
     dep_ranges = [range(len(qs_dict_np[dep])) for dep in dep_list]
@@ -276,22 +341,7 @@ def get_expected_obs_and_info_gain_unified(
         qs_dict_np = {f: np.array(qs_t[f]) for f in state_factors}
         map_indices = {f: int(np.argmax(qs_dict_np[f])) for f in state_factors}
 
-        # Adaptive entropy threshold
-        max_entropy_observed = max(
-            -np.sum(qs_dict_np[f] * np.log(qs_dict_np[f] + 1e-16))
-            for f in state_factors
-        )
-        # ENTROPY_THRESHOLD = min(0.1, max(0.01, max_entropy_observed * 0.1))
-        ENTROPY_THRESHOLD = min(0.1, max(1e-3, max_entropy_observed * 0.1))
-
-        dynamic_factors = set()
-        for f in state_factors:
-            q_f = qs_dict_np[f]
-            entropy = -np.sum(q_f * np.log(q_f + 1e-16))
-            if entropy > ENTROPY_THRESHOLD:
-                dynamic_factors.add(f)
-
-        # Find dynamic deps
+        # Skip modalities that are not used for EFE scoring.
         SKIP_MODALITIES = {"button_just_pressed"}
         if observation_state_dependencies is not None:
             SKIP_MODALITIES |= {
@@ -301,12 +351,12 @@ def get_expected_obs_and_info_gain_unified(
             }
         SKIP_MODALITIES.add("agent_held_obs")
 
-        all_deps = set()
-        for modality, deps in observation_state_dependencies.items():
-            if modality not in SKIP_MODALITIES:
-                for dep in deps:
-                    if dep in dynamic_factors:
-                        all_deps.add(dep)
+        # Top-k entropy budget instead of adaptive threshold (see select_dynamic_factors).
+        all_deps = set(
+            select_dynamic_factors(
+                qs_dict_np, observation_state_dependencies, SKIP_MODALITIES
+            )
+        )
 
         # Enumerate states once, cache A_fn results
         dep_list = sorted(all_deps)
