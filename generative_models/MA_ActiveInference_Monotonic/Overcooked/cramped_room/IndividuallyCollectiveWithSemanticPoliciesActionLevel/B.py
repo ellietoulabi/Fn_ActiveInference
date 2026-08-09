@@ -433,7 +433,18 @@ def _apply_pot_interaction(pot: int, held: int, action: int, front_tile: int) ->
     return new_pot, p_success
 
 
-def B_pot_state(parents: dict, self_action: int, other_action: int) -> np.ndarray:
+def B_pot_state(parents: dict, self_action: int, other_action: int, ego_agent_index: int = 0) -> np.ndarray:
+    """
+    Joint pot-state transition, shared between both agents' beliefs.
+
+    The real environment (overcooked_mdp.py::resolve_interacts) always resolves
+    physical agent 0's INTERACT before agent 1's, regardless of which agent's
+    belief is doing the computing (its own docstring: "we resolve player 1's
+    interact first and then player 2's"). `ego_agent_index` says which physical
+    agent "self" is in this call, so the two interactions are applied in that
+    same fixed physical order (agent 0 first, agent 1 second) rather than always
+    "self first" -- "self first" is only correct when self happens to be agent 0.
+    """
     q_sp = np.array(parents["self_pos"], dtype=float)
     q_so = np.array(parents["self_orientation"], dtype=float)
     q_sh = np.array(parents["self_held"], dtype=float)
@@ -444,6 +455,8 @@ def B_pot_state(parents: dict, self_action: int, other_action: int) -> np.ndarra
 
     q_pot = np.array(parents["pot_state"], dtype=float)
     next_q = np.zeros(model_init.N_POT_STATES, dtype=float)
+
+    self_acts_first = (int(ego_agent_index) == 0)
 
     for pot in range(model_init.N_POT_STATES):
         if q_pot[pot] <= 1e-16:
@@ -464,10 +477,11 @@ def B_pot_state(parents: dict, self_action: int, other_action: int) -> np.ndarra
                     if base_self <= 1e-16:
                         continue
 
-                    pot_after_self, p_self_success = _apply_pot_interaction(pot, sh, self_action, s_front)
-                    self_branches = [(pot_after_self, p_self_success)]
-                    if p_self_success < 1.0:
-                        self_branches.append((pot, 1.0 - p_self_success))
+                    if self_acts_first:
+                        pot_after_self, p_self_success = _apply_pot_interaction(pot, sh, self_action, s_front)
+                        self_branches = [(pot_after_self, p_self_success)]
+                        if p_self_success < 1.0:
+                            self_branches.append((pot, 1.0 - p_self_success))
 
                     for op in range(model_init.N_WALKABLE):
                         if q_op[op] <= 1e-16:
@@ -484,17 +498,37 @@ def B_pot_state(parents: dict, self_action: int, other_action: int) -> np.ndarra
                                 if base <= 1e-16:
                                     continue
 
-                                for pot_mid, p_mid in self_branches:
-                                    if p_mid <= 1e-16:
-                                        continue
+                                if self_acts_first:
+                                    for pot_mid, p_mid in self_branches:
+                                        if p_mid <= 1e-16:
+                                            continue
 
+                                        pot_after_other, p_other_success = _apply_pot_interaction(
+                                            pot_mid, oh, other_action, o_front
+                                        )
+
+                                        next_q[pot_after_other] += base * p_mid * p_other_success
+                                        if p_other_success < 1.0:
+                                            next_q[pot_mid] += base * p_mid * (1.0 - p_other_success)
+                                else:
                                     pot_after_other, p_other_success = _apply_pot_interaction(
-                                        pot_mid, oh, other_action, o_front
+                                        pot, oh, other_action, o_front
                                     )
-
-                                    next_q[pot_after_other] += base * p_mid * p_other_success
+                                    other_branches = [(pot_after_other, p_other_success)]
                                     if p_other_success < 1.0:
-                                        next_q[pot_mid] += base * p_mid * (1.0 - p_other_success)
+                                        other_branches.append((pot, 1.0 - p_other_success))
+
+                                    for pot_mid, p_mid in other_branches:
+                                        if p_mid <= 1e-16:
+                                            continue
+
+                                        pot_after_self, p_self_success = _apply_pot_interaction(
+                                            pot_mid, sh, self_action, s_front
+                                        )
+
+                                        next_q[pot_after_self] += base * p_mid * p_self_success
+                                        if p_self_success < 1.0:
+                                            next_q[pot_mid] += base * p_mid * (1.0 - p_self_success)
 
     return normalize(next_q)
 
@@ -525,7 +559,16 @@ def _apply_counter_fill(ctr_state: int, held: int, action: int, front_ctr, count
     return new_ctr, p_success
 
 
-def B_counter_occupancy(parents: dict, self_action: int, other_action: int, counter_grid: int) -> np.ndarray:
+def B_counter_occupancy(
+    parents: dict, self_action: int, other_action: int, counter_grid: int, ego_agent_index: int = 0
+) -> np.ndarray:
+    """
+    Joint counter-occupancy transition, shared between both agents' beliefs.
+
+    See B_pot_state's docstring: the real environment always resolves agent 0's
+    INTERACT before agent 1's, so `ego_agent_index` fixes the resolution order
+    to match ground truth instead of always applying "self" first.
+    """
     q_ctr = np.asarray(parents[f"ctr_{counter_grid}"], dtype=float)
 
     q_sp = np.asarray(parents["self_pos"], dtype=float)
@@ -537,6 +580,8 @@ def B_counter_occupancy(parents: dict, self_action: int, other_action: int, coun
     q_oh = np.asarray(parents["other_held"], dtype=float)
 
     next_q = np.zeros(model_init.N_CTR_STATES, dtype=float)
+
+    self_acts_first = (int(ego_agent_index) == 0)
 
     for ctr_state in range(model_init.N_CTR_STATES):
         pc = q_ctr[ctr_state]
@@ -558,12 +603,13 @@ def B_counter_occupancy(parents: dict, self_action: int, other_action: int, coun
                     if base_self <= 1e-16:
                         continue
 
-                    ctr_after_self, p_self_success = _apply_counter_fill(
-                        ctr_state, sh, self_action, s_front_ctr, counter_grid
-                    )
-                    self_branches = [(ctr_after_self, p_self_success)]
-                    if p_self_success < 1.0:
-                        self_branches.append((ctr_state, 1.0 - p_self_success))
+                    if self_acts_first:
+                        ctr_after_self, p_self_success = _apply_counter_fill(
+                            ctr_state, sh, self_action, s_front_ctr, counter_grid
+                        )
+                        self_branches = [(ctr_after_self, p_self_success)]
+                        if p_self_success < 1.0:
+                            self_branches.append((ctr_state, 1.0 - p_self_success))
 
                     for op in range(model_init.N_WALKABLE):
                         if q_op[op] <= 1e-16:
@@ -580,17 +626,37 @@ def B_counter_occupancy(parents: dict, self_action: int, other_action: int, coun
                                 if base <= 1e-16:
                                     continue
 
-                                for ctr_mid, p_mid in self_branches:
-                                    if p_mid <= 1e-16:
-                                        continue
+                                if self_acts_first:
+                                    for ctr_mid, p_mid in self_branches:
+                                        if p_mid <= 1e-16:
+                                            continue
 
+                                        ctr_after_other, p_other_success = _apply_counter_fill(
+                                            ctr_mid, oh, other_action, o_front_ctr, counter_grid
+                                        )
+
+                                        next_q[ctr_after_other] += base * p_mid * p_other_success
+                                        if p_other_success < 1.0:
+                                            next_q[ctr_mid] += base * p_mid * (1.0 - p_other_success)
+                                else:
                                     ctr_after_other, p_other_success = _apply_counter_fill(
-                                        ctr_mid, oh, other_action, o_front_ctr, counter_grid
+                                        ctr_state, oh, other_action, o_front_ctr, counter_grid
                                     )
-
-                                    next_q[ctr_after_other] += base * p_mid * p_other_success
+                                    other_branches = [(ctr_after_other, p_other_success)]
                                     if p_other_success < 1.0:
-                                        next_q[ctr_mid] += base * p_mid * (1.0 - p_other_success)
+                                        other_branches.append((ctr_state, 1.0 - p_other_success))
+
+                                    for ctr_mid, p_mid in other_branches:
+                                        if p_mid <= 1e-16:
+                                            continue
+
+                                        ctr_after_self, p_self_success = _apply_counter_fill(
+                                            ctr_mid, sh, self_action, s_front_ctr, counter_grid
+                                        )
+
+                                        next_q[ctr_after_self] += base * p_mid * p_self_success
+                                        if p_self_success < 1.0:
+                                            next_q[ctr_mid] += base * p_mid * (1.0 - p_self_success)
 
     return normalize(next_q)
 
@@ -600,6 +666,7 @@ def B_checkboxes(
     self_action: int,
     other_action: int,
     q_pot_next: np.ndarray | None = None,
+    ego_agent_index: int = 0,
 ) -> dict[str, np.ndarray]:
     """
     Monotonic checkbox semantics (aligned with cramped_room IndividuallyCollective / primitive B).
@@ -673,7 +740,7 @@ def B_checkboxes(
         "pot_state": q_pot,
     }
     if q_pot_next is None:
-        q_pot_next = B_pot_state(pot_parents, self_action, other_action)
+        q_pot_next = B_pot_state(pot_parents, self_action, other_action, ego_agent_index=ego_agent_index)
     else:
         q_pot_next = np.asarray(q_pot_next, dtype=float)
 
@@ -738,10 +805,11 @@ def B_fn_primitive_step(
     Single-timestep transition using primitive env actions for both agents (ego frame).
     Used when policy rollouts are compiled primitive paths; semantic teleport is not applied.
     """
-    del kwargs  # ego_agent_index etc. not used for primitive rollout
+    ego_agent_index = int(kwargs.get("ego_agent_index", 0))
+    del kwargs  # width/height/etc. not used for primitive rollout
     parents = {k: np.asarray(qs[k], dtype=float) for k in qs}
 
-    pot_next = B_pot_state(parents, self_action, other_action)
+    pot_next = B_pot_state(parents, self_action, other_action, ego_agent_index=ego_agent_index)
 
     new_qs: dict[str, np.ndarray] = {}
 
@@ -749,7 +817,9 @@ def B_fn_primitive_step(
         if factor in ("ck_put1", "ck_put2", "ck_put3", "ck_plated", "ck_delivered"):
             if factor == "ck_put1":
                 new_qs.update(
-                    B_checkboxes(parents, self_action, other_action, q_pot_next=pot_next)
+                    B_checkboxes(
+                        parents, self_action, other_action, q_pot_next=pot_next, ego_agent_index=ego_agent_index
+                    )
                 )
             continue
 
@@ -771,7 +841,7 @@ def B_fn_primitive_step(
             new_qs[factor] = np.asarray(pot_next, dtype=float)
         elif factor.startswith("ctr_"):
             grid = int(factor.split("_")[1])
-            new_qs[factor] = B_counter_occupancy(pdeps, self_action, other_action, grid)
+            new_qs[factor] = B_counter_occupancy(pdeps, self_action, other_action, grid, ego_agent_index=ego_agent_index)
         else:
             new_qs[factor] = normalize(np.asarray(parents[factor], dtype=float))
 
@@ -811,6 +881,7 @@ def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
         return B_fn_primitive_step(qs, a_self, a_other, B_NOISE_LEVEL=B_NOISE_LEVEL, **kwargs)
 
     self_semantic, other_semantic = _decode_policy_step(action, **kwargs)
+    ego_agent_index = int(kwargs.get("ego_agent_index", 0))
 
     qs_macro = {k: np.array(v, dtype=float) for k, v in qs.items()}
 
@@ -834,13 +905,15 @@ def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
 
     pot_deps = state_state_dependencies["pot_state"]
     parents_pot = {k: qs_macro[k] for k in pot_deps}
-    pot_next = B_pot_state(parents_pot, self_terminal, other_terminal)
+    pot_next = B_pot_state(parents_pot, self_terminal, other_terminal, ego_agent_index=ego_agent_index)
 
     for factor, deps in state_state_dependencies.items():
         if factor in ("ck_put1", "ck_put2", "ck_put3", "ck_plated", "ck_delivered"):
             if factor == "ck_put1":
                 new_qs.update(
-                    B_checkboxes(qs_macro, self_terminal, other_terminal, q_pot_next=pot_next)
+                    B_checkboxes(
+                        qs_macro, self_terminal, other_terminal, q_pot_next=pot_next, ego_agent_index=ego_agent_index
+                    )
                 )
             continue
 
@@ -862,7 +935,9 @@ def B_fn(qs: dict, action, B_NOISE_LEVEL: float = 0.0, **kwargs) -> dict:
             new_qs[factor] = np.array(pot_next, dtype=float)
         elif factor.startswith("ctr_"):
             grid = int(factor.split("_")[1])
-            new_qs[factor] = B_counter_occupancy(parents, self_terminal, other_terminal, grid)
+            new_qs[factor] = B_counter_occupancy(
+                parents, self_terminal, other_terminal, grid, ego_agent_index=ego_agent_index
+            )
         else:
             new_qs[factor] = normalize(np.array(parents[factor], dtype=float))
 

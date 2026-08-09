@@ -4,8 +4,10 @@ from pathlib import Path
 
 import numpy as np
 
-# Project root
-PROJECT_ROOT = Path(__file__).resolve().parent
+# Project root (parent of run_scripts_overcooked/)
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 overcooked_src = PROJECT_ROOT / "environments" / "overcooked_ai" / "src"
 if overcooked_src.exists():
