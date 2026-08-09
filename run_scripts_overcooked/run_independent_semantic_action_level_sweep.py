@@ -2,7 +2,12 @@
 Run the same semantic-action-level Overcooked scenario multiple times with different
 RNG seeds. Does not modify run_individually_collective_policy_semantic_action_level.py.
 
-Default sweep: gamma=4.0, alpha=8.0 (overridable with --gamma / --alpha).
+Default sweep: gamma=4.0, alpha=1.0 (overridable with --gamma / --alpha). alpha
+was lowered from 8.0 -- see ai/02-debug.md, MA Overcooked section A / I.1 --
+sharpening a softmax this hard turns small EFE edges into near-certain,
+self-reinforcing lock-in (the same mechanism documented for FC's freeze),
+which after the section-I.1 info-gain fix started manifesting as a two-agent
+collision deadlock at the pot tile.
 
 Use --log-steps for the same style of per-step console output as the main runner
 (run_individually_collective_policy_semantic_action_level.py verbose mode).
@@ -529,7 +534,7 @@ def _run_sweep(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Seed sweep for semantic action-level runner (default gamma=4, alpha=8).")
+    parser = argparse.ArgumentParser(description="Seed sweep for semantic action-level runner (default gamma=4, alpha=1).")
     parser.add_argument("--n-runs", type=int, default=5, help="Number of episodes (default: 5).")
     parser.add_argument(
         "--episode-seeds",
@@ -550,7 +555,7 @@ def main():
         help="Comma-separated np.random seeds for agent 1 at construction (default: 2000..2004).",
     )
     parser.add_argument("--gamma", type=float, default=4.0)
-    parser.add_argument("--alpha", type=float, default=8.0)
+    parser.add_argument("--alpha", type=float, default=1.0)
     parser.add_argument(
         "--max-steps",
         type=int,

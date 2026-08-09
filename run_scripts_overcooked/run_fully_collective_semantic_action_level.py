@@ -140,7 +140,7 @@ def _run_fc(
         raise ValueError("episode_seeds and agent_seeds must each have length n_runs")
 
     try:
-        from agents.IndependentActiveInferenceWithDynamicPolicies.agent import Agent
+        from agents.FullyCollectiveActiveInferenceWithDynamicPolicies.agent import Agent
         from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.FullyCollectiveWithSemanticPoliciesActionLevel import (
             A_fn,
             B_fn,

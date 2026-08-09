@@ -69,6 +69,14 @@ def _get_front(pos_w: int, ori: int) -> int:
 
 INTERACT_SUCCESS_PROB = getattr(model_init, "INTERACT_SUCCESS_PROB", 0.9)
 
+# See model_init.PROGRESS_SUCCESS_PROB for full rationale: used only for the four
+# recipe-progress transitions below (onion pickup, dish pickup, onion deposit at
+# pot, soup pickup at pot), never for serve/delivery or counter drop/pickup.
+PROGRESS_SUCCESS_PROB = getattr(model_init, "PROGRESS_SUCCESS_PROB", 0.85)
+
+# See model_init.MOVE_UNCERTAINTY for full rationale.
+MOVE_UNCERTAINTY = getattr(model_init, "MOVE_UNCERTAINTY", 0.1)
+
 
 def _held_to_ctr_content(held: int) -> int:
     if held == model_init.HELD_ONION:
@@ -110,6 +118,7 @@ def B_self_pos(parents: dict, self_action: int) -> np.ndarray:
         intended_w = _move_walkable(w, self_action)
         p_blocked = float(q_other_pos[intended_w]) if 0 <= intended_w < S else 0.0
         p_blocked = float(np.clip(p_blocked, 0.0, 1.0))
+        p_blocked = (1.0 - MOVE_UNCERTAINTY) * p_blocked + MOVE_UNCERTAINTY * 0.5
 
         if intended_w == w:
             next_q[w] += p
@@ -168,18 +177,18 @@ def B_self_held(parents: dict, self_action: int) -> np.ndarray:
                     if self_action == model_init.INTERACT:
                         if front == model_init.FRONT_ONION and held == model_init.HELD_NONE:
                             new_held = model_init.HELD_ONION
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_DISH and held == model_init.HELD_NONE:
                             new_held = model_init.HELD_DISH
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_POT and held == model_init.HELD_ONION and pot in (
                             model_init.POT_0, model_init.POT_1, model_init.POT_2
                         ):
                             new_held = model_init.HELD_NONE
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_POT and held == model_init.HELD_DISH and pot == model_init.POT_3:
                             new_held = model_init.HELD_SOUP
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_SERVE and held == model_init.HELD_SOUP:
                             new_held = model_init.HELD_NONE
                             p_success = INTERACT_SUCCESS_PROB
@@ -244,16 +253,16 @@ def _apply_pot_interaction(pot: int, held: int, action: int, front_tile: int) ->
     if action == model_init.INTERACT and front_tile == model_init.FRONT_POT:
         if pot == model_init.POT_0 and held == model_init.HELD_ONION:
             new_pot = model_init.POT_1
-            p_success = INTERACT_SUCCESS_PROB
+            p_success = PROGRESS_SUCCESS_PROB
         elif pot == model_init.POT_1 and held == model_init.HELD_ONION:
             new_pot = model_init.POT_2
-            p_success = INTERACT_SUCCESS_PROB
+            p_success = PROGRESS_SUCCESS_PROB
         elif pot == model_init.POT_2 and held == model_init.HELD_ONION:
             new_pot = model_init.POT_3
-            p_success = INTERACT_SUCCESS_PROB
+            p_success = PROGRESS_SUCCESS_PROB
         elif pot == model_init.POT_3 and held == model_init.HELD_DISH:
             new_pot = model_init.POT_0
-            p_success = INTERACT_SUCCESS_PROB
+            p_success = PROGRESS_SUCCESS_PROB
 
     return new_pot, p_success
 

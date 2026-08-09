@@ -109,6 +109,56 @@ SEMANTIC_DEST_TARGET_POSE = {
 
 INTERACT_SUCCESS_PROB = 1.0
 
+# Deliberately less than 1.0, unlike INTERACT_SUCCESS_PROB above. Models genuine
+# uncertainty about whether a chosen INTERACT that would advance the recipe (onion
+# pickup, dish pickup, onion deposit at pot, soup pickup at pot) actually completes
+# as intended. With INTERACT_SUCCESS_PROB=1.0 and already-confident self_pos/
+# self_held/pot_state beliefs, every transition is fully predictable regardless of
+# which candidate policy is chosen, so information gain -- which only rewards
+# resolving genuine uncertainty, not making progress toward a known-good outcome --
+# cannot differentiate the objectively correct next action from an irrelevant one
+# (see ai/02-debug.md, MA Overcooked section I.1). This is a deliberate, small,
+# intentional divergence between the agent's belief model and the (fully
+# deterministic) real environment, introduced specifically to restore that
+# epistemic signal without touching the sparse preference model (C_fn) or the
+# policy prior (E). Does NOT apply to serving/delivery (already differentiated by
+# utility, since delivery is one macro-step away for that specific transition) or
+# to counter drop/pickup (not implicated in the diagnosed last-mile stall).
+PROGRESS_SUCCESS_PROB = 0.85
+
+# Softens B_self_pos's collision-blocking prediction against the believed
+# other_pos. IND treats the other agent as environment, not a co-planned actor
+# (by design), so this check can only ever compare the intended move against
+# the other agent's *current* believed position -- it has no way, even in
+# principle, to foresee a same-instant collision from a simultaneous move
+# toward the same tile (that would require modeling the other's intent, which
+# is deliberately out of scope for this paradigm). Left at a hard 0/1 blocking
+# probability, that blind spot produces a perfectly deterministic, identically
+# wrong prediction on every retry after a real collision, which combined with
+# a sharp action-selection precision can lock two independent agents into a
+# repeating collision deadlock (see ai/02-debug.md, MA Overcooked section
+# I.1's 2026-08-08 follow-up). This constant blends in a small, honest amount
+# of uncertainty about whether a move actually lands -- not a prediction about
+# the other agent's behavior, just an acknowledgment that this model's
+# current-position-only check cannot always be trusted -- enough to keep
+# retries from being identical every time, without giving IND any actual
+# foresight into or reasoning about the other agent.
+#
+# DELIBERATELY set to 0.0 (inert), not deleted. An isolation test (2026-08-08,
+# see ai/02-debug.md I.1) found that lowering the action-selection precision
+# alpha (8.0 -> 1.0) already fixes the collision deadlock on its own -- a
+# stochastic sampler doesn't hard-lock on a near-tie the way a sharp one does,
+# so no belief-level fix was actually needed for that failure mode. With
+# alpha=1.0, enabling this constant (>0) measured *worse* outcomes than
+# leaving it at 0: it leaks uncertainty into self_pos's info-gain contribution
+# in proportion to how many movement steps a candidate policy takes, biasing
+# the agent toward farther/less relevant destinations (the "distance bias"
+# finding) regardless of collision risk. Left in place, at 0, as a documented,
+# available mechanism -- not reintroduced, since alpha already covers the
+# problem this was built for. Do not re-enable without re-reading the
+# isolation test results first.
+MOVE_UNCERTAINTY = 0.0
+
 # Directions
 DIR_NORTH = (0, -1)
 DIR_SOUTH = (0, 1)
