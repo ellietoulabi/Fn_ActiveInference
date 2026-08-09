@@ -13,6 +13,23 @@ Notes:
 - The candidate policy set can be regenerated at each timestep.
 - This module evaluates whatever policy list it is given; it does not assume
   a fixed global policy library.
+
+OPTIMIZATION vs control.py: in get_expected_obs_and_info_gain_unified, the
+info-gain joint observation distribution is built over `active_modalities`.
+The original restricted this only to non-skipped modalities, independent of
+`all_deps` (the state factors select_dynamic_factors actually enumerates) --
+so every non-skipped modality entered the joint even when its determining
+factor(s) were held fixed at MAP across the whole enumeration. Here,
+active_modalities is further restricted to modalities whose dependencies
+intersect all_deps. This is exact, not approximate: a modality whose deps are
+entirely outside all_deps has an identical likelihood on every enumerated
+combo (a constant), which contributes the same amount to both
+pred_entropy_joint and cond_entropy_joint and cancels exactly in
+info_gain = pred_entropy_joint - cond_entropy_joint. Excluding it cannot
+change the computed info_gain, only the size of the joint being built.
+Verified empirically equivalent to control.py to floating-point noise
+(see ai/02-debug.md, "empirically verified" note under the CkObserved
+optimization writeup, and I.4's v1 application) before being applied here.
 """
 
 import numpy as np
@@ -22,7 +39,7 @@ from . import utils
 
 
 # =============================================================================
-# Entropy threshold alternative: TOP-K 
+# Entropy threshold alternative: TOP-K
 # =============================================================================
 # --- EFE marginalization budget ------------------------------------------
 IG_TOP_K = 4           # how many state factors to marginalize over
@@ -410,9 +427,17 @@ def get_expected_obs_and_info_gain_unified(
         qo_pi.append(qo_t)
 
         # --- Info gain using joint observations ---
+        # OPTIMIZATION: only include modalities whose dependencies intersect
+        # all_deps (the same dynamic-factor set used for the state-side
+        # enumeration above). A modality determined entirely by non-dynamic
+        # (MAP-fixed) factors has an identical likelihood across every
+        # enumerated combo, so it contributes an equal constant to both
+        # pred_entropy_joint and cond_entropy_joint and cancels exactly out
+        # of info_gain. See module docstring for the full argument.
         active_modalities = [
             m for m in observation_state_dependencies.keys()
             if m not in SKIP_MODALITIES
+            and any(dep in all_deps for dep in observation_state_dependencies[m])
         ]
 
         if len(active_modalities) == 0:

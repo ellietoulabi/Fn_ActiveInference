@@ -410,23 +410,9 @@ def get_expected_obs_and_info_gain_unified(
         qo_pi.append(qo_t)
 
         # --- Info gain using joint observations ---
-        # OPTIMIZATION vs control.py: restrict the joint to modalities that
-        # depend on at least one factor in `all_deps` (the same dynamic-factor
-        # set select_dynamic_factors already chose for the state-side
-        # enumeration). A modality whose dependencies are ALL outside
-        # `all_deps` has an identical likelihood across every enumerated
-        # combo (its determining factor(s) are held at their MAP value the
-        # whole time) -- its entropy contributes the same constant amount to
-        # both pred_entropy_joint and cond_entropy_joint, which cancels
-        # exactly in info_gain = pred_entropy_joint - cond_entropy_joint.
-        # This is provably exact, not an approximation: it removes terms
-        # guaranteed to cancel, it does not change the result. See
-        # ai/02-debug.md section I.1 (2026-08-08, "top-k" follow-up) for the
-        # full derivation and the isolation test that confirms this.
         active_modalities = [
             m for m in observation_state_dependencies.keys()
             if m not in SKIP_MODALITIES
-            and any(dep in all_deps for dep in observation_state_dependencies[m])
         ]
 
         if len(active_modalities) == 0:
