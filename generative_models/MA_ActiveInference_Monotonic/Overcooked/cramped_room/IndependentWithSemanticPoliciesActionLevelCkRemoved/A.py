@@ -1,0 +1,107 @@
+# A.py
+"""
+Observation likelihoods p(o | state) model (A) for Independent paradigm — Cramped Room.
+
+Includes:
+- self position / orientation / held observations
+- other agent position / orientation / held observations
+- pot state observation
+- soup delivered observation (event pulse: delivered this step)
+- counter occupancy observations for modeled counters
+"""
+
+import numpy as np
+from . import model_init
+
+A_NOISE_LEVEL = 0.01
+
+
+def _noisy_categorical(idx: int, n: int, noise_level: float = A_NOISE_LEVEL) -> np.ndarray:
+    """Return a noisy categorical centered on `idx` over `n` outcomes."""
+    if n <= 0:
+        return np.array([], dtype=float)
+    p = np.full(n, noise_level / max(1, n - 1), dtype=float)
+    if 0 <= idx < n:
+        p[idx] = 1.0 - noise_level
+    return p
+
+
+def A_self_pos_obs(self_pos: int) -> np.ndarray:
+    n = len(model_init.observations["self_pos_obs"])
+    return _noisy_categorical(int(self_pos), n, A_NOISE_LEVEL)
+
+
+def A_self_orientation_obs(self_orientation: int) -> np.ndarray:
+    n = len(model_init.observations["self_orientation_obs"])
+    return _noisy_categorical(int(self_orientation), n, A_NOISE_LEVEL)
+
+
+def A_self_held_obs(self_held: int) -> np.ndarray:
+    n = len(model_init.observations["self_held_obs"])
+    return _noisy_categorical(int(self_held), n, A_NOISE_LEVEL)
+
+
+def A_other_pos_obs(other_pos: int) -> np.ndarray:
+    n = len(model_init.observations["other_pos_obs"])
+    return _noisy_categorical(int(other_pos), n, A_NOISE_LEVEL)
+
+
+def A_other_orientation_obs(other_orientation: int) -> np.ndarray:
+    n = len(model_init.observations["other_orientation_obs"])
+    return _noisy_categorical(int(other_orientation), n, A_NOISE_LEVEL)
+
+
+def A_other_held_obs(other_held: int) -> np.ndarray:
+    n = len(model_init.observations["other_held_obs"])
+    return _noisy_categorical(int(other_held), n, A_NOISE_LEVEL)
+
+
+def A_pot_state_obs(pot_state: int) -> np.ndarray:
+    n = len(model_init.observations["pot_state_obs"])
+    return _noisy_categorical(int(pot_state), n, A_NOISE_LEVEL)
+
+
+def A_soup_delivered_obs(ck_delivered: int) -> np.ndarray:
+    """Likelihood of soup_delivered_obs under ck_delivered event state."""
+    n = len(model_init.observations["soup_delivered_obs"])
+
+    p_del = (1.0 - A_NOISE_LEVEL) if int(ck_delivered) == 1 else A_NOISE_LEVEL
+
+    p = np.zeros(n, dtype=float)
+    p[0] = 1.0 - p_del
+    if n > 1:
+        p[1] = p_del
+    return p
+
+
+def A_counter_occ_obs(counter_occ: int, factor_name: str) -> np.ndarray:
+    """
+    Counter contents observation for factor ctr_<grid>:
+      0 empty, 1 onion, 2 dish, 3 soup
+    """
+    n = len(model_init.observations[f"{factor_name}_obs"])
+    return _noisy_categorical(int(counter_occ), n, 0)
+
+
+def A_fn(state_indices: dict) -> dict[str, np.ndarray]:
+    pot_state = int(state_indices.get("pot_state", model_init.POT_0))
+
+    obs: dict[str, np.ndarray] = {}
+
+    obs["self_pos_obs"] = A_self_pos_obs(state_indices["self_pos"])
+    obs["self_orientation_obs"] = A_self_orientation_obs(state_indices["self_orientation"])
+    obs["self_held_obs"] = A_self_held_obs(state_indices["self_held"])
+
+    obs["other_pos_obs"] = A_other_pos_obs(state_indices["other_pos"])
+    obs["other_orientation_obs"] = A_other_orientation_obs(state_indices["other_orientation"])
+    obs["other_held_obs"] = A_other_held_obs(state_indices["other_held"])
+    obs["pot_state_obs"] = A_pot_state_obs(pot_state)
+
+    obs["soup_delivered_obs"] = A_soup_delivered_obs(
+        ck_delivered=int(state_indices.get("ck_delivered", 0))
+    )
+    for grid_idx in model_init.MODELED_COUNTERS:
+        factor = f"ctr_{grid_idx}"
+        obs[f"{factor}_obs"] = A_counter_occ_obs(state_indices[factor], factor)
+
+    return obs
