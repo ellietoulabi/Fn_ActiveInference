@@ -1,16 +1,17 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright
+#SBATCH --account=aip-jrwright
 #SBATCH --job-name=three_plus_ppo
-#SBATCH --array=0-14              # seeds 0..14 as separate jobs (15 seeds)
+#SBATCH --array=0-14              # 15 seeds (0..14), one per array task
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=16G
 #SBATCH --time=0-13:59
+#SBATCH --output=three_plus_ppo_%A_%a.out
 
 # Compare three AIF pairings + two PPO conditions (pretrained, online-budget; see
 # run_two_ppo_agents.py --mode) on RedBlueButton.
 # Settings: 15 seeds, 200 episodes/seed, map change every 25 episodes, max 30 steps.
 
-set -euo pipefail
+set -uo pipefail                      # no -e: we still copy logs on failure
 
 module purge
 module load python/3.11.4 scipy-stack
@@ -86,26 +87,25 @@ OUT_DIR="logs/compare_three_pairings_plus_ppo_seed${SEED_IDX}"
 echo "---- Starting compare_three_pairings_plus_ppo for seed index ${SEED_IDX} ----"
 
 export PYTHONHASHSEED=0
+
+DEST_BASE="${HOME}/projects/aip-jrwright/toulabin/logs"
+DEST="${DEST_BASE}/three_plus_ppo_seed${SEED_IDX}"
+mkdir -p "${DEST}"
+LOG_FILE="$SLURM_TMPDIR/three_plus_ppo_seed${SEED_IDX}.log"
+
 python -u run_scripts_red_blue_doors/compare_agents/compare_three_pairings_plus_ppo.py \
   --seeds 1 \
   --seed "${SEED_IDX}" \
   --episodes 200 \
   --episodes-per-config 25 \
   --max-steps 30 \
-  --output-dir "${OUT_DIR}"
+  --output-dir "${OUT_DIR}" > "$LOG_FILE" 2>&1
 
 EXIT_CODE=$?
 
-if [ $EXIT_CODE -ne 0 ]; then
-    echo "compare_three_pairings_plus_ppo.py failed with exit code $EXIT_CODE"
-    exit $EXIT_CODE
-fi
-
-DEST_BASE="${HOME}/projects/def-jrwright/toulabin/logs"
-DEST="${DEST_BASE}/three_plus_ppo_seed${SEED_IDX}"
-mkdir -p "${DEST}"
-
 echo "Copying all logs for seed ${SEED_IDX} to ${DEST}..."
+
+cp "$LOG_FILE" "${DEST}/" 2>/dev/null || echo "Warning: verbose log file not found"
 
 # Compare table + per-paradigm stats JSONs (seed-specific dir; no overwrite across array tasks)
 cp -r "${OUT_DIR}" "${DEST}/" 2>/dev/null || echo "Warning: compare output dir not found"
@@ -119,5 +119,12 @@ cp logs/two_ppo_agents_*_seeds*_ep*_*.csv "${DEST}/" 2>/dev/null || echo "Warnin
 cp logs/two_ppo_agents_*_seeds*_ep*_*_stats.json "${DEST}/" 2>/dev/null || echo "Warning: PPO stats JSONs not found"
 
 echo "Copy done -> ${DEST}"
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "compare_three_pairings_plus_ppo.py failed with exit code $EXIT_CODE"
+    tail -50 "$LOG_FILE"
+    exit $EXIT_CODE
+fi
+
 echo "---- three_plus_ppo seed index ${SEED_IDX} complete ----"
 

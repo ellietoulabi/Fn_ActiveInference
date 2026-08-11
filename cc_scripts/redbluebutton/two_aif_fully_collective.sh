@@ -1,14 +1,15 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright
+#SBATCH --account=aip-jrwright
 #SBATCH --job-name=aif_fullcoll
-#SBATCH --array=0-4                   # seeds 0..4
+#SBATCH --array=0-4                   # 5 seeds (0..4), one per array task
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
 #SBATCH --time=0-5:00
+#SBATCH --output=ma_fc_%A_%a.out
 
 # Runs the FullyCollective paradigm (centralized joint model).
 
-set -euo pipefail
+set -uo pipefail                      # no -e: we still copy logs on failure
 
 module purge
 module load python/3.11.4 scipy-stack
@@ -48,6 +49,10 @@ echo "---- Starting seed index ${SEED_IDX} ----"
 # Reproducible runs: seed is passed via --seed; Python script uses it directly.
 export PYTHONHASHSEED=0
 
+DEST_BASE="${HOME}/projects/aip-jrwright/toulabin/logs"
+mkdir -p "${DEST_BASE}"
+LOG_FILE="$SLURM_TMPDIR/ma_fc_seed${SEED_IDX}.log"
+
 python -u run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_fully_collective.py \
   --seed ${SEED_IDX} \
   --episodes 200 \
@@ -56,22 +61,21 @@ python -u run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_fully_collec
   --verbose \
   --episode-progress \
   --show-beliefs \
-  --show-policies
+  --show-policies > "$LOG_FILE" 2>&1
 
 EXIT_CODE=$?
 
+echo "Copying logs..."
+cp "$LOG_FILE" "${DEST_BASE}/" 2>/dev/null || echo "Warning: verbose log file not found"
+cp logs/two_aif_agents_fully_collective_seeds*_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
+cp logs/two_aif_agents_fully_collective_seeds*_ep*_*_stats.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: stats JSON file not found"
+echo "Copy done"
+
 if [ $EXIT_CODE -ne 0 ]; then
     echo "run_two_aif_agents_fully_collective.py failed for seed index $SEED_IDX with exit code $EXIT_CODE"
+    tail -50 "$LOG_FILE"
     exit $EXIT_CODE
 fi
 
-DEST_BASE="${HOME}/projects/def-jrwright/toulabin/logs"
-mkdir -p "${DEST_BASE}"
-
-echo "Copying logs..."
-cp logs/two_aif_agents_fully_collective_seeds*_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
-cp logs/two_aif_agents_fully_collective_seeds*_ep*_*_stats.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: stats JSON file not found"
-
-echo "Copy done"
 echo "---- FullyCollective paradigm seed index ${SEED_IDX} complete ----"
 
