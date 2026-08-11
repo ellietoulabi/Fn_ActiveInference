@@ -17,7 +17,7 @@ set -uo pipefail                      # no -e: we still copy logs on failure
 
 MAX_STEPS=${MAX_STEPS:-1500}
 GAMMA=${GAMMA:-4.0}
-ALPHA=${ALPHA:-8.0}
+ALPHA=${ALPHA:-1.0}
 DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_ic"
 
 module purge

@@ -1,5 +1,14 @@
 """
-ActiveInferenceFixedPolicies agent.
+ActiveInferenceFixedPolicies agent -- OPTIMIZED variant.
+
+This is a fully independent copy of agents/ActiveInferenceFixedPolicies,
+differing only in which base package it imports from: this one uses
+agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesOptimized (the
+active_modalities-restricted control.py, verified exactly equivalent to the
+unoptimized version -- see ai/02-debug.md section J), instead of the original
+agents.IndividuallyCollectiveActiveInferenceWithDynamicPolicies. Kept as a
+fully separate package (not a config flag) so the two can be run, modified, or
+compared independently without any risk to one another.
 
 This package exists so we can extend Active Inference behavior without changing
 the core `agents/ActiveInference` implementation.
@@ -20,8 +29,8 @@ Important hierarchical-control fix:
 
 import numpy as np
 
-from agents.IndividuallyCollectiveActiveInferenceWithDynamicPolicies.agent import Agent as _BaseAgent
-from agents.IndividuallyCollectiveActiveInferenceWithDynamicPolicies import control, inference
+from agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesOptimized.agent import Agent as _BaseAgent
+from agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesOptimized import control, inference
 
 
 class Agent(_BaseAgent):

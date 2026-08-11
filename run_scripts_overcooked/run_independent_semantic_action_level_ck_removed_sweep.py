@@ -92,8 +92,11 @@ def _run_sweep(
     env_layout = "cramped_room"
 
     def create_agent(seed=None, ego_agent_index: int = 0):
-        if seed is not None:
-            np.random.seed(seed)
+        # Each agent gets its own independent RNG stream instead of seeding the
+        # shared global np.random state (which a second create_agent() call for
+        # the other agent would immediately clobber, since nothing consumes
+        # randomness between the two seed calls -- see ai/02-debug.md section D).
+        rng = np.random.default_rng(seed)
         env_params = {**base_env_params, "ego_agent_index": int(ego_agent_index)}
         agent = Agent(
             A_fn=A_fn,
@@ -117,6 +120,7 @@ def _run_sweep(
             dF_tol=0.01,
             use_action_for_state_inference=True,
         )
+        agent.rng = rng
         if no_ig:
             agent.use_states_info_gain = False
         return agent

@@ -1,5 +1,15 @@
 """
-ActiveInferenceFixedPolicies agent.
+ActiveInferenceFixedPolicies agent -- EXACT variant.
+
+This is a fully independent copy of agents/ActiveInferenceFixedPolicies,
+differing only in which base package it imports from: this one uses
+agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesExact, whose
+control.py replaces select_dynamic_factors's lossy top-k/budget approximation
+with an EXACT per-factor decomposition of expected observations and
+information gain (see ai/02-debug.md section J.7). Kept as a fully separate
+package (not a config flag) so it can be run, modified, or compared
+independently without any risk to the existing unoptimized/optimized IC
+stacks, or to any other paradigm.
 
 This package exists so we can extend Active Inference behavior without changing
 the core `agents/ActiveInference` implementation.
@@ -20,8 +30,8 @@ Important hierarchical-control fix:
 
 import numpy as np
 
-from agents.IndividuallyCollectiveActiveInferenceWithDynamicPolicies.agent import Agent as _BaseAgent
-from agents.IndividuallyCollectiveActiveInferenceWithDynamicPolicies import control, inference
+from agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesExact.agent import Agent as _BaseAgent
+from agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesExact import control, inference
 
 
 class Agent(_BaseAgent):

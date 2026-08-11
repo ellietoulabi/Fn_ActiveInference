@@ -1,5 +1,18 @@
 """
-ActiveInferenceFixedPolicies agent.
+ActiveInferenceFixedPolicies agent -- OPTIMIZED + COLLISION-FIX variant.
+
+This is a fully independent copy of agents/ActiveInferenceFixedPoliciesOptimized
+(the active_modalities-restricted control.py stack), differing only in which
+generative model it's paired with by the run scripts: this stack's run scripts
+import from generative_models...IndividuallyCollectiveWithSemanticPoliciesActionLevelCollisionFix,
+whose B.py replaces the independent B_self_pos/B_other_pos collision check
+with a joint, collision-aware B_positions_joint that matches the real
+environment's exact collision rule (see ai/02-debug.md, IC collision-deadlock
+investigation). This agent/control code itself is untouched -- the fix lives
+entirely in the generative model. Kept as a fully separate package (not a
+config flag) so it can be run, modified, or compared independently without
+any risk to the existing unoptimized/Optimized/Exact stacks, or to any other
+paradigm.
 
 This package exists so we can extend Active Inference behavior without changing
 the core `agents/ActiveInference` implementation.
@@ -20,8 +33,8 @@ Important hierarchical-control fix:
 
 import numpy as np
 
-from agents.IndividuallyCollectiveActiveInferenceWithDynamicPolicies.agent import Agent as _BaseAgent
-from agents.IndividuallyCollectiveActiveInferenceWithDynamicPolicies import control, inference
+from agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesOptimizedCollisionFix.agent import Agent as _BaseAgent
+from agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesOptimizedCollisionFix import control, inference
 
 
 class Agent(_BaseAgent):

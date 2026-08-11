@@ -208,6 +208,17 @@ def _agent_summary_lines(state, model_init, max_agents: int | None = None):
 
 
 def _sample_or_argmax_policy_index(agent) -> int:
+    """
+    Sample (or argmax) a policy index for this agent.
+
+    Uses the agent's own `rng` (a `np.random.Generator`, set at construction by
+    `create_agent`) rather than the global `np.random` state, so agent 0 and
+    agent 1 draw from genuinely independent streams instead of clobbering a
+    single shared global stream via sequential `np.random.seed()` calls. Falls
+    back to the global `np.random` for any caller (e.g. FC's brain, via
+    `import run_independent_semantic_action_level as ind`) that doesn't set
+    `.rng` on its agent -- unchanged behavior for those callers.
+    """
     q_pi = np.asarray(agent.get_policy_posterior(), dtype=np.float64).reshape(-1)
     n_pol = len(q_pi)
     if n_pol == 0:
@@ -245,6 +256,9 @@ def _sample_or_argmax_policy_index(agent) -> int:
     else:
         p_policies = p_policies / s2
 
+    rng = getattr(agent, "rng", None)
+    if rng is not None:
+        return int(rng.choice(n_pol, p=p_policies))
     return int(np.random.choice(n_pol, p=p_policies))
 
 
@@ -449,8 +463,11 @@ def run_agent_vs_env_scenarios():
     policy_len = PAIR_POLICY_HORIZON
 
     def create_agent(seed=None, ego_agent_index: int = 0):
-        if seed is not None:
-            np.random.seed(seed)
+        # Each agent gets its own independent RNG stream instead of seeding the
+        # shared global np.random state (which a second create_agent() call for
+        # the other agent would immediately clobber, since nothing consumes
+        # randomness between the two seed calls -- see ai/02-debug.md section D).
+        rng = np.random.default_rng(seed)
 
         env_params = {**base_env_params, "ego_agent_index": int(ego_agent_index)}
 
@@ -476,6 +493,7 @@ def run_agent_vs_env_scenarios():
             dF_tol=0.01,
             use_action_for_state_inference=True,
         )
+        agent.rng = rng
         if no_ig:
             agent.use_states_info_gain = False
         return agent

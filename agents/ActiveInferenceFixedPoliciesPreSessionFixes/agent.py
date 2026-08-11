@@ -116,17 +116,9 @@ class Agent(_BaseAgent):
                 if 0 <= obs_idx < len(p_o):
                     like[v] = float(p_o[obs_idx])
 
-            # Direct sensor modalities: floor the prior before combining, so an
-            # exact-zero entry (from B_fn's one-hot semantic-macro teleport)
-            # can never permanently trap the belief -- same hazard, and same
-            # fix, as IND's agent.py (see ai/02-debug.md section J). A sharp
-            # likelihood still dominates a floored prior through the ordinary
-            # Bayes update; this is not the same as discarding the prior.
+            # Direct sensor modalities should dominate.
             if modality == f"{factor}_obs":
-                prior = np.asarray(qs_fast[factor], dtype=float)
-                prior = np.maximum(prior, 1e-12)
-                prior = prior / prior.sum()
-                post = prior * like
+                post = like
             else:
                 # For single-dependency nonstandard modalities like
                 # soup_delivered_obs -> ck_delivered, soften the prior slightly.

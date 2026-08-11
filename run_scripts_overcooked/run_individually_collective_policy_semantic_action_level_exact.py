@@ -4,18 +4,18 @@ from pathlib import Path
 
 import numpy as np
 
-# Repo root (parent of run_scripts_overcooked/)
+# Project root (parent of run_scripts_overcooked/)
 SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = SCRIPT_DIR.parent
-sys.path.insert(0, str(REPO_ROOT))
+PROJECT_ROOT = SCRIPT_DIR.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-overcooked_src = REPO_ROOT / "environments" / "overcooked_ai" / "src"
+overcooked_src = PROJECT_ROOT / "environments" / "overcooked_ai" / "src"
 if overcooked_src.exists():
     sys.path.insert(0, str(overcooked_src))
 
 from utils.visualization.overcooked_terminal_map import orientation_str, render_overcooked_grid
-from agents.IndependentActiveInferenceWithDynamicPoliciesCkRemoved import utils as dyn_utils
-from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndependentWithSemanticPoliciesActionLevelCkRemoved.model_init import (
+from agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesExact import utils as dyn_utils
+from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndividuallyCollectiveWithSemanticPoliciesActionLevel.model_init import (
     PRIMITIVE_POLICY_STEP,
 )
 
@@ -48,6 +48,13 @@ _UTILS_TO_ENV_ACTION = {
     5: 5,  # INTERACT
 }
 
+# Human-readable labels for semantic indices 0..21 (DESTINATIONS × MODES order).
+_SEMANTIC_IDX_TO_LABEL = [
+    f"{dst}/{mode}"
+    for dst in dyn_utils.DESTINATIONS
+    for mode in dyn_utils.MODES
+]
+
 
 def _fmt_prob(x: float) -> str:
     return "{:>5.2f}".format(float(x))
@@ -79,8 +86,18 @@ def _env_primitive_from_policy_step(step) -> int:
 
 def _fmt_policy(pol) -> str:
     return "→".join(
-        [PRIMITIVE_ACTION_NAMES.get(_env_primitive_from_policy_step(a), str(a)) for a in pol]
+        PRIMITIVE_ACTION_NAMES.get(_env_primitive_from_policy_step(a), str(a)) for a in pol
     )
+
+
+def _fmt_joint_semantic(pidx, n_semantic):
+    """Decode a joint-policy linear index into a human-readable 'ego/prt' label."""
+    ego_s = int(pidx) // n_semantic
+    prt_s = int(pidx) % n_semantic
+    sl = _SEMANTIC_IDX_TO_LABEL
+    ego_lbl = sl[ego_s] if 0 <= ego_s < len(sl) else str(ego_s)
+    prt_lbl = sl[prt_s] if 0 <= prt_s < len(sl) else str(prt_s)
+    return f"ego:{ego_lbl} | par:{prt_lbl}"
 
 
 def _belief_table(np_mod, qs: dict, model_init, title: str) -> str:
@@ -209,7 +226,7 @@ def _agent_summary_lines(state, model_init, max_agents: int | None = None):
 
 def _sample_or_argmax_policy_index(agent) -> int:
     """
-    Sample (or argmax) a policy index for this agent.
+    Sample (or argmax) a joint policy index for this agent.
 
     Uses the agent's own `rng` (a `np.random.Generator`, set at construction by
     `create_agent`) rather than the global `np.random` state, so agent 0 and
@@ -259,6 +276,8 @@ def _sample_or_argmax_policy_index(agent) -> int:
     return int(np.random.choice(n_pol, p=p_policies))
 
 
+
+
 def _translate_policy_utils_to_env(policy):
     return [_UTILS_TO_ENV_ACTION[int(a)] for a in policy]
 
@@ -289,17 +308,43 @@ def _translate_agent_policies_utils_to_env(agent):
         agent.policy_metadata = translated
 
 
-def _wrap_policies_for_primitive_B_rollout(agent):
+def _first_prim_per_semantic(compiled_policies_env, n_semantic, stay_primitive=4):
     """
-    infer_policies() rolls policies forward through B_fn. Scalar steps 0..5 collide with
-    semantic indices 0..N_ACTIONS-1; wrap each primitive as (PRIMITIVE_POLICY_STEP, a)
-    so B_fn uses primitive physics (B_fn_primitive_step) instead of semantic teleport.
+    Return the first primitive action for each of the n_semantic compiled paths.
+
+    compiled_policies_env[i] is the full translated primitive sequence for semantic i.
+    Used to build an execution lookup after update_policies + translation.
     """
-    if not agent.policies:
-        return
-    agent.policies = [
-        [(PRIMITIVE_POLICY_STEP, int(a)) for a in pol] for pol in agent.policies
-    ]
+    result = [int(stay_primitive)] * n_semantic
+    for i, pol in enumerate(compiled_policies_env[:n_semantic]):
+        if pol:
+            step = pol[0]
+            result[i] = int(step) if np.isscalar(step) else int(step[1]) if isinstance(step, (tuple, list)) else int(step)
+    return result
+
+
+def _build_joint_primitive_policies(ego_paths, partner_paths, stay_prim):
+    """
+    Build N_ego × N_partner joint primitive policies for IC EFE evaluation.
+
+    Each policy pairs ego's compiled primitive path for semantic i with
+    partner's compiled primitive path for semantic j, interleaved step-by-step as
+    (PRIMITIVE_POLICY_STEP, a_ego_t, a_partner_t).  Shorter paths are padded
+    with stay_prim so both agents advance simultaneously through B_fn_primitive_step.
+
+    Policy index k = i * N_partner + j:  ego_sem = k // N_partner, partner_sem = k % N_partner.
+    """
+    policies = []
+    for ego_p in ego_paths:
+        for partner_p in partner_paths:
+            k = max(len(ego_p), len(partner_p), 1)
+            combined = []
+            for t in range(k):
+                a_ego = int(ego_p[t]) if t < len(ego_p) else stay_prim
+                a_partner = int(partner_p[t]) if t < len(partner_p) else stay_prim
+                combined.append((PRIMITIVE_POLICY_STEP, a_ego, a_partner))
+            policies.append(combined)
+    return policies
 
 
 def _extract_counter_contents_from_state(state):
@@ -426,8 +471,8 @@ def run_agent_vs_env_scenarios():
     no_ig = bool(args.noig)
 
     try:
-        from agents.IndependentActiveInferenceWithDynamicPoliciesCkRemoved.agent import Agent
-        from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndependentWithSemanticPoliciesActionLevelCkRemoved import (
+        from agents.ActiveInferenceFixedPoliciesExact.agent import Agent
+        from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndividuallyCollectiveWithSemanticPoliciesActionLevel import (
             A_fn,
             B_fn,
             C_fn,
@@ -502,8 +547,8 @@ def run_agent_vs_env_scenarios():
     if verbose:
         print("[Env] Using multi-agent env: layout=cramped_room")
 
-    agent_0 = create_agent(seed=78, ego_agent_index=0)
-    agent_1 = create_agent(seed=79, ego_agent_index=1)
+    agent_0 = create_agent(seed=48, ego_agent_index=0)
+    agent_1 = create_agent(seed=49, ego_agent_index=1)
 
     if verbose:
         print(
@@ -533,8 +578,10 @@ def run_agent_vs_env_scenarios():
         _obs, infos = env.reset(seed=seed)
         state = infos["agent_0"]["state"]
 
-        agent_0.reset()
-        agent_1.reset()
+        config_0 = env_utils.get_D_config_from_state(state, 0)
+        config_1 = env_utils.get_D_config_from_state(state, 1)
+        agent_0.reset(config=config_0)
+        agent_1.reset(config=config_1)
 
         prev_reward_info = {"sparse_reward_by_agent": [0, 0]}
         total_reward_0 = 0.0
@@ -561,24 +608,22 @@ def run_agent_vs_env_scenarios():
                 for line in _agent_summary_lines(state, model_init_agent, max_agents=2):
                     print(line)
                 print(
-                    "    Obs A0: self_pos={} self_ori={} self_held={} other_pos={} other_ori={} other_held={} pot={} delivered={}".format(
+                    "    Obs A0: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
                         obs_0["self_pos_obs"],
                         obs_0["self_orientation_obs"],
                         obs_0["self_held_obs"],
                         obs_0["other_pos_obs"],
-                        obs_0["other_orientation_obs"],
                         obs_0["other_held_obs"],
                         obs_0["pot_state_obs"],
                         obs_0["soup_delivered_obs"],
                     )
                 )
                 print(
-                    "    Obs A1: self_pos={} self_ori={} self_held={} other_pos={} other_ori={} other_held={} pot={} delivered={}".format(
+                    "    Obs A1: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
                         obs_1["self_pos_obs"],
                         obs_1["self_orientation_obs"],
                         obs_1["self_held_obs"],
                         obs_1["other_pos_obs"],
-                        obs_1["other_orientation_obs"],
                         obs_1["other_held_obs"],
                         obs_1["pot_state_obs"],
                         obs_1["soup_delivered_obs"],
@@ -593,48 +638,59 @@ def run_agent_vs_env_scenarios():
             policy_state_0 = build_policy_state_for_agent(state, agent_idx=0, env_utils=env_utils, prev_reward_info=prev_reward_info)
             policy_state_1 = build_policy_state_for_agent(state, agent_idx=1, env_utils=env_utils, prev_reward_info=prev_reward_info)
 
-            # 3) generate current-step primitive policies from semantic library
+            # 3) compile semantic→primitive paths for both agents.
+            #    Each agent generates 22 compiled primitive sequences (one per semantic goal).
+            _stay = int(model_init_agent.STAY)
+
             agent_0.update_policies(policy_state_0)
             agent_1.update_policies(policy_state_1)
 
-            # translate utils primitive ordering -> env/model primitive ordering
             _translate_agent_policies_utils_to_env(agent_0)
             _translate_agent_policies_utils_to_env(agent_1)
 
-            _wrap_policies_for_primitive_B_rollout(agent_0)
-            _wrap_policies_for_primitive_B_rollout(agent_1)
+            ego0_paths = list(agent_0.policies)   # 22 paths from A0's position
+            ego1_paths = list(agent_1.policies)   # 22 paths from A1's position
 
-            # 4) policy inference over the current-step generated policies
+            ego0_first_prim = _first_prim_per_semantic(ego0_paths, N_SEMANTIC_ACTIONS, _stay)
+            ego1_first_prim = _first_prim_per_semantic(ego1_paths, N_SEMANTIC_ACTIONS, _stay)
+
+            # 4) Individually Collective: build N×N joint primitive policies.
+            #    Each policy pairs ego's compiled primitive path for semantic i with
+            #    partner's compiled primitive path for semantic j, evaluated step-by-step
+            #    through B_fn_primitive_step (action level, no semantic teleport).
+            #    A0 models A1's paths (ego1_paths); A1 models A0's paths (ego0_paths).
+            joint_policies_0 = _build_joint_primitive_policies(ego0_paths, ego1_paths, _stay)
+            joint_policies_1 = _build_joint_primitive_policies(ego1_paths, ego0_paths, _stay)
+
+            agent_0.set_policies(joint_policies_0)
+            agent_1.set_policies(joint_policies_1)
+
             agent_0.infer_policies()
             agent_1.infer_policies()
 
-            # 5) each agent independently selects one current primitive policy
+            # 5) select best joint policy per agent; decode ego semantic, look up primitive.
+            #    Policy index k = ego_sem * N_SEMANTIC + partner_sem.
             pol_idx_0 = _sample_or_argmax_policy_index(agent_0)
             pol_idx_1 = _sample_or_argmax_policy_index(agent_1)
 
-            pol_0 = agent_0.policies[pol_idx_0]
-            pol_1 = agent_1.policies[pol_idx_1]
-
-            meta_0 = agent_0.get_policy_metadata()[pol_idx_0] if agent_0.get_policy_metadata() else None
-            meta_1 = agent_1.get_policy_metadata()[pol_idx_1] if agent_1.get_policy_metadata() else None
+            ego0_sem = int(pol_idx_0) // N_SEMANTIC_ACTIONS
+            ego1_sem = int(pol_idx_1) // N_SEMANTIC_ACTIONS
 
             a0_prim = (
-                _env_primitive_from_policy_step(pol_0[0])
-                if len(pol_0) > 0
-                else int(model_init_agent.STAY)
+                ego0_first_prim[ego0_sem]
+                if 0 <= ego0_sem < len(ego0_first_prim)
+                else _stay
             )
             a1_prim = (
-                _env_primitive_from_policy_step(pol_1[0])
-                if len(pol_1) > 0
-                else int(model_init_agent.STAY)
+                ego1_first_prim[ego1_sem]
+                if 0 <= ego1_sem < len(ego1_first_prim)
+                else _stay
             )
 
-            # For infer_states(..., use_action_for_state_inference=True), B_fn must see a
-            # PRIMITIVE_POLICY_STEP tuple — bare ints 0..5 collide with semantic indices 0..19.
-            # Independent: only ego primitive is encoded; no other-agent action.
-            agent_0.action = (PRIMITIVE_POLICY_STEP, int(a0_prim))
+            # State inference prior for next step uses the actual executed primitives.
+            agent_0.action = (PRIMITIVE_POLICY_STEP, int(a0_prim), int(a1_prim))
             agent_0.step_time()
-            agent_1.action = (PRIMITIVE_POLICY_STEP, int(a1_prim))
+            agent_1.action = (PRIMITIVE_POLICY_STEP, int(a1_prim), int(a0_prim))
             agent_1.step_time()
 
             _observations, state, prev_reward_info, rewards, terminated, truncated, infos = _execute_first_primitive_step(
@@ -648,9 +704,10 @@ def run_agent_vs_env_scenarios():
 
             if verbose:
                 print(
-                    "    Generated policies: A0={}  A1={}".format(
+                    "    Joint primitive policies: {} ({}×{} semantic pairs, action-level EFE)".format(
                         len(agent_0.policies or []),
-                        len(agent_1.policies or []),
+                        N_SEMANTIC_ACTIONS,
+                        N_SEMANTIC_ACTIONS,
                     )
                 )
 
@@ -666,18 +723,14 @@ def run_agent_vs_env_scenarios():
                 top_0 = agent_0.get_top_policies(top_k=5)
                 print("      entropy {:.3f}:".format(H_pi_0))
                 if top_0:
-                    best_pol, best_prob, best_idx = top_0[0]
-                    print(
-                        "      BEST: idx={} p={:.3f}  {}".format(
-                            int(best_idx),
-                            float(best_prob),
-                            _fmt_policy(best_pol),
-                        )
-                    )
-                for rank, (pol, prob, _pidx) in enumerate(top_0, 1):
-                    pol_str = _fmt_policy(pol)
+                    _, best_prob, best_idx = top_0[0]
+                    print("      BEST: idx={} p={:.3f}  {}".format(
+                        int(best_idx), float(best_prob), _fmt_joint_semantic(best_idx, N_SEMANTIC_ACTIONS)
+                    ))
+                for rank, (_pol, prob, pidx) in enumerate(top_0, 1):
+                    lbl = _fmt_joint_semantic(pidx, N_SEMANTIC_ACTIONS)
                     bar = "█" * int(float(prob) * 20)
-                    print("        #{:d} [{:>24}] {:<20} {:.3f}".format(rank, pol_str, bar, float(prob)))
+                    print("        #{:d} [{:>40}] {:<20} {:.3f}".format(rank, lbl, bar, float(prob)))
 
                 print("    Policy beliefs A1:")
                 q_pi_1 = np.asarray(agent_1.get_policy_posterior(), dtype=float)
@@ -685,43 +738,17 @@ def run_agent_vs_env_scenarios():
                 top_1 = agent_1.get_top_policies(top_k=5)
                 print("      entropy {:.3f}:".format(H_pi_1))
                 if top_1:
-                    best_pol, best_prob, best_idx = top_1[0]
-                    print(
-                        "      BEST: idx={} p={:.3f}  {}".format(
-                            int(best_idx),
-                            float(best_prob),
-                            _fmt_policy(best_pol),
-                        )
-                    )
-                for rank, (pol, prob, _pidx) in enumerate(top_1, 1):
-                    pol_str = _fmt_policy(pol)
+                    _, best_prob, best_idx = top_1[0]
+                    print("      BEST: idx={} p={:.3f}  {}".format(
+                        int(best_idx), float(best_prob), _fmt_joint_semantic(best_idx, N_SEMANTIC_ACTIONS)
+                    ))
+                for rank, (_pol, prob, pidx) in enumerate(top_1, 1):
+                    lbl = _fmt_joint_semantic(pidx, N_SEMANTIC_ACTIONS)
                     bar = "█" * int(float(prob) * 20)
-                    print("        #{:d} [{:>24}] {:<20} {:.3f}".format(rank, pol_str, bar, float(prob)))
+                    print("        #{:d} [{:>40}] {:<20} {:.3f}".format(rank, lbl, bar, float(prob)))
 
-                if meta_0 is not None:
-                    print(
-                        "    A0 selected policy idx={}  semantic=({}, {})".format(
-                            int(pol_idx_0),
-                            meta_0["destination"],
-                            meta_0["mode"],
-                        )
-                    )
-                else:
-                    print("    A0 selected policy idx={}".format(int(pol_idx_0)))
-
-                if meta_1 is not None:
-                    print(
-                        "    A1 selected policy idx={}  semantic=({}, {})".format(
-                            int(pol_idx_1),
-                            meta_1["destination"],
-                            meta_1["mode"],
-                        )
-                    )
-                else:
-                    print("    A1 selected policy idx={}".format(int(pol_idx_1)))
-
-                print("    Primitive plan A0: {}".format(_fmt_policy(pol_0)))
-                print("    Primitive plan A1: {}".format(_fmt_policy(pol_1)))
+                print("    A0 joint policy idx={}  {}".format(int(pol_idx_0), _fmt_joint_semantic(pol_idx_0, N_SEMANTIC_ACTIONS)))
+                print("    A1 joint policy idx={}  {}".format(int(pol_idx_1), _fmt_joint_semantic(pol_idx_1, N_SEMANTIC_ACTIONS)))
 
                 print(
                     "    Executed primitive actions: A0={}  A1={}".format(
@@ -745,7 +772,7 @@ def run_agent_vs_env_scenarios():
         return total_reward_0, total_reward_1
 
     run_one_episode(
-        "Independent: two agents, cramped_room (seed=76)",
+        "IndividuallyCollectiveWithSemanticPolicies: two agents, cramped_room (seed=76)",
         seed=76,
     )
 

@@ -1,5 +1,19 @@
 """
-ActiveInferenceFixedPolicies agent.
+ActiveInferenceFixedPolicies agent -- OPTIMIZED + LENGTH-NORMALIZED variant.
+
+This is a fully independent copy of agents/ActiveInferenceFixedPoliciesOptimized,
+differing only in which base package it imports from: this one uses
+agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesOptimizedLengthNorm,
+whose vanilla_fpi_update_posterior_policies divides each policy's utility and
+info_gain by its own timestep length before combining into G -- removing the
+confirmed, near-exactly-linear bias where longer padded joint policies (and
+even genuinely longer real policies, since policy_len=1 + sparse delivery-only
+C_fn means no policy can see an actual delivery within its own horizon) win
+EFE comparisons in proportion to their length rather than their merit (see
+ai/02-debug.md, IC padding-length-bias investigation). Kept as a fully
+separate package (not a config flag) so it can be run, modified, or compared
+independently without any risk to the existing unoptimized/Optimized/Exact/
+CollisionFix stacks, or to any other paradigm.
 
 This package exists so we can extend Active Inference behavior without changing
 the core `agents/ActiveInference` implementation.
@@ -20,8 +34,8 @@ Important hierarchical-control fix:
 
 import numpy as np
 
-from agents.IndividuallyCollectiveActiveInferenceWithDynamicPolicies.agent import Agent as _BaseAgent
-from agents.IndividuallyCollectiveActiveInferenceWithDynamicPolicies import control, inference
+from agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesOptimizedLengthNorm.agent import Agent as _BaseAgent
+from agents.IndividuallyCollectiveActiveInferenceWithDynamicPoliciesOptimizedLengthNorm import control, inference
 
 
 class Agent(_BaseAgent):

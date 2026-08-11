@@ -2,7 +2,7 @@
 Run the same semantic-action-level Overcooked scenario multiple times with different
 RNG seeds. Does not modify run_individually_collective_policy_semantic_action_level.py.
 
-Default sweep: gamma=4.0, alpha=8.0 (overridable with --gamma / --alpha).
+Default sweep: gamma=4.0, alpha=1.0 (overridable with --gamma / --alpha).
 
 Use --log-steps for the same style of per-step console output as the main runner
 (run_individually_collective_policy_semantic_action_level.py verbose mode).
@@ -87,8 +87,11 @@ def _run_sweep(
     env_layout = "cramped_room"
 
     def create_agent(seed=None, ego_agent_index: int = 0):
-        if seed is not None:
-            np.random.seed(seed)
+        # Each agent gets its own independent RNG stream instead of seeding the
+        # shared global np.random state (which a second create_agent() call for
+        # the other agent would immediately clobber, since nothing consumes
+        # randomness between the two seed calls -- see ai/02-debug.md section D).
+        rng = np.random.default_rng(seed)
         env_params = {**base_env_params, "ego_agent_index": int(ego_agent_index)}
         agent = Agent(
             A_fn=A_fn,
@@ -112,6 +115,7 @@ def _run_sweep(
             dF_tol=0.01,
             use_action_for_state_inference=True,
         )
+        agent.rng = rng
         if no_ig:
             agent.use_states_info_gain = False
         return agent
@@ -512,7 +516,7 @@ def _run_sweep(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Seed sweep for semantic action-level runner (default gamma=4, alpha=8).")
+    parser = argparse.ArgumentParser(description="Seed sweep for semantic action-level runner (default gamma=4, alpha=1).")
     parser.add_argument("--n-runs", type=int, default=5, help="Number of episodes (default: 5).")
     parser.add_argument(
         "--episode-seeds",
@@ -533,7 +537,7 @@ def main():
         help="Comma-separated np.random seeds for agent 1 at construction (default: 2000..2004).",
     )
     parser.add_argument("--gamma", type=float, default=4.0)
-    parser.add_argument("--alpha", type=float, default=8.0)
+    parser.add_argument("--alpha", type=float, default=1.0)
     parser.add_argument(
         "--max-steps",
         type=int,
