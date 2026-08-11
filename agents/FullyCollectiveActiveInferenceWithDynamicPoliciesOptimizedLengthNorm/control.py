@@ -13,6 +13,26 @@ Notes:
 - The candidate policy set can be regenerated at each timestep.
 - This module evaluates whatever policy list it is given; it does not assume
   a fixed global policy library.
+
+OPTIMIZATION vs control.py: in get_expected_obs_and_info_gain_unified, the
+info-gain joint observation distribution is built over `active_modalities`.
+The original restricted this only to non-skipped modalities, independent of
+`all_deps` (the state factors select_dynamic_factors actually enumerates) --
+so every non-skipped modality entered the joint even when its determining
+factor(s) were held fixed at MAP across the whole enumeration. Here,
+active_modalities is further restricted to modalities whose dependencies
+intersect all_deps. This is exact, not approximate: a modality whose deps are
+entirely outside all_deps has an identical likelihood on every enumerated
+combo (a constant), which contributes the same amount to both
+pred_entropy_joint and cond_entropy_joint and cancels exactly in
+info_gain = pred_entropy_joint - cond_entropy_joint. Excluding it cannot
+change the computed info_gain, only the size of the joint being built. This
+argument is generic to the computation's structure, not to any specific
+generative model -- identical fix already proven exact for IND's three
+variants (ai/02-debug.md, section I.2/I.4/I.5); IC's control.py is a
+byte-identical fork of that same pre-optimization code (confirmed via diff),
+so the same proof applies unchanged. Verify empirically before adopting, same
+protocol as IND's verification, before relying on this for anything.
 """
 
 import numpy as np
@@ -21,12 +41,8 @@ from . import utils
 
 
 
-
-
-
-
 # =============================================================================
-# Entropy threshold alternative: TOP-K 
+# Entropy threshold alternative: TOP-K
 # =============================================================================
 # --- EFE marginalization budget ------------------------------------------
 IG_TOP_K = 4           # how many state factors to marginalize over
@@ -191,30 +207,6 @@ def get_expected_obs_from_beliefs(
     # Prevent epistemic loops where agents toggle held items to generate predictable observations.
     # (We still use held observations for state inference, just not for EFE scoring computations here.)
     SKIP_MODALITIES.add("agent_held_obs")
-
-#     # Adaptive entropy threshold based on belief concentration
-#     max_entropy_observed = max(
-#         -np.sum(qs_dict_np[f] * np.log(qs_dict_np[f] + 1e-16))
-#         for f in state_factors
-#     )
-#     # ENTROPY_THRESHOLD = min(0.1, max(0.01, max_entropy_observed * 0.1))
-#     ENTROPY_THRESHOLD = min(0.1, max(1e-3, max_entropy_observed * 0.1))
-
-#     dynamic_factors = set()
-#     for f in state_factors:
-#         q_f = qs_dict_np[f]
-#         entropy = -np.sum(q_f * np.log(q_f + 1e-16))
-#         if entropy > ENTROPY_THRESHOLD:
-#             dynamic_factors.add(f)
-
-#     # Find deps that are actually dynamic
-#     all_deps = set()
-#     for modality, deps in observation_state_dependencies.items():
-#         if modality not in SKIP_MODALITIES:
-#             for dep in deps:
-#                 if dep in dynamic_factors:
-#                     all_deps.add(dep)
-
 
     all_deps = set(
         select_dynamic_factors(
@@ -415,9 +407,17 @@ def get_expected_obs_and_info_gain_unified(
         qo_pi.append(qo_t)
 
         # --- Info gain using joint observations ---
+        # OPTIMIZATION: only include modalities whose dependencies intersect
+        # all_deps (the same dynamic-factor set used for the state-side
+        # enumeration above). A modality determined entirely by non-dynamic
+        # (MAP-fixed) factors has an identical likelihood across every
+        # enumerated combo, so it contributes an equal constant to both
+        # pred_entropy_joint and cond_entropy_joint and cancels exactly out
+        # of info_gain. See module docstring for the full argument.
         active_modalities = [
             m for m in observation_state_dependencies.keys()
             if m not in SKIP_MODALITIES
+            and any(dep in all_deps for dep in observation_state_dependencies[m])
         ]
 
         if len(active_modalities) == 0:
@@ -579,6 +579,20 @@ def vanilla_fpi_update_posterior_policies(
 
     for policy_idx, policy in enumerate(policies):
         qs_pi = get_expected_states(B_fn, qs, policy, env_params)
+        # LENGTH NORMALIZATION FIX (see ai/02-debug.md, IC padding-length-bias
+        # investigation): utility and info_gain are each a SUM over qs_pi's
+        # timesteps, and joint policies are padded with STAY to the length of
+        # whichever agent's compiled path is longer (_build_joint_primitive_policies).
+        # Verified empirically that both terms accrue an almost exactly constant
+        # per-timestep amount regardless of whether that timestep is genuine
+        # padding OR a real, progressing action (even a successful INTERACT that
+        # visibly changes held-item state added zero marginal utility beyond the
+        # flat per-step baseline, because policy_len=1 + sparse delivery-only C_fn
+        # means no candidate policy can ever see an actual delivery within its own
+        # horizon). Left unnormalized, this makes any longer policy -- padded or
+        # genuinely longer -- win close to in proportion to its raw timestep count,
+        # not its merit. Dividing by the policy's own length removes that bias.
+        policy_len = max(len(qs_pi), 1)
 
         if use_utility and use_states_info_gain:
             qo_pi, info_gain = get_expected_obs_and_info_gain_unified(
@@ -591,6 +605,8 @@ def vanilla_fpi_update_posterior_policies(
                 debug=False,
             )
             utility = calc_expected_utility(qo_pi, C_fn, observation_labels)
+            utility /= policy_len
+            info_gain /= policy_len
             G[policy_idx] -= utility
             G[policy_idx] -= info_gain
             policy_details.append((policy_idx, policy, qs_pi, utility, info_gain))
@@ -605,6 +621,7 @@ def vanilla_fpi_update_posterior_policies(
                 observation_state_dependencies=observation_state_dependencies,
             )
             utility = calc_expected_utility(qo_pi, C_fn, observation_labels)
+            utility /= policy_len
             G[policy_idx] -= utility
             info_gain = 0.0
             policy_details.append((policy_idx, policy, qs_pi, utility, info_gain))
@@ -618,6 +635,7 @@ def vanilla_fpi_update_posterior_policies(
                 observation_labels,
                 observation_state_dependencies=observation_state_dependencies,
             )
+            info_gain /= policy_len
             G[policy_idx] -= info_gain
             utility = 0.0
             policy_details.append((policy_idx, policy, qs_pi, utility, info_gain))

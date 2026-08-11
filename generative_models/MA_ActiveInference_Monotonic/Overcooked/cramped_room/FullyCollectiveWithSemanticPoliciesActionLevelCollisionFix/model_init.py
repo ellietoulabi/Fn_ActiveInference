@@ -149,6 +149,24 @@ SEMANTIC_DEST_TARGET_POSE = {
 
 INTERACT_SUCCESS_PROB = 1.0
 
+# Deliberately less than 1.0, unlike INTERACT_SUCCESS_PROB above. Models genuine
+# uncertainty about whether a chosen INTERACT that would advance the recipe (onion
+# pickup, dish pickup, onion deposit at pot, soup pickup at pot) actually completes
+# as intended. With INTERACT_SUCCESS_PROB=1.0 and already-confident self_pos/
+# self_held/pot_state beliefs, every transition is fully predictable regardless of
+# which candidate policy is chosen, so information gain -- which only rewards
+# resolving genuine uncertainty, not making progress toward a known-good outcome --
+# cannot differentiate the objectively correct next action from an irrelevant one.
+# Ported from IndependentWithSemanticPoliciesActionLevel/model_init.py, where this
+# was diagnosed and fixed for IND's identical last-mile-stall pathology (see
+# ai/02-debug.md, MA Overcooked section I.1); IC's B.py never received it, and a
+# live production run confirmed the same total flatness (info_gain and utility
+# both exactly policy-invariant across all 400 joint policies, every step, seed 77).
+# Does NOT apply to serving/delivery (already differentiated by utility, since
+# delivery is one macro-step away for that specific transition) or to counter
+# drop/pickup (not implicated in the diagnosed last-mile stall).
+PROGRESS_SUCCESS_PROB = 0.85
+
 # Directions
 DIR_NORTH = (0, -1)
 DIR_SOUTH = (0, 1)

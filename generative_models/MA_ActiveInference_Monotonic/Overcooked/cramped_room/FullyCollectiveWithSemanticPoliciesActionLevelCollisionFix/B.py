@@ -155,6 +155,12 @@ def _get_front(pos_w: int, ori: int) -> int:
 
 INTERACT_SUCCESS_PROB = getattr(model_init, "INTERACT_SUCCESS_PROB", 0.9)
 
+# See model_init.PROGRESS_SUCCESS_PROB for full rationale: used only for the four
+# recipe-progress transitions (onion pickup, dish pickup, onion deposit at pot,
+# soup pickup at pot), for both self and other, to keep information gain from
+# going flat once positions/held-items/pot-state are already confidently known.
+PROGRESS_SUCCESS_PROB = getattr(model_init, "PROGRESS_SUCCESS_PROB", 0.85)
+
 
 def _held_to_ctr_content(held: int) -> int:
     if held == model_init.HELD_ONION:
@@ -174,6 +180,71 @@ def _ctr_content_to_held(ctr_state: int) -> int:
     if ctr_state == model_init.CTR_SOUP:
         return model_init.HELD_SOUP
     return model_init.HELD_NONE
+
+
+def B_positions_joint(parents: dict, self_action: int, other_action: int) -> dict:
+    """
+    Joint, collision-aware transition for (self_pos, other_pos) together.
+
+    FIX (see ai/02-debug.md, IC collision-deadlock investigation): the
+    original B_self_pos/B_other_pos each only checked the PARTNER'S CURRENT
+    position belief against their own intended target -- neither function
+    knew what action the partner was simultaneously taking in the same joint
+    policy step. That let the belief predict near-certain success for moves
+    that the real environment's own collision rule would always block (two
+    agents' intended positions coinciding, or two agents swapping cells),
+    which produced a real, reproduced, absorbing deadlock: the agent's belief
+    never learns the move fails (it isn't modeled as failing), so every
+    subsequent replanning cycle re-derives and re-attempts the identical
+    doomed move forever.
+
+    This function ports the real engine's exact collision rule directly
+    (overcooked_mdp.py: is_joint_position_collision + the crossed-paths swap
+    check in is_transition_collision) into the belief's own transition model,
+    evaluated jointly over the jointly-distributed (self_pos, other_pos)
+    prior (mean-field product q(self_pos) x q(other_pos), the only prior
+    available under the mean-field factorization already used everywhere in
+    this codebase), then marginalized back down to two independent marginal
+    arrays for storage -- exactly the same "compute jointly, store as
+    separate per-factor arrays" pattern B_pot_state/B_counter_occupancy
+    already use for their own joint (self_action, other_action) dependence.
+    """
+    q_self = np.array(parents["self_pos"], dtype=float)
+    q_other = np.array(parents["other_pos"], dtype=float)
+    S = q_self.shape[0]
+
+    next_self = np.zeros(S, dtype=float)
+    next_other = np.zeros(S, dtype=float)
+
+    for w_self in range(S):
+        p_self = q_self[w_self]
+        if p_self <= 1e-16:
+            continue
+        intended_self = _move_walkable(w_self, self_action)
+
+        for w_other in range(S):
+            p_other = q_other[w_other]
+            if p_other <= 1e-16:
+                continue
+            joint_prob = p_self * p_other
+
+            intended_other = _move_walkable(w_other, other_action)
+
+            # Real engine's exact rule (overcooked_mdp.py):
+            #   1) both intended positions coincide -> both revert
+            #   2) intended positions are a cross-swap of current positions -> both revert
+            #   3) otherwise both moves apply independently
+            converge = (intended_self == intended_other)
+            swap = (intended_self == w_other) and (intended_other == w_self)
+            if converge or swap:
+                final_self, final_other = w_self, w_other
+            else:
+                final_self, final_other = intended_self, intended_other
+
+            next_self[final_self] += joint_prob
+            next_other[final_other] += joint_prob
+
+    return {"self_pos": normalize(next_self), "other_pos": normalize(next_other)}
 
 
 def B_self_pos(parents: dict, self_action: int) -> np.ndarray:
@@ -249,18 +320,18 @@ def B_self_held(parents: dict, self_action: int) -> np.ndarray:
                     if self_action == model_init.INTERACT:
                         if front == model_init.FRONT_ONION and held == model_init.HELD_NONE:
                             new_held = model_init.HELD_ONION
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_DISH and held == model_init.HELD_NONE:
                             new_held = model_init.HELD_DISH
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_POT and held == model_init.HELD_ONION and pot in (
                             model_init.POT_0, model_init.POT_1, model_init.POT_2
                         ):
                             new_held = model_init.HELD_NONE
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_POT and held == model_init.HELD_DISH and pot == model_init.POT_3:
                             new_held = model_init.HELD_SOUP
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_SERVE and held == model_init.HELD_SOUP:
                             new_held = model_init.HELD_NONE
                             p_success = INTERACT_SUCCESS_PROB
@@ -367,18 +438,18 @@ def B_other_held(parents: dict, other_action: int) -> np.ndarray:
                     if other_action == model_init.INTERACT:
                         if front == model_init.FRONT_ONION and held == model_init.HELD_NONE:
                             new_held = model_init.HELD_ONION
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_DISH and held == model_init.HELD_NONE:
                             new_held = model_init.HELD_DISH
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_POT and held == model_init.HELD_ONION and pot in (
                             model_init.POT_0, model_init.POT_1, model_init.POT_2
                         ):
                             new_held = model_init.HELD_NONE
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_POT and held == model_init.HELD_DISH and pot == model_init.POT_3:
                             new_held = model_init.HELD_SOUP
-                            p_success = INTERACT_SUCCESS_PROB
+                            p_success = PROGRESS_SUCCESS_PROB
                         elif front == model_init.FRONT_SERVE and held == model_init.HELD_SOUP:
                             new_held = model_init.HELD_NONE
                             p_success = INTERACT_SUCCESS_PROB
@@ -419,16 +490,16 @@ def _apply_pot_interaction(pot: int, held: int, action: int, front_tile: int) ->
     if action == model_init.INTERACT and front_tile == model_init.FRONT_POT:
         if pot == model_init.POT_0 and held == model_init.HELD_ONION:
             new_pot = model_init.POT_1
-            p_success = INTERACT_SUCCESS_PROB
+            p_success = PROGRESS_SUCCESS_PROB
         elif pot == model_init.POT_1 and held == model_init.HELD_ONION:
             new_pot = model_init.POT_2
-            p_success = INTERACT_SUCCESS_PROB
+            p_success = PROGRESS_SUCCESS_PROB
         elif pot == model_init.POT_2 and held == model_init.HELD_ONION:
             new_pot = model_init.POT_3
-            p_success = INTERACT_SUCCESS_PROB
+            p_success = PROGRESS_SUCCESS_PROB
         elif pot == model_init.POT_3 and held == model_init.HELD_DISH:
             new_pot = model_init.POT_0
-            p_success = INTERACT_SUCCESS_PROB
+            p_success = PROGRESS_SUCCESS_PROB
 
     return new_pot, p_success
 
@@ -810,6 +881,9 @@ def B_fn_primitive_step(
     parents = {k: np.asarray(qs[k], dtype=float) for k in qs}
 
     pot_next = B_pot_state(parents, self_action, other_action, ego_agent_index=ego_agent_index)
+    # Joint, collision-aware position transition (see B_positions_joint docstring
+    # for why this replaces the old independent B_self_pos/B_other_pos calls).
+    positions_next = B_positions_joint(parents, self_action, other_action)
 
     new_qs: dict[str, np.ndarray] = {}
 
@@ -826,13 +900,13 @@ def B_fn_primitive_step(
         pdeps = {k: parents[k] for k in deps}
 
         if factor == "self_pos":
-            new_qs[factor] = B_self_pos(pdeps, self_action)
+            new_qs[factor] = positions_next["self_pos"]
         elif factor == "self_orientation":
             new_qs[factor] = B_self_orientation(pdeps, self_action)
         elif factor == "self_held":
             new_qs[factor] = B_self_held(pdeps, self_action)
         elif factor == "other_pos":
-            new_qs[factor] = B_other_pos(pdeps, other_action)
+            new_qs[factor] = positions_next["other_pos"]
         elif factor == "other_orientation":
             new_qs[factor] = B_other_orientation(pdeps, other_action)
         elif factor == "other_held":

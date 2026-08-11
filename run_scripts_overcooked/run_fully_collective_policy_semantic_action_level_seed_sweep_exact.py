@@ -1,0 +1,623 @@
+"""
+Run the FullyCollective semantic-action-level Overcooked scenario multiple times
+with different RNG seeds. Does not modify
+run_fully_collective_policy_semantic_action_level_exact.py.
+
+FullyCollective = IndividuallyCollective's own decision rule (build the 400-pair
+joint semantic policy space, evaluate joint EFE from one set of beliefs, pick
+the single best pair) run by exactly ONE thinking agent. agent_0 is the brain
+(perceives, holds beliefs, runs infer_policies once per step); agent_1 is a
+pure follower with no beliefs and no inference, executing whichever primitive
+the brain's one winning joint policy assigns it. Both halves of every action
+are decoded from that single joint index -- see the demo script's module
+docstring and ai/02-debug.md for the full rationale.
+
+Default sweep: gamma=4.0, alpha=1.0 (overridable with --gamma / --alpha).
+
+Use --log-steps for the same style of per-step console output as the main runner.
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+import numpy as np
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+overcooked_src = PROJECT_ROOT / "environments" / "overcooked_ai" / "src"
+if overcooked_src.exists():
+    sys.path.insert(0, str(overcooked_src))
+
+import run_fully_collective_policy_semantic_action_level_exact as ric
+import sal_step_csv_log as sal_csv
+import sal_step_detail_log as sal_detail
+
+from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.FullyCollectiveWithSemanticPoliciesActionLevel.model_init import (
+    PRIMITIVE_POLICY_STEP,
+)
+
+
+def _run_sweep(
+    *,
+    n_runs: int,
+    episode_seeds: list[int],
+    agent0_seeds: list[int],
+    agent1_seeds: list[int],
+    gamma: float,
+    alpha: float,
+    no_ig: bool,
+    verbose: bool,
+    log_steps: bool,
+    log_csv: bool = False,
+    log_jsonl: bool = False,
+    log_dir: str | None = None,
+    policy_log_top_k: int = 20,
+    log_full_q_pi: bool = False,
+    max_steps: int = 2000,
+) -> None:
+    if len(episode_seeds) != n_runs or len(agent0_seeds) != n_runs or len(agent1_seeds) != n_runs:
+        raise ValueError("episode_seeds, agent0_seeds, agent1_seeds must each have length n_runs")
+
+    try:
+        from agents.FullyCollectiveFixedPoliciesExact.agent import Agent
+        from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.FullyCollectiveWithSemanticPoliciesActionLevel import (
+            A_fn,
+            B_fn,
+            C_fn,
+            D_fn,
+            model_init as mon_model_init,
+            env_utils,
+        )
+        from environments.overcooked_ma_gym import OvercookedMultiAgentEnv
+    except Exception as e:
+        print("[SKIP] Could not load agent or environment: {}".format(e))
+        return
+
+    model_init_agent = mon_model_init
+    if int(getattr(model_init_agent, "N_PRIMITIVE_ACTIONS", ric.N_PRIMITIVE_ACTIONS)) != ric.N_PRIMITIVE_ACTIONS:
+        print(
+            "[SKIP] model_init N_PRIMITIVE_ACTIONS ({}) != ric.N_PRIMITIVE_ACTIONS ({}).".format(
+                getattr(model_init_agent, "N_PRIMITIVE_ACTIONS", None),
+                ric.N_PRIMITIVE_ACTIONS,
+            )
+        )
+        return
+
+    state_factors = list(model_init_agent.states.keys())
+    state_sizes = {f: len(v) for f, v in model_init_agent.states.items()}
+    observation_labels = model_init_agent.observations
+    base_env_params = {"width": model_init_agent.GRID_WIDTH, "height": model_init_agent.GRID_HEIGHT}
+    policy_len = ric.PAIR_POLICY_HORIZON
+    max_steps_per_scenario = int(max_steps)
+    horizon = max_steps_per_scenario + 10
+    env_layout = "cramped_room"
+
+    def create_agent(seed=None, ego_agent_index: int = 0):
+        # Each agent gets its own independent RNG stream instead of seeding the
+        # shared global np.random state (which a second create_agent() call for
+        # the other agent would immediately clobber, since nothing consumes
+        # randomness between the two seed calls -- see ai/02-debug.md section D).
+        rng = np.random.default_rng(seed)
+        env_params = {**base_env_params, "ego_agent_index": int(ego_agent_index)}
+        agent = Agent(
+            A_fn=A_fn,
+            B_fn=B_fn,
+            C_fn=C_fn,
+            D_fn=D_fn,
+            state_factors=state_factors,
+            state_sizes=state_sizes,
+            observation_labels=observation_labels,
+            env_params=env_params,
+            observation_state_dependencies=model_init_agent.observation_state_dependencies,
+            actions=list(range(ric.N_PRIMITIVE_ACTIONS)),
+            gamma=float(gamma),
+            alpha=float(alpha),
+            policy_len=policy_len,
+            inference_horizon=policy_len,
+            action_selection="stochastic",
+            sampling_mode="full",
+            inference_algorithm="VANILLA",
+            num_iter=16,
+            dF_tol=0.01,
+            use_action_for_state_inference=True,
+        )
+        agent.rng = rng
+        if no_ig:
+            agent.use_states_info_gain = False
+        return agent
+
+    def _execute_first_primitive_step(env_obj, a0_prim: int, a1_prim: int):
+        observations, rewards, terminated, truncated, infos = env_obj.step(
+            {"agent_0": int(a0_prim), "agent_1": int(a1_prim)}
+        )
+        next_state = infos["agent_0"]["state"]
+        reward_info = {
+            "sparse_reward_by_agent": [
+                infos["agent_0"].get("sparse_reward", 0),
+                infos["agent_1"].get("sparse_reward", 0),
+            ]
+        }
+        return observations, next_state, reward_info, rewards, terminated, truncated, infos
+
+    def run_one_episode(
+        env_obj,
+        agent_0,
+        agent_1,
+        episode_name: str,
+        episode_seed: int | None,
+        *,
+        log_steps: bool,
+        run_tag: str,
+        log_csv: bool = False,
+        log_jsonl: bool = False,
+        log_dir: str | None = None,
+        agent0_seed: int | None = None,
+        agent1_seed: int | None = None,
+        policy_log_top_k: int = 20,
+        log_full_q_pi: bool = False,
+    ):
+        _obs, infos = env_obj.reset(seed=episode_seed)
+        state = infos["agent_0"]["state"]
+
+        log_base = log_dir or sal_csv._repo_logs_dir()
+        want_detail = bool(log_steps or log_jsonl)
+
+        step_csv = None
+        if log_csv:
+            # FC has exactly one thinking agent (the brain, agent_0) -- agent1_seed
+            # only seeds the follower's otherwise-inert RNG, so the log is keyed on
+            # episode_seed + brain_seed only, matching FC_FIELDS's schema.
+            step_csv = sal_csv.open_fc_log(
+                log_base,
+                int(episode_seed or 0),
+                int(agent0_seed or 0),
+            )
+
+        step_jsonl = None
+        if log_jsonl:
+            step_jsonl = sal_detail.open_jsonl(
+                log_base,
+                "fc",
+                episode_seed=int(episode_seed or 0),
+                agent0_seed=int(agent0_seed or 0),
+                agent1_seed=int(agent1_seed or 0),
+            )
+
+        config_0 = env_utils.get_D_config_from_state(state, 0)
+        config_1 = env_utils.get_D_config_from_state(state, 1)
+        agent_0.reset(config=config_0)
+        agent_1.reset(config=config_1)
+
+        prev_reward_info = {"sparse_reward_by_agent": [0, 0]}
+        total_reward_0 = 0.0
+        total_reward_1 = 0.0
+
+        if verbose or log_steps:
+            print("\n" + "=" * 72, flush=True)
+            print("  {}".format(episode_name), flush=True)
+            print("=" * 72, flush=True)
+
+        for step in range(1, max_steps_per_scenario + 1):
+            obs_0 = env_utils.env_obs_to_model_obs(state, 0, reward_info=prev_reward_info)
+            obs_1 = env_utils.env_obs_to_model_obs(state, 1, reward_info=prev_reward_info)
+
+            map_before = (
+                sal_detail.map_lines(state, model_init_agent, ric.render_overcooked_grid)
+                if want_detail
+                else None
+            )
+
+            if log_steps:
+                state_str = ric._state_summary(state, model_init_agent, max_agents=2)
+                print("\n  --- [{}] Step {} ---".format(run_tag, step), flush=True)
+                print("    Env state:  {}".format(state_str), flush=True)
+                sal_detail.print_map("Map (before action)", map_before or [])
+                for line in ric._agent_summary_lines(state, model_init_agent, max_agents=2):
+                    print(line, flush=True)
+                print(
+                    "    Obs A0: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
+                        obs_0["self_pos_obs"],
+                        obs_0["self_orientation_obs"],
+                        obs_0["self_held_obs"],
+                        obs_0["other_pos_obs"],
+                        obs_0["other_held_obs"],
+                        obs_0["pot_state_obs"],
+                        obs_0["soup_delivered_obs"],
+                    ),
+                    flush=True,
+                )
+                print(
+                    "    Obs A1: self_pos={} self_ori={} self_held={} other_pos={} other_held={} pot={} delivered={}".format(
+                        obs_1["self_pos_obs"],
+                        obs_1["self_orientation_obs"],
+                        obs_1["self_held_obs"],
+                        obs_1["other_pos_obs"],
+                        obs_1["other_held_obs"],
+                        obs_1["pot_state_obs"],
+                        obs_1["soup_delivered_obs"],
+                    ),
+                    flush=True,
+                )
+
+            # Only the brain (agent_0) perceives and updates beliefs -- FC has one
+            # thinking agent, not two. agent_1 (the follower) never calls infer_states.
+            agent_0.infer_states(obs_0)
+
+            policy_state_0 = ric.build_policy_state_for_agent(
+                state, agent_idx=0, env_utils=env_utils, prev_reward_info=prev_reward_info
+            )
+            # Still needed for the follower's real, ground-truth-BFS'd semantic path
+            # menu (pure geometry, not a belief update -- see demo script docstring).
+            policy_state_1 = ric.build_policy_state_for_agent(
+                state, agent_idx=1, env_utils=env_utils, prev_reward_info=prev_reward_info
+            )
+
+            agent_0.update_policies(policy_state_0)
+            agent_1.update_policies(policy_state_1)
+
+            ric._translate_agent_policies_utils_to_env(agent_0)
+            ric._translate_agent_policies_utils_to_env(agent_1)
+
+            _n_sem = int(model_init_agent.N_ACTIONS)
+            _stay = int(model_init_agent.STAY)
+
+            ego0_paths = list(agent_0.policies)
+            ego1_paths = list(agent_1.policies)
+
+            ego0_first_prim = ric._first_prim_per_semantic(ego0_paths, _n_sem, _stay)
+            ego1_first_prim = ric._first_prim_per_semantic(ego1_paths, _n_sem, _stay)
+
+            # ONE brain builds the 400-pair joint policy space (ego=agent_0,
+            # partner=agent_1) and runs the single joint-EFE evaluation. There is
+            # no second, independently-computed joint policy set.
+            joint_policies_0 = ric._build_joint_primitive_policies(ego0_paths, ego1_paths, _stay)
+            agent_0.set_policies(joint_policies_0)
+            agent_0.infer_policies()
+
+            # Both halves of the executed action are decoded from the ONE winning
+            # joint index: ego half via integer division, follower half via the
+            # remainder (policy index k = ego_sem * n_sem + partner_sem).
+            pol_idx_0 = ric._sample_or_argmax_policy_index(agent_0)
+
+            ego0_sem = int(pol_idx_0) // _n_sem
+            ego1_sem = int(pol_idx_0) % _n_sem
+
+            a0_prim = ego0_first_prim[ego0_sem] if 0 <= ego0_sem < len(ego0_first_prim) else _stay
+            a1_prim = ego1_first_prim[ego1_sem] if 0 <= ego1_sem < len(ego1_first_prim) else _stay
+
+            # Only the brain carries beliefs forward -- the follower has none.
+            agent_0.action = (PRIMITIVE_POLICY_STEP, int(a0_prim), int(a1_prim))
+            agent_0.step_time()
+
+            _observations, state, prev_reward_info, rewards, terminated, truncated, infos = (
+                _execute_first_primitive_step(env_obj, a0_prim, a1_prim)
+            )
+
+            r0 = float(rewards["agent_0"])
+            r1 = float(rewards["agent_1"])
+            total_reward_0 += r0
+            total_reward_1 += r1
+
+            if step_csv is not None:
+                ps0 = sal_csv._policy_stats(agent_0, ric._fmt_policy)
+                step_csv.write(
+                    {
+                        "paradigm": "fc",
+                        "episode_seed": int(episode_seed or 0),
+                        "brain_seed": int(agent0_seed or 0),
+                        "step": int(step),
+                        "joint_policy_idx": int(pol_idx_0),
+                        "joint_semantic_self": ric._fmt_joint_semantic(pol_idx_0, _n_sem).split(" | ")[0],
+                        "joint_semantic_other": ric._fmt_joint_semantic(pol_idx_0, _n_sem).split(" | ")[1],
+                        "a0_semantic_idx": int(ego0_sem),
+                        "a1_semantic_idx": int(ego1_sem),
+                        "a0_primitive": int(a0_prim),
+                        "a0_primitive_name": ric.PRIMITIVE_ACTION_NAMES.get(
+                            a0_prim, str(a0_prim)
+                        ),
+                        "a1_primitive": int(a1_prim),
+                        "a1_primitive_name": ric.PRIMITIVE_ACTION_NAMES.get(
+                            a1_prim, str(a1_prim)
+                        ),
+                        "brain_q_pi_entropy": ps0["q_pi_entropy"],
+                        "brain_top_policy_prob": ps0["top_policy_prob"],
+                        "reward_a0": r0,
+                        "reward_a1": r1,
+                        "cumulative_reward_a0": total_reward_0,
+                        "cumulative_reward_a1": total_reward_1,
+                        "terminated": bool(terminated.get("__all__")),
+                        "truncated": bool(truncated.get("__all__")),
+                    }
+                )
+
+            def _joint_label(pidx: int, _agent) -> str:
+                return ric._fmt_joint_semantic(pidx, _n_sem)
+
+            if log_steps:
+                print(
+                    "    Joint pair policies: {} ({}×{}, single brain decision)".format(
+                        len(agent_0.policies or []),
+                        _n_sem,
+                        _n_sem,
+                    ),
+                    flush=True,
+                )
+                sal_detail.print_agent_beliefs(
+                    agent_0,
+                    np_mod=np,
+                    model_init=model_init_agent,
+                    agent_label="Brain (agent_0)",
+                    belief_table_fn=ric._belief_table,
+                    policy_label_fn=_joint_label,
+                    policy_top_k=policy_log_top_k,
+                    policy_full=log_full_q_pi,
+                    policy_label_width=40,
+                )
+                print("    Joint policy idx={}  {}  (agent_1/follower has no beliefs; both halves decoded from this index)".format(int(pol_idx_0), ric._fmt_joint_semantic(pol_idx_0, _n_sem)), flush=True)
+
+                print(
+                    "    Executed primitive actions: A0={}  A1={}".format(
+                        ric.PRIMITIVE_ACTION_NAMES.get(a0_prim, str(a0_prim)),
+                        ric.PRIMITIVE_ACTION_NAMES.get(a1_prim, str(a1_prim)),
+                    ),
+                    flush=True,
+                )
+
+                print("    Reward A0: {}  (cumulative: {})".format(r0, total_reward_0), flush=True)
+                print("    Reward A1: {}  (cumulative: {})".format(r1, total_reward_1), flush=True)
+
+            if want_detail and map_before is not None:
+                map_after = sal_detail.map_lines(
+                    state, model_init_agent, ric.render_overcooked_grid
+                )
+                if log_steps:
+                    sal_detail.print_map("Map (after action)", map_after)
+
+                def _joint_label_json(pidx: int, _agent) -> str:
+                    return ric._fmt_joint_semantic(pidx, _n_sem)
+
+                sal_detail.write_fc_step(
+                    step_jsonl,
+                    step=step,
+                    episode_seed=int(episode_seed or 0),
+                    brain_seed=int(agent0_seed or 0),
+                    map_before=map_before,
+                    map_after=map_after,
+                    brain=agent_0,
+                    joint_label_fn=_joint_label_json,
+                    joint_pairs=agent_0.policies or [],
+                    joint_idx=int(pol_idx_0),
+                    a_self_sem=int(ego0_sem),
+                    a_other_sem=int(ego1_sem),
+                    a0_prim=int(a0_prim),
+                    a1_prim=int(a1_prim),
+                    a0_prim_name=ric.PRIMITIVE_ACTION_NAMES.get(a0_prim, str(a0_prim)),
+                    a1_prim_name=ric.PRIMITIVE_ACTION_NAMES.get(a1_prim, str(a1_prim)),
+                    reward_a0=r0,
+                    reward_a1=r1,
+                    cumulative_reward_a0=total_reward_0,
+                    cumulative_reward_a1=total_reward_1,
+                    terminated=bool(terminated.get("__all__")),
+                    truncated=bool(truncated.get("__all__")),
+                    policy_top_k=policy_log_top_k,
+                    include_full_q_pi=bool(log_jsonl or log_full_q_pi),
+                    action_names=model_init_agent.ACTION_NAMES,
+                )
+
+            if terminated.get("__all__") or truncated.get("__all__"):
+                if log_steps:
+                    print("    Episode ended.", flush=True)
+                break
+
+        if verbose or log_steps:
+            print("\n  Scenario total reward A0: {}".format(total_reward_0), flush=True)
+            print("  Scenario total reward A1: {}".format(total_reward_1), flush=True)
+
+        csv_path = None
+        if step_csv is not None:
+            step_csv.close()
+            csv_path = step_csv.path
+            print("  Step CSV: {}".format(csv_path), flush=True)
+
+        jsonl_path = None
+        if step_jsonl is not None:
+            step_jsonl.close()
+            jsonl_path = step_jsonl.path
+            print("  Step JSONL: {}".format(jsonl_path), flush=True)
+
+        return total_reward_0, total_reward_1, csv_path, jsonl_path
+
+    print(
+        "[Sweep] n_runs={} gamma={} alpha={} no_ig={} max_steps={} log_steps={} log_csv={} log_jsonl={}".format(
+            n_runs, gamma, alpha, no_ig, max_steps_per_scenario, log_steps, log_csv, log_jsonl
+        ),
+        flush=True,
+    )
+    if log_csv or log_jsonl:
+        print("[Sweep] Detail log dir: {}".format(log_dir or sal_csv._repo_logs_dir()), flush=True)
+
+    results = []
+    for i in range(n_runs):
+        ep_seed = int(episode_seeds[i])
+        s0 = int(agent0_seeds[i])
+        s1 = int(agent1_seeds[i])
+        env = OvercookedMultiAgentEnv(config={"layout": env_layout, "horizon": horizon})
+        agent_0 = create_agent(seed=s0, ego_agent_index=0)
+        agent_1 = create_agent(seed=s1, ego_agent_index=1)
+
+        name = "run {}/{}  episode_seed={}  agent_seeds=({}, {})".format(i + 1, n_runs, ep_seed, s0, s1)
+        run_tag = "run{}/{}".format(i + 1, n_runs)
+        r0, r1, csv_path, jsonl_path = run_one_episode(
+            env,
+            agent_0,
+            agent_1,
+            name,
+            ep_seed,
+            log_steps=log_steps,
+            run_tag=run_tag,
+            log_csv=log_csv,
+            log_jsonl=log_jsonl,
+            log_dir=log_dir,
+            agent0_seed=s0,
+            agent1_seed=s1,
+            policy_log_top_k=policy_log_top_k,
+            log_full_q_pi=log_full_q_pi,
+        )
+        results.append((ep_seed, s0, s1, r0, r1, csv_path, jsonl_path))
+        print(
+            "  run {:d}: episode_seed={} agent_seeds=({}, {})  total_reward A0={:.3f} A1={:.3f}  team_return={:.3f}".format(
+                i + 1, ep_seed, s0, s1, r0, r1, max(r0, r1)
+            ),
+            flush=True,
+        )
+
+    # Overcooked pays the same shared team reward to both agents each step
+    # (see environments/overcooked_ma_gym.py), so r0 == r1 per episode and the
+    # true team return is max(r0, r1), NOT r0 + r1 (which double-counts).
+    sum_r0 = sum(t[3] for t in results)
+    sum_r1 = sum(t[4] for t in results)
+    team_returns = [max(t[3], t[4]) for t in results]
+    csv_paths = [t[5] for t in results if t[5] is not None]
+    jsonl_paths = [t[6] for t in results if t[6] is not None]
+    if csv_paths:
+        print("\n[Sweep] Step CSV files:", flush=True)
+        for p in csv_paths:
+            print("  {}".format(p), flush=True)
+    if jsonl_paths:
+        print("\n[Sweep] Step JSONL files:", flush=True)
+        for p in jsonl_paths:
+            print("  {}".format(p), flush=True)
+    print(
+        "\n[Sweep] done. Mean total_reward per run: A0={:.4f} A1={:.4f}  team_return_mean={:.4f}".format(
+            sum_r0 / n_runs,
+            sum_r1 / n_runs,
+            sum(team_returns) / n_runs,
+        ),
+        flush=True,
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Seed sweep for semantic action-level runner (default gamma=4, alpha=1).")
+    parser.add_argument("--n-runs", type=int, default=5, help="Number of episodes (default: 5).")
+    parser.add_argument(
+        "--episode-seeds",
+        type=str,
+        default="76,77,78,79,80",
+        help="Comma-separated env reset seeds, one per run (default: 76,77,78,79,80).",
+    )
+    parser.add_argument(
+        "--agent0-seeds",
+        type=str,
+        default="1000,1001,1002,1003,1004",
+        help="Comma-separated np.random seeds for agent 0 at construction (default: 1000..1004).",
+    )
+    parser.add_argument(
+        "--agent1-seeds",
+        type=str,
+        default="2000,2001,2002,2003,2004",
+        help="Comma-separated np.random seeds for agent 1 at construction (default: 2000..2004).",
+    )
+    parser.add_argument("--gamma", type=float, default=4.0)
+    parser.add_argument("--alpha", type=float, default=1.0)
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=2000,
+        help="Maximum primitive steps per episode (default: 2000).",
+    )
+    parser.add_argument(
+        "--noig",
+        action="store_true",
+        help="Disable epistemic value (state information gain) in policy evaluation.",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print episode title banners and totals only (no per-step log).",
+    )
+    parser.add_argument(
+        "--log-steps",
+        action="store_true",
+        help="Per-step log like the main runner (map, obs, beliefs, policies, rewards); very verbose.",
+    )
+    parser.add_argument(
+        "--log-csv",
+        action="store_true",
+        help="Write per-step CSV (Excel-friendly) under --log-dir (default: repo logs/).",
+    )
+    parser.add_argument(
+        "--log-dir",
+        type=str,
+        default=None,
+        help="Directory for step CSV / JSONL files (default: <repo>/logs).",
+    )
+    parser.add_argument(
+        "--log-jsonl",
+        action="store_true",
+        help="Write per-step JSONL with map snapshots, full state beliefs, and full q_pi.",
+    )
+    parser.add_argument(
+        "--policy-log-top-k",
+        type=int,
+        default=20,
+        help="Number of policies to list in stdout logs (default: 20).",
+    )
+    parser.add_argument(
+        "--log-full-q-pi",
+        action="store_true",
+        help="List every policy in stdout logs (can be huge for IC/FC). JSONL always includes full q_pi when --log-jsonl is set.",
+    )
+    args = parser.parse_args()
+
+    def _parse_int_list(s: str) -> list[int]:
+        parts = [p.strip() for p in s.split(",") if p.strip()]
+        return [int(p) for p in parts]
+
+    n_runs = int(args.n_runs)
+    episode_seeds = _parse_int_list(args.episode_seeds)
+    agent0_seeds = _parse_int_list(args.agent0_seeds)
+    agent1_seeds = _parse_int_list(args.agent1_seeds)
+
+    if len(episode_seeds) == 1 and n_runs > 1:
+        episode_seeds = [episode_seeds[0] + k for k in range(n_runs)]
+    if len(agent0_seeds) == 1 and n_runs > 1:
+        agent0_seeds = [agent0_seeds[0] + k for k in range(n_runs)]
+    if len(agent1_seeds) == 1 and n_runs > 1:
+        agent1_seeds = [agent1_seeds[0] + k for k in range(n_runs)]
+
+    if not (len(episode_seeds) == n_runs and len(agent0_seeds) == n_runs and len(agent1_seeds) == n_runs):
+        print(
+            "Error: need exactly {} seeds in each list (got episode={}, agent0={}, agent1={}).".format(
+                n_runs,
+                len(episode_seeds),
+                len(agent0_seeds),
+                len(agent1_seeds),
+            )
+        )
+        sys.exit(1)
+
+    _run_sweep(
+        n_runs=n_runs,
+        episode_seeds=episode_seeds,
+        agent0_seeds=agent0_seeds,
+        agent1_seeds=agent1_seeds,
+        gamma=float(args.gamma),
+        alpha=float(args.alpha),
+        no_ig=bool(args.noig),
+        verbose=bool(args.verbose),
+        log_steps=bool(args.log_steps),
+        log_csv=bool(args.log_csv),
+        log_jsonl=bool(args.log_jsonl),
+        log_dir=args.log_dir,
+        policy_log_top_k=int(args.policy_log_top_k),
+        log_full_q_pi=bool(args.log_full_q_pi),
+        max_steps=int(args.max_steps),
+    )
+
+
+if __name__ == "__main__":
+    main()

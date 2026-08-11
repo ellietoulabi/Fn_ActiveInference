@@ -15,6 +15,8 @@ Notes:
   a fixed global policy library.
 """
 
+import itertools
+
 import numpy as np
 from . import maths
 from . import utils
@@ -22,65 +24,87 @@ from . import utils
 
 
 
-
-
-
 # =============================================================================
-# Entropy threshold alternative: TOP-K 
+# Exact per-factor/component decomposition (replaces the top-k/budget
+# approximation formerly known as select_dynamic_factors -- see
+# ai/02-debug.md section J.7 for the derivation and verification).
 # =============================================================================
-# --- EFE marginalization budget ------------------------------------------
-IG_TOP_K = 4           # how many state factors to marginalize over
-IG_MAX_STATES = 64     # hard cap on enumerated joint state combinations
-IG_MIN_ENTROPY = 0  # below this a factor is a delta; enumerating it is wasted work
+#
+# Under the mean-field belief factorization q(s) = prod_f q(s_f) already used
+# throughout this codebase, and given that observation modalities are
+# conditionally independent given the full state (already assumed everywhere
+# A_fn's per-modality likelihoods are multiplied together), any two modalities
+# whose dependency sets share no factor are independent under the predictive
+# distribution Q(o). Entropy of a product of independent distributions is the
+# SUM of their marginal entropies, so predictive entropy and conditional
+# entropy -- and therefore information gain -- decompose EXACTLY into a sum
+# over the connected components of the modality-factor dependency graph.
+#
+# For every modality currently defined in this generative model, that
+# dependency graph is trivial: each modality depends on exactly one, distinct
+# factor (self_pos_obs <-> self_pos, self_held_obs <-> self_held, etc. --
+# confirmed via direct inspection of observation_state_dependencies), so every
+# component has size 1 and the "joint" enumeration this function used to
+# require (up to 73,728 states across all 8 eligible factors) collapses to 8
+# independent enumerations of at most 6 states each. This is not an
+# approximation: it was verified to match the full 73,728-state combinatorial
+# enumeration to floating-point precision (~1e-13) across multiple randomized
+# belief scenarios, including ones with simultaneous diffuseness across
+# self_pos/other_pos/self_held/pot_state -- the exact scenario that caused the
+# old top-k scheme to silently drop self_held/pot_state and change the agent's
+# real decision (cntr1/stay vs cntr1/interact). The grouping logic below is
+# written generally (not hardcoded to today's 1-factor-per-modality shape) so
+# it stays correct and still cheap if a future modality is ever added that
+# depends on more than one factor -- that modality's own (small) factor group
+# would need real joint enumeration, but every other, disjoint modality would
+# be unaffected and still computed independently.
 
 
-def select_dynamic_factors(
-    qs_dict_np,
-    observation_state_dependencies,
-    skip_modalities,
-    top_k=IG_TOP_K,
-    max_states=IG_MAX_STATES,
-    min_entropy=IG_MIN_ENTROPY,
-):
+def _group_modalities_by_shared_factors(observation_state_dependencies, skip_modalities):
     """
-    Choose which state factors to marginalize over when computing expected
-    observations and information gain.
+    Partition non-skipped modalities into connected components of the
+    modality-factor dependency graph (union-find over shared factors).
 
-    Replaces the adaptive entropy threshold, which could select zero factors
-    (collapsing info gain to exactly 0) or, at the other extreme, select enough
-    factors to blow up the enumeration. Ranks factors by belief entropy and
-    keeps the most uncertain ones under a fixed budget. Ties break by factor
-    name so runs stay reproducible.
+    Returns a list of {"factors": set[str], "modalities": list[str]} groups.
+    Modalities in different groups depend on completely disjoint factors, so
+    their contributions to predictive/conditional entropy are independent and
+    additive; modalities in the same group must be enumerated jointly over
+    the union of their factors (today, every group has exactly one factor and
+    one modality).
     """
-    eligible = {
-        dep
-        for modality, deps in observation_state_dependencies.items()
-        if modality not in skip_modalities
-        for dep in deps
-        if dep in qs_dict_np
-    }
-    if not eligible:
-        return []
+    modalities = [
+        m for m, deps in observation_state_dependencies.items()
+        if m not in skip_modalities and deps
+    ]
 
-    entropy = {
-        f: float(-np.sum(qs_dict_np[f] * np.log(qs_dict_np[f] + 1e-16)))
-        for f in eligible
-    }
+    parent = {}
 
-    chosen = []
-    n_states = 1
-    for f in sorted(eligible, key=lambda name: (-entropy[name], name)):
-        if len(chosen) >= top_k:
-            break
-        if entropy[f] < min_entropy:
-            break
-        size = len(qs_dict_np[f])
-        if n_states * size > max_states:
-            continue
-        chosen.append(f)
-        n_states *= size
+    def find(x):
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
 
-    return chosen
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for m in modalities:
+        deps = observation_state_dependencies[m]
+        for d in deps[1:]:
+            union(deps[0], d)
+
+    groups = {}
+    for m in modalities:
+        deps = observation_state_dependencies[m]
+        root = find(deps[0])
+        g = groups.setdefault(root, {"factors": set(), "modalities": []})
+        g["factors"].update(deps)
+        g["modalities"].append(m)
+
+    return list(groups.values())
 
 
 
@@ -161,7 +185,11 @@ def get_expected_obs_from_beliefs(
     """
     Compute expected observation distributions from belief over states.
 
-    Optimized: enumerate unique state configurations once, reuse across modalities.
+    EXACT per-modality computation (see ai/02-debug.md section J.7): under the
+    mean-field belief factorization, a modality's predicted marginal only ever
+    needs the specific factor(s) it actually depends on -- for every modality
+    in this model that's a single factor (cardinality <= 6) -- so no full
+    joint-state enumeration is required at all.
     """
     # Import default model_init for backward compatibility
     if observation_labels is None or observation_state_dependencies is None:
@@ -171,11 +199,7 @@ def get_expected_obs_from_beliefs(
         if observation_state_dependencies is None:
             observation_state_dependencies = default_model.observation_state_dependencies
 
-    import itertools
-
-    # Convert arrays to numpy to avoid compilation overhead
     qs_dict_np = {f: np.array(qs_dict[f]) for f in state_factors}
-
     map_indices = {f: int(np.argmax(qs_dict_np[f])) for f in state_factors}
 
     SKIP_MODALITIES = {"button_just_pressed"}
@@ -192,69 +216,25 @@ def get_expected_obs_from_beliefs(
     # (We still use held observations for state inference, just not for EFE scoring computations here.)
     SKIP_MODALITIES.add("agent_held_obs")
 
-#     # Adaptive entropy threshold based on belief concentration
-#     max_entropy_observed = max(
-#         -np.sum(qs_dict_np[f] * np.log(qs_dict_np[f] + 1e-16))
-#         for f in state_factors
-#     )
-#     # ENTROPY_THRESHOLD = min(0.1, max(0.01, max_entropy_observed * 0.1))
-#     ENTROPY_THRESHOLD = min(0.1, max(1e-3, max_entropy_observed * 0.1))
-
-#     dynamic_factors = set()
-#     for f in state_factors:
-#         q_f = qs_dict_np[f]
-#         entropy = -np.sum(q_f * np.log(q_f + 1e-16))
-#         if entropy > ENTROPY_THRESHOLD:
-#             dynamic_factors.add(f)
-
-#     # Find deps that are actually dynamic
-#     all_deps = set()
-#     for modality, deps in observation_state_dependencies.items():
-#         if modality not in SKIP_MODALITIES:
-#             for dep in deps:
-#                 if dep in dynamic_factors:
-#                     all_deps.add(dep)
-
-
-    all_deps = set(
-        select_dynamic_factors(
-            qs_dict_np, observation_state_dependencies, SKIP_MODALITIES
-        )
-    )
-    # Enumerate combinations of dynamic factors only
-    dep_list = sorted(all_deps)
-    dep_ranges = [range(len(qs_dict_np[dep])) for dep in dep_list]
-
-    # Precompute likelihoods for all state combinations
-    likelihood_cache = []
-    prob_cache = []
-
-    for combo in itertools.product(*dep_ranges):
-        joint_prob = 1.0
-        state_indices = map_indices.copy()
-        for dep, idx in zip(dep_list, combo):
-            joint_prob *= qs_dict_np[dep][idx]
-            state_indices[dep] = int(idx)
-
-        if joint_prob <= 1e-16:
-            continue
-
-        obs_likelihoods = A_fn(state_indices)
-        likelihood_cache.append(obs_likelihoods)
-        prob_cache.append(joint_prob)
-
-    # Marginalize each modality using cached likelihoods
     qo_dict = {}
     for modality, deps in observation_state_dependencies.items():
-        if modality in SKIP_MODALITIES:
+        if modality in SKIP_MODALITIES or not deps:
             continue
 
+        dep_ranges = [range(len(qs_dict_np[d])) for d in deps]
         num_obs = len(observation_labels[modality])
         qo_m = np.zeros(num_obs)
 
-        for obs_lik, joint_prob in zip(likelihood_cache, prob_cache):
-            p_o_m = obs_lik[modality]
-            qo_m += joint_prob * p_o_m
+        for combo in itertools.product(*dep_ranges):
+            w = 1.0
+            s_idx = map_indices.copy()
+            for d, idx in zip(deps, combo):
+                w *= qs_dict_np[d][idx]
+                s_idx[d] = int(idx)
+            if w <= 1e-16:
+                continue
+            p_o_m = A_fn(s_idx)[modality]
+            qo_m += w * p_o_m
 
         qo_dict[modality] = maths.normalize(qo_m)
 
@@ -324,8 +304,16 @@ def get_expected_obs_and_info_gain_unified(
     """
     Compute BOTH expected observations AND information gain in one pass.
 
-    This avoids redundant state enumeration by computing both metrics from the
-    same cached A_fn calls.
+    EXACT per-component decomposition (see ai/02-debug.md section J.7 and the
+    module docstring above `_group_modalities_by_shared_factors`): instead of
+    enumerating the full cross-product of every eligible state factor (up to
+    73,728 states for this model), this enumerates only within each connected
+    component of the modality-factor dependency graph and sums the results,
+    which is mathematically exact under mean-field beliefs + conditionally
+    independent modalities, not an approximation. For every modality currently
+    defined in this generative model, each component is a single (modality,
+    factor) pair, so this reduces to 8 independent enumerations of at most 6
+    states each.
 
     Returns:
         qo_pi: list of observation predictions per timestep
@@ -336,13 +324,10 @@ def get_expected_obs_and_info_gain_unified(
         from generative_models.SA_ActiveInference.RedBlueButton import model_init as default_model
         observation_state_dependencies = default_model.observation_state_dependencies
 
-    import itertools
-
     qo_pi = []
     total_info_gain = 0.0
 
     for t_idx, qs_t in enumerate(qs_pi):
-        # Convert to numpy once
         qs_dict_np = {f: np.array(qs_t[f]) for f in state_factors}
         map_indices = {f: int(np.argmax(qs_dict_np[f])) for f in state_factors}
 
@@ -356,47 +341,50 @@ def get_expected_obs_and_info_gain_unified(
             }
         SKIP_MODALITIES.add("agent_held_obs")
 
-        # Top-k entropy budget instead of adaptive threshold (see select_dynamic_factors).
-        all_deps = set(
-            select_dynamic_factors(
-                qs_dict_np, observation_state_dependencies, SKIP_MODALITIES
-            )
-        )
+        groups = _group_modalities_by_shared_factors(observation_state_dependencies, SKIP_MODALITIES)
 
-        # Enumerate states once, cache A_fn results
-        dep_list = sorted(all_deps)
-        dep_ranges = [range(len(qs_dict_np[dep])) for dep in dep_list]
-
-        likelihood_cache = []
-        prob_cache = []
-
-        for combo in itertools.product(*dep_ranges):
-            joint_prob = 1.0
-            state_indices = map_indices.copy()
-            for dep, idx in zip(dep_list, combo):
-                joint_prob *= qs_dict_np[dep][idx]
-                state_indices[dep] = int(idx)
-
-            if joint_prob <= 1e-16:
-                continue
-
-            obs_likelihoods = A_fn(state_indices)
-            likelihood_cache.append(obs_likelihoods)
-            prob_cache.append(joint_prob)
-
-        # --- Expected observations ---
         qo_t = {}
-        for modality, deps in observation_state_dependencies.items():
-            if modality in SKIP_MODALITIES:
-                continue
+        timestep_info_gain = 0.0
 
-            num_obs = len(observation_labels[modality])
-            qo_m = np.zeros(num_obs)
+        for group in groups:
+            factors = sorted(group["factors"])
+            modalities = group["modalities"]
+            dep_ranges = [range(len(qs_dict_np[f])) for f in factors]
 
-            for obs_lik, joint_prob in zip(likelihood_cache, prob_cache):
-                qo_m += joint_prob * obs_lik[modality]
+            qo_joint_local = None
+            cond_entropy_local = 0.0
+            qo_m_local = {m: np.zeros(len(observation_labels[m])) for m in modalities}
 
-            qo_t[modality] = maths.normalize(qo_m)
+            for combo in itertools.product(*dep_ranges):
+                w = 1.0
+                s_idx = map_indices.copy()
+                for f, idx in zip(factors, combo):
+                    w *= qs_dict_np[f][idx]
+                    s_idx[f] = int(idx)
+                if w <= 1e-16:
+                    continue
+
+                obs_lik = A_fn(s_idx)
+
+                po_joint = np.array([1.0])
+                for m in modalities:
+                    p_o_m = obs_lik[m]
+                    qo_m_local[m] += w * p_o_m
+                    po_joint = np.outer(po_joint, p_o_m).ravel()
+
+                if qo_joint_local is None:
+                    qo_joint_local = np.zeros_like(po_joint)
+                qo_joint_local += w * po_joint
+                H_o_given_s = -np.sum(po_joint * maths.log_stable(po_joint))
+                cond_entropy_local += w * H_o_given_s
+
+            for m in modalities:
+                qo_t[m] = maths.normalize(qo_m_local[m])
+
+            if qo_joint_local is not None:
+                qo_joint_local = maths.normalize(qo_joint_local)
+                pred_entropy_local = -np.sum(qo_joint_local * maths.log_stable(qo_joint_local))
+                timestep_info_gain += pred_entropy_local - cond_entropy_local
 
         # Approximate button_just_pressed (works with both SA and MA naming)
         if "button_just_pressed" in observation_state_dependencies:
@@ -413,49 +401,10 @@ def get_expected_obs_and_info_gain_unified(
             qo_t["button_just_pressed"] = np.array([1.0 - p_just_pressed, p_just_pressed])
 
         qo_pi.append(qo_t)
-
-        # --- Info gain using joint observations ---
-        active_modalities = [
-            m for m in observation_state_dependencies.keys()
-            if m not in SKIP_MODALITIES
-        ]
-
-        if len(active_modalities) == 0:
-            timestep_info_gain = 0.0
-            pred_entropy_joint = 0.0
-            cond_entropy_joint = 0.0
-        else:
-            obs_sizes = [len(observation_labels[m]) for m in active_modalities]
-            total_joint_obs = int(np.prod(obs_sizes))
-
-            qo_joint = np.zeros(total_joint_obs)   # P(o_joint) under beliefs
-            cond_entropy_joint = 0.0              # E_Q(s)[H[p(o_joint|s)]]
-
-            for obs_lik, joint_prob in zip(likelihood_cache, prob_cache):
-                po_joint = np.array([1.0])
-                for m in active_modalities:
-                    p_o_m = obs_lik[m]
-                    po_joint = np.outer(po_joint, p_o_m).ravel()
-
-                qo_joint += joint_prob * po_joint
-
-                H_o_given_s = -np.sum(po_joint * maths.log_stable(po_joint))
-                cond_entropy_joint += joint_prob * H_o_given_s
-
-            qo_joint = maths.normalize(qo_joint)
-            pred_entropy_joint = -np.sum(qo_joint * maths.log_stable(qo_joint))
-            timestep_info_gain = pred_entropy_joint - cond_entropy_joint
-
         total_info_gain += timestep_info_gain
 
         if debug and t_idx < 3:
-            if len(active_modalities) > 0:
-                print(
-                    f"      t={t_idx}: pred_H={pred_entropy_joint:.4f}, "
-                    f"cond_H={cond_entropy_joint:.4f}, IG={timestep_info_gain:.4f}"
-                )
-            else:
-                print(f"      t={t_idx}: IG={timestep_info_gain:.4f} (no active modalities)")
+            print(f"      t={t_idx}: IG={timestep_info_gain:.4f} (exact, {len(groups)} independent groups)")
 
     return qo_pi, float(total_info_gain)
 
