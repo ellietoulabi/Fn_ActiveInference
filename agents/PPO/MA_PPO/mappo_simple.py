@@ -28,7 +28,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 from gymnasium import spaces
@@ -49,7 +49,10 @@ try:
     import torch
     from ray.rllib.algorithms.algorithm import Algorithm
     from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
     from ray.rllib.env.multi_agent_env import MultiAgentEnv
+    from ray.rllib.utils.annotations import override
+    import torch.nn as nn
 
     RAY_AVAILABLE = True
 except ImportError as e:
@@ -63,23 +66,33 @@ OBS_KEYS = [
     "self_orientation_obs",
     "self_held_obs",
     "other_pos_obs",
+    "other_orientation_obs",
     "other_held_obs",
     "pot_state_obs",
     "soup_delivered_obs",
 ] + [f"ctr_{idx}_obs" for idx in aif_model_init.MODELED_COUNTERS]
 
+# other_orientation_obs was previously missing here even though the shared
+# env_obs_to_model_obs() function (the same one AIF's Independent agent calls)
+# computes and returns it every step -- MAPPO was silently getting less state
+# information than the AIF baseline it's compared against. See ai/02-debug.md
+# section L. Added for observation parity.
 OBS_NORM_DEN = np.array(
     [
         max(1, aif_model_init.N_WALKABLE - 1),
         max(1, aif_model_init.N_DIRECTIONS - 1),
         max(1, aif_model_init.N_HELD_TYPES - 1),
         max(1, aif_model_init.N_WALKABLE - 1),
+        max(1, aif_model_init.N_DIRECTIONS - 1),
         max(1, aif_model_init.N_HELD_TYPES - 1),
         max(1, aif_model_init.N_POT_STATES - 1),
         1,
     ] + [max(1, aif_model_init.N_CTR_STATES - 1) for _ in aif_model_init.MODELED_COUNTERS],
     dtype=np.float32,
 )
+
+
+OWN_OBS_DIM = len(OBS_KEYS)
 
 
 def _obs_dict_to_vec(obs_dict: Dict[str, int]) -> np.ndarray:
@@ -153,7 +166,7 @@ def _build_policy_state_for_planner(state, agent_idx: int, reward_info: Dict) ->
         self_orient=ORI_IDX_TO_NAME[int(obs_self["self_orientation_obs"])],
         self_held=HELD_IDX_TO_NAME[int(obs_self["self_held_obs"])],
         other_pos=int(obs_other["self_pos_obs"]),
-        other_orient="NORTH",
+        other_orient=ORI_IDX_TO_NAME[int(obs_other["self_orientation_obs"])],
         other_held=HELD_IDX_TO_NAME[int(obs_other["self_held_obs"])],
         pot_state=pot_state,
         pot_onions=pot_onions,
@@ -190,7 +203,18 @@ class AIFObsOvercookedMAEnv(MultiAgentEnv):
         self.agents = list(self.base.agents)
         self.possible_agents = list(self.base.possible_agents)
 
-        obs_space = spaces.Box(low=0.0, high=1.0, shape=(len(OBS_KEYS),), dtype=np.float32)
+        # Observation is [own_obs (OWN_OBS_DIM), other_obs (OWN_OBS_DIM)] --
+        # "own" is always this agent's own egocentric vector (identical in kind
+        # to what every AIF paradigm's ego agent sees), "other" is the partner's
+        # own egocentric vector, in the same canonical slot regardless of which
+        # physical agent this is (so a shared-parameter policy stays symmetric).
+        # This lets the centralized critic (CentralizedCriticPPOTorchRLModule,
+        # below) see the full joint state at training time while the actor
+        # architecturally only ever reads the first OWN_OBS_DIM entries --
+        # standard CTDE: privileged critic, decentralized execution. See
+        # ai/02-debug.md section L ("this is IPPO, not MAPPO -- no centralized
+        # critic exists anywhere").
+        obs_space = spaces.Box(low=0.0, high=1.0, shape=(2 * OWN_OBS_DIM,), dtype=np.float32)
         n_semantic = int(len(dyn_utils.DESTINATIONS) * len(dyn_utils.MODES))
         act_space = spaces.Discrete(n_semantic)
         self.n_semantic = n_semantic
@@ -200,12 +224,16 @@ class AIFObsOvercookedMAEnv(MultiAgentEnv):
         self.action_space = spaces.Dict({aid: act_space for aid in self.agents})
 
     def _build_obs(self, state) -> Dict[str, np.ndarray]:
-        out: Dict[str, np.ndarray] = {}
+        own_vecs: Dict[str, np.ndarray] = {}
         for i, aid in enumerate(self.agents):
             obs_dict = aif_env_utils.env_obs_to_model_obs(
                 state, i, reward_info=self.reward_info
             )
-            out[aid] = _obs_dict_to_vec(obs_dict)
+            own_vecs[aid] = _obs_dict_to_vec(obs_dict)
+        out: Dict[str, np.ndarray] = {}
+        for i, aid in enumerate(self.agents):
+            other_aid = self.agents[1 - i]
+            out[aid] = np.concatenate([own_vecs[aid], own_vecs[other_aid]]).astype(np.float32)
         return out
 
     def _build_dynamic_action_options(
@@ -295,6 +323,96 @@ class AIFObsOvercookedMAEnv(MultiAgentEnv):
         return obs, rewards, term, trunc, infos
 
 
+if RAY_AVAILABLE:
+    from ray.rllib.core.columns import Columns
+    from ray.rllib.core.rl_module.rl_module import RLModule
+    from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
+    from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
+
+    def _mlp(in_dim: int, hidden: int, out_dim: int) -> "nn.Module":
+        """Small orthogonal-initialized MLP encoder+head, matching the
+        orthogonal-init / no-Catalog-magic best practice applied elsewhere in
+        build_config() (ai/02-debug.md section L)."""
+        layers = [
+            nn.Linear(in_dim, hidden), nn.Tanh(),
+            nn.Linear(hidden, hidden), nn.Tanh(),
+        ]
+        head = nn.Linear(hidden, out_dim)
+        for layer in layers + [head]:
+            if isinstance(layer, nn.Linear):
+                nn.init.orthogonal_(layer.weight)
+                nn.init.zeros_(layer.bias)
+        return nn.Sequential(*layers, head)
+
+    class CentralizedCriticPPOTorchRLModule(TorchRLModule, ValueFunctionAPI):
+        """
+        PPO RLModule implementing a genuine CTDE centralized critic.
+
+        The actor sees ONLY the first `own_obs_dim` entries of the observation
+        (this agent's own local, egocentric state -- identical in kind to what
+        every AIF paradigm's ego agent observes). The critic sees the FULL
+        observation (own + partner's own local state, i.e. the joint/global
+        state), exactly the defining architectural feature that distinguishes
+        MAPPO from independent PPO -- see ai/02-debug.md section L, which
+        found this was entirely absent from the prior implementation (a shared
+        actor-critic encoder reading only local obs for both branches, making
+        it IPPO with parameter sharing, not MAPPO).
+
+        Execution stays fully decentralized: at inference/rollout time nothing
+        changes about what the *policy* conditions on (still local-only) --
+        only the value function used during training gets the privileged joint
+        view. This is standard CTDE, not a fairness violation against the
+        ego-only AIF baselines: those are decentralized at both training and
+        execution (they have no training phase at all), whereas RL baselines
+        generally use CTDE precisely because "centralized critic, decentralized
+        actor" is understood to not require execution-time communication.
+        """
+
+        def setup(self):
+            own_dim = int(self.model_config.get("own_obs_dim", OWN_OBS_DIM))
+            hidden = int(self.model_config.get("hidden_dim", 128))
+            n_actions = int(self.action_space.n)
+            self._own_dim = own_dim
+
+            self.actor_encoder = _mlp(own_dim, hidden, hidden)
+            self.pi = nn.Linear(hidden, n_actions)
+            nn.init.orthogonal_(self.pi.weight, gain=0.01)
+            nn.init.zeros_(self.pi.bias)
+
+            joint_dim = int(self.observation_space.shape[0])
+            self.critic_encoder = _mlp(joint_dim, hidden, hidden)
+            self.vf = nn.Linear(hidden, 1)
+            nn.init.orthogonal_(self.vf.weight)
+            nn.init.zeros_(self.vf.bias)
+
+        def get_initial_state(self) -> dict:
+            return {}
+
+        def _actor_forward(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+            obs = batch[Columns.OBS]
+            own = obs[..., : self._own_dim]
+            logits = self.pi(self.actor_encoder(own))
+            return {Columns.ACTION_DIST_INPUTS: logits}
+
+        @override(RLModule)
+        def _forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+            return self._actor_forward(batch)
+
+        @override(RLModule)
+        def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+            return self._actor_forward(batch)
+
+        @override(ValueFunctionAPI)
+        def compute_values(self, batch: Dict[str, Any], embeddings=None):
+            # Always recompute from the raw (full, joint) observation rather
+            # than reusing any actor-side embedding -- correctness over the
+            # shared-encoder speed shortcut, since actor and critic here
+            # deliberately do NOT share an encoder (different input widths).
+            obs = batch[Columns.OBS]
+            vf_out = self.vf(self.critic_encoder(obs))
+            return vf_out.squeeze(-1)
+
+
 AGENT_IDS = ("agent_0", "agent_1")
 PRIM_NAME = {0: "NORTH", 1: "SOUTH", 2: "EAST", 3: "WEST", 4: "STAY", 5: "INTERACT"}
 ORI_NAME = {(0, -1): "N", (0, 1): "S", (1, 0): "E", (-1, 0): "W"}
@@ -365,6 +483,19 @@ def build_config(args):
         }
         policy_mapping_fn = lambda aid, episode, **kw: aid
 
+    # Genuine CTDE centralized critic (see CentralizedCriticPPOTorchRLModule
+    # above and ai/02-debug.md section L): actor conditions on local obs only
+    # (own_obs_dim entries), critic conditions on the full joint observation
+    # (own + partner's own state). This bypasses RLlib's default Catalog-built
+    # shared-obs-space module entirely, so it also directly implements the
+    # orthogonal-init / separate-encoders best practices from Yu et al. 2021
+    # natively (no DefaultModelConfig needed -- those knobs only apply to the
+    # Catalog-built default module this config no longer uses).
+    rl_module_spec = RLModuleSpec(
+        module_class=CentralizedCriticPPOTorchRLModule,
+        model_config={"own_obs_dim": OWN_OBS_DIM, "hidden_dim": 128},
+    )
+
     return (
         PPOConfig()
         .environment(env=AIFObsOvercookedMAEnv, env_config=env_config)
@@ -378,6 +509,8 @@ def build_config(args):
             train_batch_size=args.train_batch_size,
             minibatch_size=args.minibatch_size,
             num_epochs=args.epochs,
+            grad_clip=10.0,
+            grad_clip_by="global_norm",
         )
         .resources(num_gpus=int(args.gpus))
         .env_runners(
@@ -386,6 +519,7 @@ def build_config(args):
             num_cpus_per_env_runner=1,
         )
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
+        .rl_module(rl_module_spec=rl_module_spec)
         .debugging(seed=args.seed)
     )
 
@@ -507,21 +641,44 @@ def train(args) -> str:
         algo.stop()
 
 
-def _select_action(module, obs_vec, stochastic: bool):
+def _select_action(module, obs_vec, stochastic: bool, generator=None):
+    """
+    Args:
+        generator: optional torch.Generator used for reproducible stochastic
+            sampling. Without this, evaluation-time action selection draws
+            from PyTorch's global, unseeded RNG, so re-running the identical
+            episode/agent seeds produces a different trajectory every time
+            (see ai/02-debug.md section L). When provided, sampling is drawn
+            from this generator instead and its state advances deterministically
+            across calls, so passing the same seeded generator into every call
+            for a given agent across an episode reproduces that agent's full
+            action sequence exactly on re-run.
+    """
     obs_t = torch.tensor(obs_vec, dtype=torch.float32).unsqueeze(0)
     with torch.no_grad():
         fwd = module.forward_inference({"obs": obs_t})
     logits = None
     if "action_dist_inputs" in fwd:
         logits = fwd["action_dist_inputs"]
-        dist_cls = module.get_inference_action_dist_cls()
-        dist = dist_cls.from_logits(logits)
-        if stochastic and hasattr(dist, "sample"):
-            act_t = dist.sample()
-        elif hasattr(dist, "deterministic_sample"):
-            act_t = dist.deterministic_sample()
+        if stochastic:
+            if generator is not None:
+                # torch.distributions.Categorical.sample() has no generator hook
+                # (it calls probs.multinomial() internally with no way to pass
+                # one through), so draw manually via torch.multinomial instead,
+                # which does accept a generator.
+                probs = torch.softmax(logits, dim=-1)
+                act_t = torch.multinomial(probs, num_samples=1, generator=generator).squeeze(-1)
+            else:
+                dist_cls = module.get_inference_action_dist_cls()
+                dist = dist_cls.from_logits(logits)
+                act_t = dist.sample() if hasattr(dist, "sample") else torch.argmax(logits, dim=-1)
         else:
-            act_t = torch.argmax(logits, dim=-1)
+            dist_cls = module.get_inference_action_dist_cls()
+            dist = dist_cls.from_logits(logits)
+            if hasattr(dist, "deterministic_sample"):
+                act_t = dist.deterministic_sample()
+            else:
+                act_t = torch.argmax(logits, dim=-1)
     elif "actions" in fwd:
         act_t = fwd["actions"]
     else:
@@ -539,6 +696,15 @@ def evaluate(args, checkpoint_path: str) -> None:
     obs, infos = env.reset(seed=args.seed)
     pre_state = infos["agent_0"]["state"]
     totals = {aid: 0.0 for aid in AGENT_IDS}
+    # Reproducible stochastic action sampling: without this, evaluation draws
+    # from PyTorch's global, unseeded RNG, so identical --seed reruns produce
+    # different trajectories every time (ai/02-debug.md section L). Each agent
+    # gets its own generator, offset from --seed, matching AIF's own established
+    # pattern of independent-but-derived per-agent RNG streams.
+    agent_generators = {
+        aid: torch.Generator().manual_seed(int(args.seed) + 1000 * i)
+        for i, aid in enumerate(AGENT_IDS)
+    }
     try:
         for step_idx in range(1, int(args.eval_steps) + 1):
             actions = {}
@@ -546,7 +712,9 @@ def evaluate(args, checkpoint_path: str) -> None:
             for i_agent, aid in enumerate(AGENT_IDS):
                 pid = "shared" if args.shared_policy else aid
                 module = algo.get_module(pid)
-                act_int, logits = _select_action(module, obs[aid], args.stochastic)
+                act_int, logits = _select_action(
+                    module, obs[aid], args.stochastic, generator=agent_generators[aid]
+                )
                 actions[aid] = act_int
                 if logits is not None and args.step_log:
                     probs = torch.softmax(logits, dim=-1).reshape(-1)

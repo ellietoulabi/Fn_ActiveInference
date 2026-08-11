@@ -78,10 +78,19 @@ def _ppo_policy_stats(logits) -> dict:
 
 
 def _default_seed_lists(n_runs: int, episode_start: int) -> tuple[list[int], list[int], list[int]]:
+    # agent0/agent1 seeds are offset by the same amount episode_start is offset
+    # from the canonical baseline (76), matching every other paradigm's launcher
+    # convention (EP_SEED=76+idx, A0_SEED=1000+idx, A1_SEED=2000+idx). Before
+    # this fix, agent0/agent1 seeds always started at a fixed 1000/2000
+    # regardless of episode_start, so a SLURM array job that sets
+    # --episode-start per task (the standard one-seed-per-task pattern) would
+    # give every task the SAME agent0/agent1 seed, only episode_seed varying --
+    # not the independent 10-seed sweep this is meant to be.
+    offset = int(episode_start) - 76
     return (
         [episode_start + i for i in range(n_runs)],
-        [1000 + i for i in range(n_runs)],
-        [2000 + i for i in range(n_runs)],
+        [1000 + offset + i for i in range(n_runs)],
+        [2000 + offset + i for i in range(n_runs)],
     )
 
 
@@ -105,13 +114,29 @@ def run_one_episode_logged(
     total_reward_0 = 0.0
     total_reward_1 = 0.0
 
+    # Reproducible stochastic action sampling, keyed off agent0_seed/agent1_seed.
+    # Before this fix, agent0_seed/agent1_seed were used only for CSV filename/
+    # column metadata and never actually seeded anything -- re-running the
+    # identical episode_seed/agent0_seed/agent1_seed combination could still
+    # produce a different trajectory every time, since _select_action's
+    # stochastic sampling drew from PyTorch's global RNG (ai/02-debug.md
+    # section L). Each physical agent gets its own generator, matching AIF's
+    # own established pattern of independent per-agent RNG streams.
+    agent_seed_by_id = {AGENT_IDS[0]: agent0_seed, AGENT_IDS[1]: agent1_seed}
+    agent_generators = {
+        aid: torch.Generator().manual_seed(int(agent_seed_by_id[aid]))
+        for aid in AGENT_IDS
+    }
+
     for step in range(1, max_steps + 1):
         actions = {}
         stats = {}
         for i_agent, aid in enumerate(AGENT_IDS):
             pid = "shared" if shared_policy else aid
             module = algo.get_module(pid)
-            act_int, logits = _select_action(module, obs[aid], stochastic=stochastic)
+            act_int, logits = _select_action(
+                module, obs[aid], stochastic=stochastic, generator=agent_generators[aid]
+            )
             actions[aid] = act_int
             stats[aid] = _ppo_policy_stats(logits)
 
