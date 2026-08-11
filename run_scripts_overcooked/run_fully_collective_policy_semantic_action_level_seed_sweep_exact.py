@@ -182,8 +182,7 @@ def _run_sweep(
                 log_base,
                 "fc",
                 episode_seed=int(episode_seed or 0),
-                agent0_seed=int(agent0_seed or 0),
-                agent1_seed=int(agent1_seed or 0),
+                brain_seed=int(agent0_seed or 0),
             )
 
         config_0 = env_utils.get_D_config_from_state(state, 0)

@@ -178,12 +178,15 @@ def _run_sweep(
 
         step_jsonl = None
         if log_jsonl:
+            # make_jsonl_path's "fc" branch keys the filename on brain_seed
+            # (matching open_fc_log's CSV convention above), not agent0_seed/
+            # agent1_seed -- passing those instead left brain_seed as None and
+            # crashed int(None) at path-construction time.
             step_jsonl = sal_detail.open_jsonl(
                 log_base,
                 "fc",
                 episode_seed=int(episode_seed or 0),
-                agent0_seed=int(agent0_seed or 0),
-                agent1_seed=int(agent1_seed or 0),
+                brain_seed=int(agent0_seed or 0),
             )
 
         config_0 = env_utils.get_D_config_from_state(state, 0)
@@ -403,7 +406,13 @@ def _run_sweep(
                     terminated=bool(terminated.get("__all__")),
                     truncated=bool(truncated.get("__all__")),
                     policy_top_k=policy_log_top_k,
-                    include_full_q_pi=bool(log_jsonl or log_full_q_pi),
+                    # Previously `bool(log_jsonl or log_full_q_pi)` -- meant enabling
+                    # --log-jsonl always forced the full 400-policy q_pi array into
+                    # every JSONL record regardless of --log-full-q-pi, defeating a
+                    # top-k-only logging request (a real cost at 400 policies/step).
+                    # Now driven by --log-full-q-pi alone; top_policies
+                    # (--policy-log-top-k) is always included separately.
+                    include_full_q_pi=bool(log_full_q_pi),
                     action_names=model_init_agent.ACTION_NAMES,
                 )
 

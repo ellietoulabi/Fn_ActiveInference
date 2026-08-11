@@ -418,7 +418,13 @@ def _run_sweep(
                     terminated=bool(terminated.get("__all__")),
                     truncated=bool(truncated.get("__all__")),
                     policy_top_k=policy_log_top_k,
-                    include_full_q_pi=bool(log_jsonl or log_full_q_pi),
+                    # Previously `bool(log_jsonl or log_full_q_pi)` -- meant enabling
+                    # --log-jsonl always forced the full 400-policy q_pi array into
+                    # every JSONL record regardless of --log-full-q-pi, defeating a
+                    # top-k-only logging request (a real cost at 400 policies/step).
+                    # Now driven by --log-full-q-pi alone; top_policies
+                    # (--policy-log-top-k) is always included separately.
+                    include_full_q_pi=bool(log_full_q_pi),
                     action_names=model_init_agent.ACTION_NAMES,
                 )
 

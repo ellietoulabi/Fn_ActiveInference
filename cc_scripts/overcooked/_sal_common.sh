@@ -40,6 +40,12 @@ print('import check OK (with PYTHONPATH)')
 }
 
 sal_preflight() {
+    # ic/fc now check the CollisionFix stacks specifically, since those are the
+    # only variants carrying the collision-blindness fix (ai/02-debug.md J.8)
+    # and PROGRESS_SUCCESS_PROB fix (J.9) -- the plain/base stacks are known to
+    # produce zero-delivery runs without them. FC's check points at the
+    # rebuilt-from-scratch FullyCollective* packages (section K); the old,
+    # discarded IND-derived FC package this used to check no longer exists.
     local paradigm="${1:?paradigm required: ind|ic|fc}"
     echo "Preflight (${paradigm}): checking imports..."
     sal_setup_pythonpath
@@ -49,12 +55,16 @@ import sal_step_csv_log  # noqa: F401
 import run_independent_semantic_action_level as ind  # noqa: F401
 from environments.overcooked_ma_gym import OvercookedMultiAgentEnv  # noqa: F401
 paradigm = '${paradigm}'
-if paradigm in ('ind', 'ic'):
-    import run_individually_collective_policy_semantic_action_level as ric  # noqa: F401
 if paradigm == 'ic':
-    from agents.ActiveInferenceFixedPolicies.agent import Agent  # noqa: F401
+    import run_individually_collective_policy_semantic_action_level_optimized_collision_fix as ric  # noqa: F401
+    from agents.ActiveInferenceFixedPoliciesOptimizedCollisionFix.agent import Agent  # noqa: F401
+    from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.IndividuallyCollectiveWithSemanticPoliciesActionLevelCollisionFix import model_init  # noqa: F401
+    assert hasattr(model_init, 'PROGRESS_SUCCESS_PROB'), 'IC CollisionFix model_init missing PROGRESS_SUCCESS_PROB'
 if paradigm == 'fc':
-    from agents.IndependentActiveInferenceWithDynamicPolicies.agent import Agent  # noqa: F401
+    import run_fully_collective_policy_semantic_action_level_optimized_collision_fix as rfc  # noqa: F401
+    from agents.FullyCollectiveFixedPoliciesOptimizedCollisionFix.agent import Agent  # noqa: F401
+    from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.FullyCollectiveWithSemanticPoliciesActionLevelCollisionFix import model_init  # noqa: F401
+    assert hasattr(model_init, 'PROGRESS_SUCCESS_PROB'), 'FC CollisionFix model_init missing PROGRESS_SUCCESS_PROB'
 print('Preflight OK:', paradigm)
 " || {
         echo "ERROR: preflight imports failed for ${paradigm} (see traceback above)."

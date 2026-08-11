@@ -1,15 +1,35 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright  
-#SBATCH --job-name=aif_fc_sal_alpha8_entropy_threshold1e-3
-#SBATCH --array=0-9                   # 10 seeds (one episode per task)
+#SBATCH --account=aip-jrwright  
+#SBATCH --job-name=aif_fc_sal_30seed_collisionfix
+#SBATCH --array=0-29                  # 30 seeds (one episode per task) -- fixed pool: ep=76..105, a0=1000..1029, a1=2000..2029
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=16G
 #SBATCH --time=4-00:00
-#SBATCH --output=fc_sal_alpha8_entropy_threshold1e-3_%A_%a.out
+#SBATCH --output=fc_sal_30seed_%A_%a.out
 
 # FullyCollective paradigm, semantic-action level, one seed per array task.
-# One IC brain controls both agents; the brain plans over 400 joint primitive
-# policies. Per-step CSV + JSONL (no --log-steps).
+# Rebuilt from scratch this session (ai/02-debug.md section K) -- the old FC
+# implementation this launcher used to point at was architecturally wrong
+# (IND-derived, no PROGRESS_SUCCESS_PROB fix) and has been discarded entirely.
+# FC's single "brain" (agent_0) now runs IC's exact decision logic (the
+# CollisionFix stack, same fixes as J.8-J.9) and forces both halves of its
+# winning joint policy; the follower (agent_1) has no beliefs and no
+# inference. Both agent0_seed and agent1_seed are still needed at construction
+# (the follower's own RNG is inert for decisions but still seeded for
+# reproducibility bookkeeping), so this launcher now derives both, matching
+# the ind/ic seed convention exactly.
+#
+# Full logging: per-step CSV, per-step JSONL (map + brain's full state beliefs
+# incl. entropy + top-5 of the 400 joint policy probabilities), and verbose
+# human-readable stdout (--log-steps --policy-log-top-k 5) captured in the
+# copied-back .log file. Logs top-5 policies, not the full 400-entry q_pi
+# array, to keep per-step JSONL size manageable -- --log-jsonl alone used to
+# force the full array in regardless (fixed 2026-08-11, see
+# run_fully_collective_policy_semantic_action_level_seed_sweep_optimized_collision_fix.py).
+#
+# Seed pool is shared, fixed, and identical in derivation across the ind/ic/fc
+# launchers so the same 30 (episode, agent0, agent1) seed-triples are used for
+# all three paradigms -- a fair, matched comparison.
 #
 # Override episode length / precision at submit time, e.g.:
 #   MAX_STEPS=500 sbatch cc_scripts/overcooked/fc_semantic_action_level.sh
@@ -17,8 +37,8 @@ set -uo pipefail                      # no -e: we still copy logs on failure
 
 MAX_STEPS=${MAX_STEPS:-1500}
 GAMMA=${GAMMA:-4.0}
-ALPHA=${ALPHA:-8.0}
-DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_fc"
+ALPHA=${ALPHA:-1.0}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sal_fc_30seed_collisionfix"}
 
 module purge
 module load python/3.11.4 scipy-stack
@@ -58,21 +78,23 @@ sal_preflight fc || exit 1
 
 SEED_IDX=${SLURM_ARRAY_TASK_ID}
 EP_SEED=$((76 + SEED_IDX))
-AGENT_SEED=$((1000 + SEED_IDX))
-echo "---- fc seed_idx=${SEED_IDX} ep=${EP_SEED} brain=${AGENT_SEED} max_steps=${MAX_STEPS} ----"
+A0_SEED=$((1000 + SEED_IDX))
+A1_SEED=$((2000 + SEED_IDX))
+echo "---- fc seed_idx=${SEED_IDX} ep=${EP_SEED} a0(brain)=${A0_SEED} a1(follower)=${A1_SEED} max_steps=${MAX_STEPS} ----"
 
 mkdir -p "$DEST_BASE"
 CSV_DIR="$SLURM_TMPDIR/logs_sal"
 mkdir -p "$CSV_DIR"
-LOG_FILE="$SLURM_TMPDIR/fc_sal__alpha8_entropy_threshold1e-3_ep${EP_SEED}_brain${AGENT_SEED}.log"
+LOG_FILE="$SLURM_TMPDIR/fc_sal_30seed_collisionfix_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
 
-python -u run_scripts_overcooked/run_fully_collective_semantic_action_level.py \
+python -u run_scripts_overcooked/run_fully_collective_policy_semantic_action_level_seed_sweep_optimized_collision_fix.py \
   --n-runs 1 \
   --episode-seeds ${EP_SEED} \
-  --agent-seeds ${AGENT_SEED} \
+  --agent0-seeds ${A0_SEED} \
+  --agent1-seeds ${A1_SEED} \
   --gamma ${GAMMA} --alpha ${ALPHA} \
   --max-steps ${MAX_STEPS} \
-  --log-csv --log-jsonl --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
+  --log-csv --log-jsonl --log-steps --policy-log-top-k 5 --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
 sal_copy_artifacts "$DEST_BASE" "$LOG_FILE" "$CSV_DIR"

@@ -48,11 +48,11 @@ If jobs are killed for time, increase `--time` in the script or reduce `MAX_STEP
 
 1. **Push to GitHub.** Jobs clone `https://github.com/ellietoulabi/Fn_ActiveInference.git` on the compute node. They install **`cc_scripts/overcooked/requirements-cc-sal.txt`** (not the repo-root `requirements.txt`). Push this file and the updated `*_semantic_action_level.sh` scripts before submitting.
 
-2. **Account.** Scripts use `#SBATCH --account=def-jrwright`. Change this line if your allocation differs.
+2. **Account.** Scripts use `#SBATCH --account=aip-jrwright`. Change this line if your allocation differs.
 
 3. **Log destination.** A short per-seed `.log` (sweep summary) and step CSVs are copied to:
 
-   - Independent: `/home/toulabin/projects/def-jrwright/toulabin/logs/sal_ind/`
+   - Independent: `/home/toulabin/projects/aip-jrwright/toulabin/logs/sal_ind/`
    - IC: `.../logs/sal_ic/`
    - FC: `.../logs/sal_fc/`
 
@@ -61,7 +61,7 @@ If jobs are killed for time, increase `--time` in the script or reduce `MAX_STEP
 4. **Submit from the repo** (paths are relative to the cloned project root after install):
 
    ```bash
-   cd ~/projects/def-jrwright/toulabin/Fn_ActiveInference   # or your clone on CC
+   cd ~/projects/aip-jrwright/toulabin/Fn_ActiveInference   # or your clone on CC
    sbatch cc_scripts/overcooked/ind_semantic_action_level.sh
    sbatch cc_scripts/overcooked/ic_semantic_action_level.sh
    sbatch cc_scripts/overcooked/fc_semantic_action_level.sh

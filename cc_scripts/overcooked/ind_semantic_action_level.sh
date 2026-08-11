@@ -1,14 +1,24 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright
-#SBATCH --job-name=aif_ind_sal_alpha1_entropy_threshold1e-3
-#SBATCH --array=0-9                   # 10 seeds (one episode per task)
+#SBATCH --account=aip-jrwright
+#SBATCH --job-name=aif_ind_sal_30seed_full_logging
+#SBATCH --array=0-29                  # 30 seeds (one episode per task) -- fixed pool: ep=76..105, a0=1000..1029, a1=2000..2029
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=16G
 #SBATCH --time=4-00:00
-#SBATCH --output=ind_sal_alpha1_entropy_threshold1e-3_%A_%a.out
+#SBATCH --output=ind_sal_30seed_%A_%a.out
 
 # Independent paradigm, semantic-action level, one seed per array task.
-# Per-step CSV + JSONL (--log-csv --log-jsonl); no verbose stdout (--log-steps).
+# Full logging: per-step CSV, per-step JSONL (map + full state beliefs incl.
+# entropy + top-5 policy probabilities), and verbose human-readable stdout
+# (--log-steps --policy-log-top-k 5) captured in the copied-back .log file.
+# Logs top-5 policies, not the full q_pi array, to keep per-step JSONL size
+# manageable -- --log-jsonl alone used to force the full array in regardless
+# (fixed 2026-08-11, see run_independent_semantic_action_level_sweep.py).
+#
+# Seed pool is shared, fixed, and identical in derivation across the ind/ic/fc
+# launchers (EP_SEED=76+idx, A0_SEED=1000+idx, A1_SEED=2000+idx) so the same
+# 30 (episode, agent0, agent1) seed-triples are used for all three paradigms
+# -- a fair, matched comparison, not independently-drawn seeds per paradigm.
 #
 # Override episode length / precision at submit time, e.g.:
 #   MAX_STEPS=500 sbatch cc_scripts/overcooked/ind_semantic_action_level.sh
@@ -17,7 +27,7 @@ set -uo pipefail                      # no -e: we still copy logs on failure
 MAX_STEPS=${MAX_STEPS:-1500}
 GAMMA=${GAMMA:-4.0}
 ALPHA=${ALPHA:-1.0}
-DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_ind"
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sal_ind_30seed"}
 
 module purge
 module load python/3.11.4 scipy-stack
@@ -64,7 +74,7 @@ echo "---- ind seed_idx=${SEED_IDX} ep=${EP_SEED} a0=${A0_SEED} a1=${A1_SEED} ma
 mkdir -p "$DEST_BASE"
 CSV_DIR="$SLURM_TMPDIR/logs_sal"
 mkdir -p "$CSV_DIR"
-LOG_FILE="$SLURM_TMPDIR/ind_sal__alpha1_entropy_threshold1e-3_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
+LOG_FILE="$SLURM_TMPDIR/ind_sal_30seed_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
 
 python -u run_scripts_overcooked/run_independent_semantic_action_level_sweep.py \
   --n-runs 1 \
@@ -73,7 +83,7 @@ python -u run_scripts_overcooked/run_independent_semantic_action_level_sweep.py 
   --agent1-seeds ${A1_SEED} \
   --gamma ${GAMMA} --alpha ${ALPHA} \
   --max-steps ${MAX_STEPS} \
-  --log-csv --log-jsonl --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
+  --log-csv --log-jsonl --log-steps --policy-log-top-k 5 --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
 sal_copy_artifacts "$DEST_BASE" "$LOG_FILE" "$CSV_DIR"

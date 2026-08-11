@@ -1,15 +1,30 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright
-#SBATCH --job-name=aif_ic_sal_alpha8_entropy_threshold1e-3
-#SBATCH --array=0-9                   # 10 seeds (one episode per task)
+#SBATCH --account=aip-jrwright
+#SBATCH --job-name=aif_ic_sal_30seed_collisionfix
+#SBATCH --array=0-29                  # 30 seeds (one episode per task) -- fixed pool: ep=76..105, a0=1000..1029, a1=2000..2029
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=16G
 #SBATCH --time=4-00:00
-#SBATCH --output=ic_sal_alpha8_entropy_threshold1e-3_%A_%a.out
+#SBATCH --output=ic_sal_30seed_%A_%a.out
 
-# IndividuallyCollective paradigm, semantic-action level, one seed per array task.
-# IC is the most expensive paradigm (400 joint policies x 2 agents per step),
-# hence the larger --time budget. Per-step CSV + JSONL (no --log-steps).
+# IndividuallyCollective paradigm, semantic-action level, one seed per array
+# task. Uses the CollisionFix stack (ai/02-debug.md sections J.8-J.9) -- the
+# only IC variant with the collision-blindness fix and the PROGRESS_SUCCESS_PROB
+# fix; the plain/base stack this launcher used to point at produces zero
+# deliveries. IC is the most expensive paradigm (400 joint policies x 2 agents
+# per step), hence the larger --time budget.
+#
+# Full logging: per-step CSV, per-step JSONL (map + full state beliefs incl.
+# entropy + top-5 of the 400 joint policy probabilities), and verbose
+# human-readable stdout (--log-steps --policy-log-top-k 5) captured in the
+# copied-back .log file. Logs top-5 policies, not the full 400-entry q_pi
+# array, to keep per-step JSONL size manageable -- --log-jsonl alone used to
+# force the full array in regardless (fixed 2026-08-11, see
+# run_individually_collective_policy_semantic_action_level_seed_sweep_optimized_collision_fix.py).
+#
+# Seed pool is shared, fixed, and identical in derivation across the ind/ic/fc
+# launchers so the same 30 (episode, agent0, agent1) seed-triples are used for
+# all three paradigms -- a fair, matched comparison.
 #
 # Override episode length / precision at submit time, e.g.:
 #   MAX_STEPS=500 sbatch cc_scripts/overcooked/ic_semantic_action_level.sh
@@ -18,7 +33,7 @@ set -uo pipefail                      # no -e: we still copy logs on failure
 MAX_STEPS=${MAX_STEPS:-1500}
 GAMMA=${GAMMA:-4.0}
 ALPHA=${ALPHA:-1.0}
-DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_ic"
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sal_ic_30seed_collisionfix"}
 
 module purge
 module load python/3.11.4 scipy-stack
@@ -65,16 +80,16 @@ echo "---- ic seed_idx=${SEED_IDX} ep=${EP_SEED} a0=${A0_SEED} a1=${A1_SEED} max
 mkdir -p "$DEST_BASE"
 CSV_DIR="$SLURM_TMPDIR/logs_sal"
 mkdir -p "$CSV_DIR"
-LOG_FILE="$SLURM_TMPDIR/ic_sal__alpha8_entropy_threshold1e-3_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
+LOG_FILE="$SLURM_TMPDIR/ic_sal_30seed_collisionfix_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
 
-python -u run_scripts_overcooked/run_individually_collective_policy_semantic_action_level_seed_sweep.py \
+python -u run_scripts_overcooked/run_individually_collective_policy_semantic_action_level_seed_sweep_optimized_collision_fix.py \
   --n-runs 1 \
   --episode-seeds ${EP_SEED} \
   --agent0-seeds ${A0_SEED} \
   --agent1-seeds ${A1_SEED} \
   --gamma ${GAMMA} --alpha ${ALPHA} \
   --max-steps ${MAX_STEPS} \
-  --log-csv --log-jsonl --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
+  --log-csv --log-jsonl --log-steps --policy-log-top-k 5 --log-dir "$CSV_DIR" > "$LOG_FILE" 2>&1
 EXIT_CODE=$?
 
 sal_copy_artifacts "$DEST_BASE" "$LOG_FILE" "$CSV_DIR"

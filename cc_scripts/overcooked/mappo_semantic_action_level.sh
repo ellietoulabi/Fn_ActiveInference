@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright
+#SBATCH --account=aip-jrwright
 #SBATCH --job-name=mappo_sal_centralized_critic
 #SBATCH --array=0-9                   # 10 seeds (one episode per task: train + eval)
 #SBATCH --cpus-per-task=16
@@ -21,7 +21,7 @@ set -uo pipefail                      # no -e: we still copy logs on failure
 
 MAX_STEPS=${MAX_STEPS:-1500}
 MAX_TRAIN_STEPS=${MAX_TRAIN_STEPS:-1000000}
-DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs/sal_mappo"
+DEST_BASE="/home/toulabin/projects/aip-jrwright/toulabin/logs/sal_mappo"
 
 module purge
 module load python/3.11.4 scipy-stack
