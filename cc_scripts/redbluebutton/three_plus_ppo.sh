@@ -115,9 +115,9 @@ cp "$LOG_FILE" "${DEST}/" 2>/dev/null || echo "Warning: verbose log file not fou
 cp -r "${OUT_DIR}" "${DEST}/" 2>/dev/null || echo "Warning: compare output dir not found"
 
 # AIF step CSVs + stats (Ind / IC / FC)
-cp logs/two_aif_agents_*_seeds*_ep*_*.csv "${DEST}/" 2>/dev/null || echo "Warning: AIF CSV logs not found"
-cp logs/two_aif_agents_*_seeds*_ep*_*_stats.json "${DEST}/" 2>/dev/null || echo "Warning: AIF stats JSONs not found"
-cp logs/two_aif_agents_*_seeds*_ep*_*_policy_log.jsonl "${DEST}/" 2>/dev/null || echo "Warning: AIF policy belief JSONL logs not found"
+cp logs/two_aif_agents_*_seed${SEED_IDX}_ep*_*.csv "${DEST}/" 2>/dev/null || echo "Warning: AIF CSV logs not found"
+cp logs/two_aif_agents_*_seed${SEED_IDX}_ep*_*_stats.json "${DEST}/" 2>/dev/null || echo "Warning: AIF stats JSONs not found"
+cp logs/two_aif_agents_*_seed${SEED_IDX}_ep*_*_policy_log.jsonl "${DEST}/" 2>/dev/null || echo "Warning: AIF policy belief JSONL logs not found"
 
 # PPO step CSVs + stats (pretrained + online)
 cp logs/two_ppo_agents_*_seeds*_ep*_*.csv "${DEST}/" 2>/dev/null || echo "Warning: PPO CSV logs not found"

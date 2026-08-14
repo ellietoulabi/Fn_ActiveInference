@@ -625,9 +625,18 @@ def main():
     if args.seed is not None:
         SEEDS_TO_RUN = [args.seed]
         NUM_SEEDS_FOR_FILENAME = 1  # For filename generation
+        # Single-seed (cluster array) mode: tag the filename with the actual seed
+        # value, not just a count. Multiple SLURM array tasks launch within the
+        # same wall-clock second often enough that a timestamp-only name collides
+        # across tasks, silently overwriting one another's output when copied into
+        # a shared destination folder (same failure mode already fixed for the
+        # Overcooked SAL logs via sal_step_csv_log.py's make_log_path). A unique
+        # seed value can never collide between array tasks.
+        SEED_TAG = f"seed{args.seed}"
     else:
         SEEDS_TO_RUN = list(range(args.seeds))
         NUM_SEEDS_FOR_FILENAME = args.seeds
+        SEED_TAG = f"seeds{args.seeds}"
     
     NUM_SEEDS = len(SEEDS_TO_RUN)
     NUM_EPISODES_PER_SEED = args.episodes
@@ -640,7 +649,7 @@ def main():
     log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"two_aif_agents_independent_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}.csv"
+    csv_filename = f"two_aif_agents_independent_{SEED_TAG}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}.csv"
     csv_path = log_dir / csv_filename
     csv_fieldnames = [
         "seed", "episode", "step", "config_idx",
@@ -660,7 +669,7 @@ def main():
     jsonl_path = None
     jsonl_fh = None
     if args.log_policy_beliefs:
-        jsonl_filename = f"two_aif_agents_independent_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}_policy_log.jsonl"
+        jsonl_filename = f"two_aif_agents_independent_{SEED_TAG}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}_policy_log.jsonl"
         jsonl_path = log_dir / jsonl_filename
         jsonl_fh = open(jsonl_path, "w")
 
@@ -769,7 +778,7 @@ def main():
         "std_steps": float(np.std([r["steps"] for r in all_results])),
         "seed_summaries": seed_summaries_serializable,
     }
-    stats_filename = f"two_aif_agents_independent_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}_stats.json"
+    stats_filename = f"two_aif_agents_independent_{SEED_TAG}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}_stats.json"
     stats_path = log_dir / stats_filename
     with open(stats_path, "w") as f:
         json.dump(stats, f, indent=2)

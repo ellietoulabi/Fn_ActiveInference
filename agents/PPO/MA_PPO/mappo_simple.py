@@ -43,6 +43,9 @@ from generative_models.MA_ActiveInference_Monotonic.Overcooked.cramped_room.Inde
     env_utils as aif_env_utils,
     model_init as aif_model_init,
 )
+# environments.overcooked_ma_gym inserts overcooked_ai's src/ onto sys.path at
+# import time, so this is importable once the import above has run.
+from overcooked_ai_py.mdp.actions import Action
 
 try:
     import ray
@@ -182,8 +185,24 @@ class AIFObsOvercookedMAEnv(MultiAgentEnv):
     Action space: Discrete(N_ACTIONS=20). Each index is a (destination, mode)
     pair in the order of dyn_utils.DESTINATIONS x dyn_utils.MODES. Each step:
       1. Replan from current state via dyn_utils.compile_semantic_policy (BFS).
-      2. Execute ONLY the first primitive of the compiled path.
-      3. Step the real Overcooked env once. No teleporting.
+      2. TELEPORT each agent directly to its planned standing tile + facing
+         (the movement/orientation portion of the compiled path is resolved
+         instantly, not walked primitive-by-primitive).
+      3. Step the real Overcooked env once with INTERACT (if mode=="interact")
+         or STAY (if mode=="stay") from each agent's teleported position, so
+         pot/dish/soup/delivery resolution still goes through the real
+         engine's own tested logic.
+
+    Deliberate, requested design choice (2026-08-14, ai/02-debug.md): each RL
+    decision now corresponds to "pick a destination and whether to interact
+    there", with the walking itself free, rather than also requiring MAPPO to
+    separately learn dozens of correct primitive up/down/left/right choices
+    per destination. This is an intentional advantage given to MAPPO, not a
+    fairness bug -- AIF's own paradigms (IND/IC/FC) still walk primitive
+    step-by-step and pay full movement cost; only MAPPO's environment
+    instance is teleporting. See test_no_teleport.py, which still asserts
+    no-teleport for mappo.py's older SemanticAIFObsOvercookedRLlibEnv but no
+    longer applies that assertion to this class.
     """
 
     def __init__(self, config=None, **kwargs):
@@ -301,15 +320,78 @@ class AIFObsOvercookedMAEnv(MultiAgentEnv):
         out_infos = {aid: {"state": self.state} for aid in self.agents}
         return obs, out_infos
 
+    def _fast_forward_joint(self, movement_prefixes: List[List[int]]):
+        """
+        Derive the (position, orientation) BOTH agents reach after each walks
+        its own movement/facing primitives (INTERACT already stripped out),
+        by replaying the two sequences TICK-BY-TICK, TOGETHER, on one shared
+        throwaway copy of the current state, through the real engine's own
+        transition function.
+
+        Must be done jointly, not independently per agent: an earlier version
+        fast-forwarded each agent on its own separate scratch copy (partner
+        frozen at its pre-decision position throughout), which let both
+        agents' independently-planned paths land on the same final tile --
+        `block_other_agent=True` during planning only ever sees the partner's
+        *pre-decision* position, never its simultaneous target, so nothing
+        upstream catches this. Replaying both sequences on a SHARED scratch
+        state reuses the engine's own real-time inter-agent collision
+        resolution (already exercised every tick in the non-teleport,
+        primitive-by-primitive path) instead of us hand-rolling a conflict
+        rule -- exactly reproducing what the original walking version would
+        have produced, just without spending real env ticks to get there.
+
+        Shorter sequence is padded with STAY so both run for the same number
+        of ticks. Costs no real env ticks -- never touches self.base's live
+        state or self.state.
+        """
+        scratch_state = self.state.deepcopy()
+        n_ticks = max((len(p) for p in movement_prefixes), default=0)
+        for t in range(n_ticks):
+            if self.base.mdp.is_terminal(scratch_state):
+                break
+            joint = []
+            for prefix in movement_prefixes:
+                prim = prefix[t] if t < len(prefix) else int(aif_model_init.STAY)
+                joint.append(Action.INDEX_TO_ACTION[int(prim)])
+            scratch_state, _ = self.base.mdp.get_state_transition(scratch_state, tuple(joint))
+        return [(p.position, p.orientation) for p in scratch_state.players]
+
     def step(self, actions):
-        primitive_actions: Dict[str, int] = {}
         semantic_meta: Dict[str, Dict] = {}
+        final_primitives: Dict[str, int] = {}
+        movement_prefixes: List[List[int]] = []
+        interact_flags: List[bool] = []
+
         for i, aid in enumerate(self.agents):
-            prim, meta = self._semantic_to_primitive(i, int(actions[aid]))
-            primitive_actions[aid] = prim
+            option_idx = int(actions[aid])
+            policies_env, metadata = self._build_dynamic_action_options(i)
+            idx = option_idx % len(policies_env) if policies_env else 0
+            path = policies_env[idx] if policies_env else [int(aif_model_init.STAY)]
+            meta = metadata[idx] if idx < len(metadata) else {}
+
+            interact_final = int(aif_model_init.INTERACT) in path
+            movement_prefixes.append([a for a in path if int(a) != int(aif_model_init.INTERACT)])
+            interact_flags.append(interact_final)
             semantic_meta[aid] = meta
 
-        _, rewards, term, trunc, infos = self.base.step(primitive_actions)
+        teleport_results = self._fast_forward_joint(movement_prefixes)
+        for i, aid in enumerate(self.agents):
+            final_primitives[aid] = (
+                int(aif_model_init.INTERACT) if interact_flags[i] else int(aif_model_init.STAY)
+            )
+
+        # Teleport both agents to their planned standing tile/facing before
+        # the real engine's transition runs, so INTERACT (if any) resolves
+        # from the teleported position using the engine's own pot/dish/soup/
+        # delivery logic. teleport_results already reflects both agents'
+        # jointly-resolved (collision-checked) final positions.
+        live_state = self.base.base_env.state
+        for i, aid in enumerate(self.agents):
+            pos, orient = teleport_results[i]
+            live_state.players[i].update_pos_and_or(pos, orient)
+
+        _, rewards, term, trunc, infos = self.base.step(final_primitives)
         self.state = infos["agent_0"]["state"]
         self.reward_info = {
             "sparse_reward_by_agent": [

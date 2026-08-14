@@ -1,15 +1,19 @@
 """
 Sanity test: selecting a faraway semantic target produces ONE primitive step,
-never a teleport.
+never a teleport -- for mappo.py's SemanticAIFObsOvercookedRLlibEnv only.
+
+mappo_simple.py's AIFObsOvercookedMAEnv was deliberately changed to teleport
+(2026-08-14, ai/02-debug.md "MAPPO teleportation" entry, explicit request) --
+each semantic (destination, mode) option now resolves the agent directly to
+its planned standing tile/facing in one step, rather than walking there
+primitive-by-primitive. That class is intentionally excluded from this
+no-teleport assertion now; see test_teleport.py for its own (opposite)
+regression test.
 
 We pick a semantic option whose destination is far from the agent and step
 the env once. Then we assert:
   - The agent did not jump to the target tile in one step.
   - The (x, y) position changed by at most 1 in Manhattan distance.
-
-Runs the check against BOTH semantic envs:
-  - agents.PPO.MA_PPO.mappo.SemanticAIFObsOvercookedRLlibEnv
-  - agents.PPO.MA_PPO.mappo_simple.AIFObsOvercookedMAEnv
 
 Run:
     .venv/bin/python -m agents.PPO.MA_PPO.test_no_teleport
@@ -26,7 +30,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from agents.IndependentActiveInferenceWithDynamicPolicies import utils as dyn_utils
 from agents.PPO.MA_PPO.mappo import SemanticAIFObsOvercookedRLlibEnv
-from agents.PPO.MA_PPO.mappo_simple import AIFObsOvercookedMAEnv as SimpleSemanticEnv
 
 
 def _manhattan(a, b):
@@ -110,9 +113,8 @@ def _run_one(label: str, env_cls):
 
 def main():
     _run_one("mappo.SemanticAIFObsOvercookedRLlibEnv", SemanticAIFObsOvercookedRLlibEnv)
-    _run_one("mappo_simple.AIFObsOvercookedMAEnv", SimpleSemanticEnv)
     print("")
-    print("ALL OK: no teleporting in either env.")
+    print("ALL OK: no teleporting in mappo.SemanticAIFObsOvercookedRLlibEnv.")
 
 
 if __name__ == "__main__":

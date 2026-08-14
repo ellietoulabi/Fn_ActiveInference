@@ -74,9 +74,9 @@ EXIT_CODE=$?
 
 echo "Copying logs..."
 cp "$LOG_FILE" "${DEST_BASE}/" 2>/dev/null || echo "Warning: verbose log file not found"
-cp logs/two_aif_agents_independent_seeds*_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
-cp logs/two_aif_agents_independent_seeds*_ep*_*_stats.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: stats JSON file not found"
-cp logs/two_aif_agents_independent_seeds*_ep*_*_policy_log.jsonl "${DEST_BASE}/" 2>/dev/null || echo "Warning: policy belief JSONL file not found"
+cp logs/two_aif_agents_independent_seed${SEED_IDX}_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
+cp logs/two_aif_agents_independent_seed${SEED_IDX}_ep*_*_stats.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: stats JSON file not found"
+cp logs/two_aif_agents_independent_seed${SEED_IDX}_ep*_*_policy_log.jsonl "${DEST_BASE}/" 2>/dev/null || echo "Warning: policy belief JSONL file not found"
 echo "Copy done"
 
 if [ $EXIT_CODE -ne 0 ]; then
