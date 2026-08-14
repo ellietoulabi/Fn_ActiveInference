@@ -87,11 +87,22 @@ def C_game_result(obs_idx):
     """
     Preference for game result.
     0 = neutral, 1 = win, 2 = lose
+
+    Loss aversion, deliberately asymmetric with the win reward (2026-08-14,
+    ai/02-debug.md "cross-timestep termination not tracked in EFE rollout").
+    This agent shares the same policy_len=2 rollout machinery
+    (agents/ActiveInferenceRedBlueButtonExact) as FullyCollective/
+    IndividuallyCollective, which can imagine "recovering" from an early
+    mistake within its own 2-step lookahead and partially cancel out a real
+    loss's penalty with a fictitious later win. Scaling only the loss penalty
+    (not win) closes that gap without adding any intermediate/shaping reward.
+    Matched exactly to FC/IC's C.py values (win=4.0/lose=-40.0) on 2026-08-14
+    per explicit request, so all RedBlueButton C.py files agree.
     """
     if obs_idx == 1:    # win
-        return 1
+        return 4
     elif obs_idx == 2:  # lose
-        return -1
+        return -40
     else:               # neutral (idle)
         return 0.0
 

@@ -53,14 +53,14 @@ echo "---- Starting seed index ${SEED_IDX} ----"
 # Reproducible runs: seed is passed via --seed; Python script uses it directly.
 export PYTHONHASHSEED=0
 
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_ic_30seed"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_ic_redbluebutton_step${MAX_STEPS}_30seed"}
 mkdir -p "${DEST_BASE}"
 LOG_FILE="$SLURM_TMPDIR/ma_ic_seed${SEED_IDX}.log"
 
 python -u run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_individually_collective.py \
   --seed ${SEED_IDX} \
-  --episodes 200 \
-  --episodes-per-config 25 \
+  --episodes 100 \
+  --episodes-per-config 20 \
   --max-steps ${MAX_STEPS} \
   --print-steps \
   --log-policy-beliefs \

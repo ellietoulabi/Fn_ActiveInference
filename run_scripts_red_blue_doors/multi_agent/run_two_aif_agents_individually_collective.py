@@ -3,9 +3,12 @@ Run two Active Inference agents in TwoAgentRedBlueButton using the Individually
 Collective paradigm.
 
 Individually Collective: each agent is an AIF agent that thinks it's deciding for
-both (shared joint model) but only takes its own action component:
-full joint inference via step(), then marginalize q_pi to P(a1) or P(a2) and execute
-that. Coordination via shared model structure; supports heterogeneous partners.
+both (shared joint model) but only takes its own action component: full joint
+inference via infer_states/infer_policies, then pick the single best (or
+sampled) FULL joint policy from its own q_pi -- same selection FullyCollective
+uses -- and execute only its own component of that one policy (see
+sample_my_component_from_best_joint_policy in env_utils.py). Coordination via
+shared model structure; supports heterogeneous partners.
 
 Runs across multiple seeds, episodes, and changing map configurations.
 """
@@ -348,22 +351,37 @@ def run_episode(
         # agent.step() internally samples a full joint policy via sample_action()
         # (sampling_mode="full") and uses THAT to set self.action for next-step
         # belief propagation -- but the action actually sent to env.step() was a
-        # SEPARATELY-computed marginal via sample_my_component(), which can pick
-        # a different own-component whenever q_pi is multimodal. Fixed by not
+        # SEPARATELY-computed own-component, which can disagree with the joint
+        # policy sample_action() picked whenever q_pi is multimodal. Fixed by not
         # calling agent.step() as one bundled call: infer state/policies first,
-        # derive the marginal-based own action (same sample_my_component logic,
-        # marginalization design intentionally unchanged), then explicitly set
-        # self.action to the joint index that's actually consistent with what
-        # gets executed, so next step's infer_states() propagates from the same
-        # action that was really taken.
+        # derive the own action explicitly (see below), then set self.action to
+        # the joint index that's actually consistent with what gets executed, so
+        # next step's infer_states() propagates from the same action that was
+        # really taken.
         agent1.infer_states(model_obs_1)
         agent1.infer_policies()
         agent2.infer_states(model_obs_2)
         agent2.infer_policies()
 
+        # Own-action selection: pick the single best (or sampled) FULL joint
+        # policy from each agent's own q_pi -- same selection FullyCollective
+        # uses (control.sample_policy, sampling_mode="full") -- then take only
+        # my own component of that one policy's first joint action. This
+        # matches the founding IC definition ("solve as if we're one agent,
+        # and then do my part of that", ai/04-writeup.md) instead of the old
+        # sample_my_component(), which marginalized q_pi over the partner's
+        # component before choosing -- a different (Level-1-style,
+        # best-respond-to-a-marginalized-partner) algorithm. See
+        # ai/02-debug.md, MA Red-Blue-Button section, for the switch.
         # With perspective obs, each agent's policy is over (my_action, other_action), so "my" is always component 0.
-        action1 = int(env_utils.sample_my_component(agent1.get_policy_posterior(), agent1.policies, 0))
-        action2 = int(env_utils.sample_my_component(agent2.get_policy_posterior(), agent2.policies, 0))
+        action1 = int(env_utils.sample_my_component_from_best_joint_policy(
+            agent1.get_policy_posterior(), agent1.policies, 0,
+            action_selection=agent1.action_selection, alpha=agent1.alpha,
+        ))
+        action2 = int(env_utils.sample_my_component_from_best_joint_policy(
+            agent2.get_policy_posterior(), agent2.policies, 0,
+            action_selection=agent2.action_selection, alpha=agent2.alpha,
+        ))
         actions = (action1, action2)
 
         # Each agent's belief lives in its own ego frame (agent1_pos = "me"),

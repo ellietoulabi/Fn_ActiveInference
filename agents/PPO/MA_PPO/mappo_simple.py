@@ -855,7 +855,24 @@ def main():
     parser.add_argument("--gae-lambda", type=float, default=0.95)
     parser.add_argument("--clip-eps", type=float, default=0.2)
     parser.add_argument("--vf-coef", type=float, default=0.5)
-    parser.add_argument("--ent-coef", type=float, default=0.05)
+    parser.add_argument(
+        "--ent-coef", type=float, default=0.05,
+        help=(
+            "Entropy bonus weight. A 2026-08-14 attempt to fix cramped_room's mutual "
+            "collision deadlock (block_other_agent=True can freeze both agents "
+            "permanently on this 6-tile layout) by raising this to 0.10 was tried and "
+            "REVERTED: a real 500k-step training run at 0.10 produced a policy that "
+            "stayed at ~99% of max entropy (statistically uniform-random) for the "
+            "entire run and never converged to any task-directed behavior at all -- "
+            "worse than the original problem, not better. Reward here is sparse enough "
+            "(a soup needs ~8+ correctly-ordered macro picks out of 20 options, 0 "
+            "reward otherwise) that a too-high entropy bonus can dominate the policy "
+            "gradient indefinitely with no exploitation ever emerging. Left at the "
+            "original 0.05 pending a real fix (candidates: decaying entropy schedule, "
+            "or a stall-detector at the macro-planning level that doesn't touch overall "
+            "policy stochasticity). See ai/02-debug.md, MAPPO baseline section."
+        ),
+    )
     parser.add_argument("--train-batch-size", type=int, default=1000)
     parser.add_argument("--minibatch-size", type=int, default=128)
     parser.add_argument("--epochs", type=int, default=4)

@@ -73,7 +73,7 @@ echo "Installing ray + RLlib deps (not in requirements.txt per its own comment).
 # Do NOT use pip's ray[rllib] extra on Alliance: it pulls pyarrow, and Alliance's
 # wheelhouse only has a dummy pyarrow that always fails. Real pyarrow comes from
 # 'module load gcc arrow' above. Install ray + the other RLlib deps explicitly.
-RAY_VER="2.40.0"
+RAY_VER="2.55.1"  # matches the version this code was actually developed/tested against; must be one of Alliance's wheelhouse-available versions, not an arbitrary pip version (see error: "Could not find a version that satisfies the requirement ray==2.40.0")
 if ! pip install --no-input --prefer-binary "ray==${RAY_VER}"; then
     echo "ERROR: pip install ray==${RAY_VER} failed."
     exit 1

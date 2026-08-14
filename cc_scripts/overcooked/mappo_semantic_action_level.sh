@@ -25,6 +25,12 @@ DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/l
 
 module purge
 module load python/3.11.4 scipy-stack
+# Ray/RLlib depends on pyarrow. On Alliance, `pip install pyarrow` (including via the
+# `ray[rllib]` extra, which pulls it in transitively) hits a dummy wheel that always
+# fails; the real package comes from the Arrow module. Load it BEFORE creating the
+# venv (see https://docs.alliancecan.ca/wiki/Arrow), same fix already applied to
+# cc_scripts/redbluebutton/{mappo,three_plus_ppo}.sh.
+module load gcc arrow
 
 if [ "${SLURM_TMPDIR:-}" = "" ]; then
     echo "Error: SLURM_TMPDIR not defined"
@@ -45,17 +51,43 @@ python3.11 -m venv --system-site-packages .venv
 source .venv/bin/activate
 echo "Activated virtualenv."
 
-echo "Installing dependencies (cc_scripts/overcooked/requirements-cc-sal.txt, plus ray[rllib]/torch for MAPPO)..."
+echo "Installing dependencies (cc_scripts/overcooked/requirements-cc-sal.txt, plus ray/RLlib/torch for MAPPO)..."
 cd ../project/Fn_ActiveInference/
 if ! pip install --no-input -r cc_scripts/overcooked/requirements-cc-sal.txt; then
     echo "ERROR: pip install failed. Do not use requirements.txt on Alliance (opencv-python dummy wheel)."
     exit 1
 fi
-if ! pip install --no-input "ray[rllib]" torch; then
-    echo "ERROR: pip install of ray[rllib]/torch failed."
+
+echo "Checking pyarrow from Arrow module (must work before ray install)..."
+python -c "import pyarrow; print('pyarrow OK', getattr(pyarrow, '__version__', '?'))" || {
+    echo "ERROR: pyarrow not importable. Load 'gcc arrow' before activating the venv."
+    exit 1
+}
+
+echo "Installing ray + RLlib deps (not in requirements-cc-sal.txt)..."
+# Do NOT use pip's ray[rllib] extra on Alliance: it pulls pyarrow, and Alliance's
+# wheelhouse only has a dummy pyarrow that always fails (real pyarrow comes from
+# 'module load gcc arrow' above). Install ray + the other RLlib deps explicitly,
+# pinned to a version actually present in Alliance's wheelhouse -- ray==2.40.0
+# previously failed here with "Could not find a version that satisfies the
+# requirement ray==2.40.0"; 2.55.1 matches what this code was developed/tested
+# against and is available in the wheelhouse.
+RAY_VER="2.55.1"
+if ! pip install --no-input --prefer-binary "ray==${RAY_VER}"; then
+    echo "ERROR: pip install ray==${RAY_VER} failed."
     exit 1
 fi
-echo "Dependencies installed."
+if ! pip install --no-input --prefer-binary "torch" "dm-tree" "lz4" "tensorboardX" "pandas"; then
+    echo "ERROR: pip install of RLlib dependencies failed."
+    exit 1
+fi
+echo "ray + RLlib deps installed (pyarrow from Arrow module)."
+
+python -c "import pyarrow; import ray; from ray.rllib.algorithms.ppo import PPOConfig; import torch; print('ray/rllib/torch/pyarrow import OK')" || {
+    echo "ERROR: ray/rllib/torch/pyarrow import check failed after install."
+    exit 1
+}
+echo "ray/rllib/torch/pyarrow import check OK."
 
 # shellcheck source=overcooked/_sal_common.sh
 source cc_scripts/overcooked/_sal_common.sh

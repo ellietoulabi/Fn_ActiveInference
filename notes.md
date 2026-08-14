@@ -62,3 +62,44 @@ python3 utils/plotting/plot_sal_pair_comparison.py \
 python3 utils/plotting/plot_sal_triple_comparison.py \
   --base-dir thesis_logs/03_ma_overcooked \
   -o thesis_plots/03_ma_overcooked/compare_ind_ic_fc 2>&1 | tail -20
+
+
+
+
+
+sbatch cc_scripts/redbluebutton/nine.sh
+sbatch cc_scripts/redbluebutton/two_aif_fully_collective.sh
+sbatch cc_scripts/redbluebutton/two_aif_independent.sh
+sbatch cc_scripts/redbluebutton/two_aif_individually_collective.sh
+
+
+# default (50 steps) — just submit normally
+sbatch cc_scripts/redbluebutton/nine.sh
+sbatch cc_scripts/redbluebutton/two_aif_fully_collective.sh
+sbatch cc_scripts/redbluebutton/two_aif_independent.sh
+sbatch cc_scripts/redbluebutton/two_aif_individually_collective.sh
+sbatch cc_scripts/redbluebutton/mappo.sh
+
+# 30-step variant — set MAX_STEPS before sbatch
+MAX_STEPS=15 sbatch cc_scripts/redbluebutton/nine.sh
+MAX_STEPS=15 sbatch cc_scripts/redbluebutton/two_aif_fully_collective.sh
+MAX_STEPS=15 sbatch cc_scripts/redbluebutton/two_aif_independent.sh
+MAX_STEPS=15 sbatch cc_scripts/redbluebutton/two_aif_individually_collective.sh
+MAX_STEPS=15 sbatch cc_scripts/redbluebutton/mappo.sh
+
+# any other value works the same way, e.g. 100 steps:
+MAX_STEPS=100 sbatch cc_scripts/redbluebutton/nine.sh
+
+
+
+
+
+# max-steps = 50
+MAX_STEPS=50 sbatch cc_scripts/redbluebutton/two_aif_fully_collective.sh
+MAX_STEPS=50 sbatch cc_scripts/redbluebutton/two_aif_independent.sh
+MAX_STEPS=50 sbatch cc_scripts/redbluebutton/two_aif_individually_collective.sh
+
+# max-steps = 30
+MAX_STEPS=30 sbatch cc_scripts/redbluebutton/two_aif_fully_collective.sh
+MAX_STEPS=30 sbatch cc_scripts/redbluebutton/two_aif_independent.sh
+MAX_STEPS=30 sbatch cc_scripts/redbluebutton/two_aif_individually_collective.sh

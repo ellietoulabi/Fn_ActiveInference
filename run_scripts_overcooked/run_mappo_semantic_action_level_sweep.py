@@ -574,7 +574,14 @@ def main() -> None:
     parser.add_argument("--gae-lambda", type=float, default=0.95)
     parser.add_argument("--clip-eps", type=float, default=0.2)
     parser.add_argument("--vf-coef", type=float, default=0.5)
-    parser.add_argument("--ent-coef", type=float, default=0.05)
+    parser.add_argument(
+        "--ent-coef", type=float, default=0.05,
+        help="Entropy bonus weight. A 2026-08-14 attempt to raise this to 0.10 (to "
+             "mitigate cramped_room's mutual-deadlock risk) was tried and reverted -- "
+             "it prevented the policy from ever converging at all. See "
+             "agents/PPO/MA_PPO/mappo_simple.py's --ent-coef help and ai/02-debug.md, "
+             "MAPPO baseline section.",
+    )
     parser.add_argument("--train-batch-size", type=int, default=4000)
     parser.add_argument("--minibatch-size", type=int, default=256)
     parser.add_argument("--epochs", type=int, default=4)

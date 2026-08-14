@@ -86,3 +86,54 @@ def sample_my_component(q_pi, policies, my_agent_id, n_actions=None, action_sele
     return int(np.random.choice(n_actions, p=p))
 
 
+def sample_my_component_from_best_joint_policy(q_pi, policies, my_agent_id, n_actions=None,
+                                                action_selection="deterministic", alpha=16.0):
+    """
+    Pick the single best (or sampled) FULL joint policy from my own q_pi --
+    exactly the same selection FullyCollective uses (see
+    agents/ActiveInferenceRedBlueButtonExact/utils.py::sample_policy,
+    sampling_mode="full") -- then return only my own component of that one
+    policy's first joint action. Does NOT marginalize over the partner's
+    component first.
+
+    This matches the founding IC definition ("solve as if we're one agent,
+    and then do my part of that" -- see ai/04-writeup.md, "IC's founding
+    definition") rather than sample_my_component's Level-1-style
+    marginalize-then-best-respond behavior. Both agents compute the same
+    joint generative model / q_pi shape from their own beliefs; each agent
+    independently commits to one coherent joint plan and executes its own
+    half, instead of averaging its action over every possible partner
+    action weighted by that partner's own predicted probability.
+
+    Args:
+        q_pi: 1D array of policy posterior probabilities (over joint policies).
+        policies: list of policies, each policy is a list of joint action indices
+            (first step only is used: policies[i][0]).
+        my_agent_id: 0 for agent 1 (a1 = joint // N_ACTIONS), 1 for agent 2 (a2 = joint % N_ACTIONS).
+        n_actions: number of primitive actions per agent (default from model_init.N_ACTIONS).
+        action_selection: "deterministic" (argmax over q_pi) or "stochastic" (sample).
+        alpha: precision for stochastic sampling.
+
+    Returns:
+        action: int in [0, n_actions-1].
+    """
+    if n_actions is None:
+        n_actions = model_init.N_ACTIONS
+    q_pi = np.asarray(q_pi, dtype=float)
+
+    if action_selection == "deterministic":
+        policy_idx = int(np.argmax(q_pi))
+    elif action_selection == "stochastic":
+        log_q = np.log(q_pi + 1e-16)
+        p_policies = np.exp(log_q * alpha)
+        p_policies = p_policies / np.sum(p_policies)
+        policy_idx = int(np.random.choice(len(policies), p=p_policies))
+    else:
+        raise ValueError(f"Unknown action selection mode: {action_selection}")
+
+    joint = int(policies[policy_idx][0])
+    if my_agent_id == 0:
+        return joint // n_actions
+    return joint % n_actions
+
+
