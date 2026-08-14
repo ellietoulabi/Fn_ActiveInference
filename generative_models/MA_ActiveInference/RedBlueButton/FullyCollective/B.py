@@ -135,6 +135,19 @@ def B_static_with_noise(parents, self_key, noise):
     return normalize(new)
 
 
+# Genuine action-effect noise: even certainly standing on the button and
+# pressing, there's a small chance it doesn't register -- the same kind of
+# deliberate, task-relevant uncertainty as Overcooked's PROGRESS_SUCCESS_PROB
+# (ai/02-debug.md, MA Overcooked section A / J.9), reusing the *proven* value
+# directly (0.85) rather than picking a new number. Previously this model had
+# zero action-effect noise anywhere (100% deterministic press given position),
+# unlike Independent which already had an analogous, if disconnected, 95/5
+# hardcoded pattern -- this brings all three paradigms onto the same
+# principled noise structure. See ai/02-debug.md, MA Red-Blue-Button noise
+# inventory + redesign entry.
+PRESS_SUCCESS_PROB = 0.85
+
+
 def _press_update(q_state, p_any_press):
     # Deterministic press: if not pressed and someone presses -> pressed
     q0, q1 = float(q_state[0]), float(q_state[1])
@@ -240,28 +253,60 @@ def B_button_states(parents, joint_action, width, height, ego_agent_index=1):
                             if w <= 1e-16:
                                 continue
 
-                            # Copy current states
-                            red_s = r
-                            blue_s = b
-
                             # Sequential press processing, in TRUE physical order
                             # (agent1 then agent2) regardless of which physical
-                            # agent's ego-relabeled belief this is.
+                            # agent's ego-relabeled belief this is. Each
+                            # individual press attempt branches on
+                            # PRESS_SUCCESS_PROB instead of succeeding
+                            # unconditionally -- a failed press leaves the
+                            # button state unchanged and does NOT block the
+                            # other agent's own press attempt this same step.
+                            #
+                            # A successful BLUE press (0->1) always ends the
+                            # episode immediately (win if red is already 1,
+                            # lose if red is still 0) -- matching the real
+                            # environment's `if not terminated: # Agent 2's
+                            # turn` guard, once a press ends the episode this
+                            # step, any later press in press_order never
+                            # executes at all, not even attempted. A
+                            # successful RED press (0->1) never ends the
+                            # episode by itself (win needs blue too), so
+                            # processing continues normally after it. Without
+                            # this, two agents pressing DIFFERENT buttons in
+                            # the same step were modelled as both succeeding
+                            # independently, which could make a losing
+                            # blue-before-red joint action look like a win to
+                            # the belief model (ai/02-debug.md, MA
+                            # Red-Blue-Button "cross-button simultaneous press"
+                            # entry).
                             press_order = ((p2, a2), (p1, a1)) if ego_agent_index == 2 else ((p1, a1), (p2, a2))
+
+                            # branches: list of (red_s, blue_s, terminated, branch_weight)
+                            branches = [(r, b, False, 1.0)]
                             for pos, act in press_order:
                                 if act != model_init.PRESS:
                                     continue
-                                # Press on red?
-                                if pos == pr_idx and red_s == 0:
-                                    red_s = 1
-                                    break
-                                # Press on blue?
-                                if pos == pb_idx and blue_s == 0:
-                                    blue_s = 1
-                                    break
+                                next_branches = []
+                                for red_s, blue_s, terminated, bw in branches:
+                                    if terminated:
+                                        # Episode already ended by an earlier
+                                        # press this step -- this agent's press
+                                        # never executes.
+                                        next_branches.append((red_s, blue_s, terminated, bw))
+                                        continue
+                                    if pos == pr_idx and red_s == 0:
+                                        next_branches.append((1, blue_s, False, bw * PRESS_SUCCESS_PROB))
+                                        next_branches.append((red_s, blue_s, False, bw * (1.0 - PRESS_SUCCESS_PROB)))
+                                    elif pos == pb_idx and blue_s == 0:
+                                        next_branches.append((red_s, 1, True, bw * PRESS_SUCCESS_PROB))
+                                        next_branches.append((red_s, blue_s, False, bw * (1.0 - PRESS_SUCCESS_PROB)))
+                                    else:
+                                        next_branches.append((red_s, blue_s, False, bw))
+                                branches = next_branches
 
-                            next_red[red_s] += w
-                            next_blue[blue_s] += w
+                            for red_s, blue_s, terminated, bw in branches:
+                                next_red[red_s] += w * bw
+                                next_blue[blue_s] += w * bw
 
     return normalize(next_red), normalize(next_blue)
 

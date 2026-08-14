@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=aip-jrwright
 #SBATCH --job-name=mappo_sal_centralized_critic
-#SBATCH --array=0-9                   # 10 seeds (one episode per task: train + eval)
+#SBATCH --array=0-29                  # 30 seeds (one episode per task: train + eval) -- matches the ind/ic/fc launchers' fixed pool: ep=76..105, a0=1000..1029, a1=2000..2029
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=16G
 #SBATCH --time=4-00:00
@@ -21,7 +21,7 @@ set -uo pipefail                      # no -e: we still copy logs on failure
 
 MAX_STEPS=${MAX_STEPS:-1500}
 MAX_TRAIN_STEPS=${MAX_TRAIN_STEPS:-1000000}
-DEST_BASE="/home/toulabin/projects/aip-jrwright/toulabin/logs/sal_mappo"
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sal_mappo"}
 
 module purge
 module load python/3.11.4 scipy-stack
@@ -84,13 +84,15 @@ print('Preflight OK: mappo')
 
 SEED_IDX=${SLURM_ARRAY_TASK_ID:?SLURM_ARRAY_TASK_ID not set (submit with sbatch --array)}
 EP_SEED=$((76 + SEED_IDX))
-echo "---- mappo seed_idx=${SEED_IDX} ep=${EP_SEED} max_steps=${MAX_STEPS} max_train_steps=${MAX_TRAIN_STEPS} ----"
+A0_SEED=$((1000 + SEED_IDX))
+A1_SEED=$((2000 + SEED_IDX))
+echo "---- mappo seed_idx=${SEED_IDX} ep=${EP_SEED} a0=${A0_SEED} a1=${A1_SEED} max_steps=${MAX_STEPS} max_train_steps=${MAX_TRAIN_STEPS} ----"
 
 mkdir -p "$DEST_BASE"
 CSV_DIR="$SLURM_TMPDIR/logs_sal"
 mkdir -p "$CSV_DIR"
 CKPT_DIR="$SLURM_TMPDIR/checkpoints_sal"
-LOG_FILE="$SLURM_TMPDIR/mappo_sal_ep${EP_SEED}.log"
+LOG_FILE="$SLURM_TMPDIR/mappo_sal_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
 
 # One seed per array task: --n-runs 1 --episode-start ${EP_SEED} derives
 # agent0/agent1 seeds as 1000+SEED_IDX / 2000+SEED_IDX internally (see

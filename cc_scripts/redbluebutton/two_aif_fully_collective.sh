@@ -1,15 +1,19 @@
 #!/bin/bash
 #SBATCH --account=aip-jrwright
 #SBATCH --job-name=aif_fullcoll
-#SBATCH --array=0-4                   # 5 seeds (0..4), one per array task
+#SBATCH --array=0-29                  # 30 seeds (0..29), one per array task
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --time=0-5:00
+#SBATCH --time=0-10:00
 #SBATCH --output=ma_fc_%A_%a.out
 
 # Runs the FullyCollective paradigm (centralized joint model).
 
 set -uo pipefail                      # no -e: we still copy logs on failure
+
+# Override episode length at submit time, e.g.:
+#   MAX_STEPS=30 sbatch cc_scripts/redbluebutton/two_aif_fully_collective.sh
+MAX_STEPS=${MAX_STEPS:-50}
 
 module purge
 module load python/3.11.4 scipy-stack
@@ -49,7 +53,7 @@ echo "---- Starting seed index ${SEED_IDX} ----"
 # Reproducible runs: seed is passed via --seed; Python script uses it directly.
 export PYTHONHASHSEED=0
 
-DEST_BASE="${HOME}/projects/aip-jrwright/toulabin/logs"
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_fc_30seed"}
 mkdir -p "${DEST_BASE}"
 LOG_FILE="$SLURM_TMPDIR/ma_fc_seed${SEED_IDX}.log"
 
@@ -57,11 +61,12 @@ python -u run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_fully_collec
   --seed ${SEED_IDX} \
   --episodes 200 \
   --episodes-per-config 25 \
-  --max-steps 30 \
-  --verbose \
-  --episode-progress \
-  --show-beliefs \
-  --show-policies > "$LOG_FILE" 2>&1
+  --max-steps ${MAX_STEPS} \
+  --print-steps \
+  --log-policy-beliefs \
+  --policy-top-k 5 \
+  --log-full-q-pi \
+  --log-state-beliefs > "$LOG_FILE" 2>&1
 
 EXIT_CODE=$?
 
@@ -69,6 +74,7 @@ echo "Copying logs..."
 cp "$LOG_FILE" "${DEST_BASE}/" 2>/dev/null || echo "Warning: verbose log file not found"
 cp logs/two_aif_agents_fully_collective_seeds*_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
 cp logs/two_aif_agents_fully_collective_seeds*_ep*_*_stats.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: stats JSON file not found"
+cp logs/two_aif_agents_fully_collective_seeds*_ep*_*_policy_log.jsonl "${DEST_BASE}/" 2>/dev/null || echo "Warning: policy belief JSONL file not found"
 echo "Copy done"
 
 if [ $EXIT_CODE -ne 0 ]; then

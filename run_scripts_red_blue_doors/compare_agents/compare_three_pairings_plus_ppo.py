@@ -42,7 +42,14 @@ SCRIPTS = {
 }
 # Extra CLI args appended for paradigms that need them beyond the shared seeds/episodes/
 # episodes-per-config/max-steps/stats-output flags (see run_two_ppo_agents.py --mode).
+# AIF paradigms get structured per-step JSONL logging (full state beliefs incl. entropy,
+# top-5 policies, full q_pi) -- matches the ind/ic/fc/nine.sh cluster launchers' own
+# logging flags, so debugging from these logs doesn't depend on parsing verbose stdout.
+_AIF_LOG_ARGS = ["--print-steps", "--log-policy-beliefs", "--policy-top-k", "5", "--log-full-q-pi", "--log-state-beliefs"]
 EXTRA_ARGS = {
+    "Fully Collective": _AIF_LOG_ARGS,
+    "Individually Collective": _AIF_LOG_ARGS,
+    "Independent": _AIF_LOG_ARGS,
     "PPO (pretrained)": ["--mode", "pretrained"],
     "PPO (online)": ["--mode", "online"],
 }

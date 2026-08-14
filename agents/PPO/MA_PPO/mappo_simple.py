@@ -551,26 +551,60 @@ def _get_total_env_steps(result) -> int:
 
 
 def _summarize_iter(result) -> Dict[str, object]:
-    """Pull useful metrics out of an RLlib train() result for logging."""
+    """Pull useful metrics out of an RLlib train() result for logging.
+
+    RLlib's own `episode_return_mean`/`module_episode_returns_mean` (and,
+    empirically confirmed, `episode_return_min`/`episode_return_max` the same
+    way) sum every agent's reward for a multi-agent episode before averaging.
+    Overcooked's reward is shared and identical for both agents every step, so
+    this reports exactly 2x the true single-agent-equivalent team return --
+    the same class of bug already found and fixed in the AIF run scripts'
+    post-hoc `combined_mean` metric (ai/02-debug.md, "Stage-3 combined return
+    was ~2x the real team return"), just baked into RLlib's own internal
+    aggregation instead of user code this time. Verified directly: a minimal
+    synthetic 2-agent env with reward=5.0/step/agent over a 4-step episode
+    reports `episode_return_mean=40.0` while `agent_episode_returns_mean`
+    correctly shows `{"agent_0": 20.0, "agent_1": 20.0}` -- the true value.
+    This only affects this human-readable progress print, not the actual PPO
+    loss/advantage computation (which operates on real per-step, per-agent
+    rewards, not this summary metric), so it never corrupted training itself
+    -- only made every printed training-progress number look 2x too high.
+    """
     env_runners = result.get("env_runners", {}) or {}
     info: Dict[str, object] = {}
     info["episodes_completed"] = env_runners.get(
         "num_episodes_lifetime",
         env_runners.get("num_episodes", env_runners.get("episodes_total", 0)),
     )
-    info["return_mean"] = env_runners.get("episode_return_mean")
-    info["return_min"] = env_runners.get("episode_return_min")
-    info["return_max"] = env_runners.get("episode_return_max")
+    # Prefer the per-agent breakdown (correct, not doubled) over the summed
+    # episode_return_mean/module_episode_returns_mean fields.
+    agent_returns = env_runners.get("agent_episode_returns_mean")
+    if agent_returns:
+        info["return_mean"] = next(iter(agent_returns.values()), None)
+    else:
+        info["return_mean"] = None
+    # episode_return_min/max have no per-agent breakdown available; correct
+    # them by /2 (exact for this env, since both agents always receive the
+    # identical shared reward every step -- not an approximation).
+    raw_min = env_runners.get("episode_return_min")
+    raw_max = env_runners.get("episode_return_max")
+    info["return_min"] = raw_min / 2.0 if raw_min is not None else None
+    info["return_max"] = raw_max / 2.0 if raw_max is not None else None
     info["ep_len_mean"] = env_runners.get("episode_len_mean")
     # Reward summed across all transitions sampled this iter (works even if no
-    # episode completed yet).
+    # episode completed yet). Also doubled by the same mechanism; halved for
+    # consistency with return_mean above.
     for k in (
         "module_episode_returns_mean",
         "episode_reward_mean",
         "policy_reward_mean",
     ):
         if k in env_runners and info["return_mean"] is None:
-            info["return_mean"] = env_runners.get(k)
+            raw = env_runners.get(k)
+            try:
+                info["return_mean"] = next(iter(raw.values())) / 2.0 if isinstance(raw, dict) else raw / 2.0
+            except (TypeError, StopIteration):
+                info["return_mean"] = raw
             break
     # Sum of all per-step rewards sampled this iteration (most resilient signal).
     iter_reward = None

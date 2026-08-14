@@ -1,12 +1,16 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright
+#SBATCH --account=aip-jrwright
 #SBATCH --job-name=sa_redblue_nine_agents
 #SBATCH --array=0-29
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --time=0-3:59
+#SBATCH --time=0-6:00
 
+# Override episode length at submit time, e.g.:
+#   MAX_STEPS=30 sbatch cc_scripts/redbluebutton/nine.sh
 set -euo pipefail
+
+MAX_STEPS=${MAX_STEPS:-50}
 
 module purge
 module load python/3.11.4  scipy-stack
@@ -43,18 +47,18 @@ pip install --no-input -r requirements_cc.txt
 echo "Dependencies installed"
 
 SEED_IDX=$SLURM_ARRAY_TASK_ID
-echo "---- Starting seed index ${SEED_IDX} ----"
+echo "---- Starting seed index ${SEED_IDX} (max_steps=${MAX_STEPS}) ----"
 
 # Reproducible runs: seed is passed via --seed_idx; Python script uses BASE_SEED + seed_idx.
 # PYTHONHASHSEED=0 makes dict/set iteration order deterministic across runs.
 export PYTHONHASHSEED=0
-if ! python -u run_scripts_red_blue_doors/compare_agents/compare_nine_agents.py --seed_idx ${SEED_IDX} --log-aif-beliefs; then
+if ! python -u run_scripts_red_blue_doors/compare_agents/compare_nine_agents.py --seed_idx ${SEED_IDX} --log-aif-beliefs --max-steps ${MAX_STEPS}; then
     EXIT_CODE=$?
     echo "compare_nine_agents.py for seed index $SEED_IDX failed with exit code $EXIT_CODE"
     exit $EXIT_CODE
 fi
 
-DEST_BASE="${HOME}/projects/def-jrwright/toulabin/logs/sa_redbluebutton"
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sa_redbluebutton"}
 mkdir -p "${DEST_BASE}"
 
 echo "Copying logs and Q-tables to home directory..."

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright            
+#SBATCH --account=aip-jrwright
 #SBATCH --job-name=eight_agents           # job name
 #SBATCH --array=0-29                      # seeds 0-29 (30 seeds total)
 #SBATCH --cpus-per-task=4
@@ -65,7 +65,7 @@ if [ $EXIT_CODE -ne 0 ]; then
 fi
 
 # Copy output files to home directory
-DEST_BASE="${HOME}/projects/def-jrwright/toulabin/logs"
+DEST_BASE="/home/toulabin/projects/aip-jrwright/toulabin/logs"
 mkdir -p "${DEST_BASE}"
 
 echo "Copying logs and Q-tables to home directory..."

@@ -28,6 +28,9 @@ from environments.RedBlueButton.TwoAgentRedBlueButton import TwoAgentRedBlueButt
 from generative_models.MA_ActiveInference.RedBlueButton.IndividuallyCollective import (
     A_fn, B_fn, C_fn, D_fn, model_init, env_utils
 )
+# IC's B_fn is imported (unmodified) from FullyCollective.B, so PRESS_SUCCESS_PROB
+# sweeps must patch that underlying module, not a nonexistent IC-local one.
+from generative_models.MA_ActiveInference.RedBlueButton.FullyCollective import B as B_module
 from agents.ActiveInferenceRedBlueButtonExact.agent import Agent
 
 
@@ -363,13 +366,20 @@ def run_episode(
         action2 = int(env_utils.sample_my_component(agent2.get_policy_posterior(), agent2.policies, 0))
         actions = (action1, action2)
 
-        consistent_joint_idx = int(env_utils.encode_joint_action(action1, action2))
-        agent1.action = consistent_joint_idx
-        agent2.action = consistent_joint_idx
+        # Each agent's belief lives in its own ego frame (agent1_pos = "me"),
+        # and agent 2's frame is swapped relative to the physical/env frame
+        # (see env_obs_to_model_obs_for_agent's swap + the D-config swap
+        # above). The joint action index fed to B_fn via `.action` must match
+        # that same ego frame -- physical-frame (action1, action2) is only
+        # correct for agent 1. Using it for agent 2 too was a real bug: see
+        # ai/02-debug.md, "physical agent 2's belief propagation uses the
+        # wrong (physical-frame, not ego-frame) joint action every step".
+        agent1.action = int(env_utils.encode_joint_action(action1, action2))
+        agent2.action = int(env_utils.encode_joint_action(action2, action1))
         agent1.step_time()
         agent2.step_time()
-        joint_action1_idx = consistent_joint_idx
-        joint_action2_idx = consistent_joint_idx
+        joint_action1_idx = agent1.action
+        joint_action2_idx = agent2.action
 
         grid = env.render(mode="silent")
         map_str = "|".join(["".join(row) for row in grid])
@@ -588,7 +598,11 @@ def main():
     parser.add_argument("--log-full-q-pi", action="store_true", help="In JSONL, include full policy posterior q_pi for both agents")
     parser.add_argument("--log-state-beliefs", action="store_true", help="In JSONL, include full state beliefs per factor for both agents")
     parser.add_argument("--stats-output", type=str, default=None, help="Also write stats JSON to this path (for comparison scripts)")
+    parser.add_argument("--press-success-prob", type=float, default=None, help="Override B.PRESS_SUCCESS_PROB (default 0.85) for a noise-level sweep. Patches the shared FullyCollective.B module before any agent is built.")
     args = parser.parse_args()
+    if args.press_success_prob is not None:
+        print(f"Overriding B.PRESS_SUCCESS_PROB: {B_module.PRESS_SUCCESS_PROB} -> {args.press_success_prob}")
+        B_module.PRESS_SUCCESS_PROB = args.press_success_prob
 
     # Parameters
     # If --seed is provided, run only that seed; otherwise use --seeds
@@ -610,7 +624,7 @@ def main():
     log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"two_aif_agents_individually_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_{timestamp}.csv"
+    csv_filename = f"two_aif_agents_individually_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}.csv"
     csv_path = log_dir / csv_filename
     csv_fieldnames = [
         "seed", "episode", "step", "config_idx",
@@ -630,7 +644,7 @@ def main():
     jsonl_path = None
     jsonl_fh = None
     if args.log_policy_beliefs:
-        jsonl_filename = f"two_aif_agents_individually_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_{timestamp}_policy_log.jsonl"
+        jsonl_filename = f"two_aif_agents_individually_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}_policy_log.jsonl"
         jsonl_path = log_dir / jsonl_filename
         jsonl_fh = open(jsonl_path, "w")
 
@@ -738,7 +752,7 @@ def main():
         "std_steps": float(np.std([r["steps"] for r in all_results])),
         "seed_summaries": seed_summaries_serializable,
     }
-    stats_filename = f"two_aif_agents_individually_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_{timestamp}_stats.json"
+    stats_filename = f"two_aif_agents_individually_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}_stats.json"
     stats_path = log_dir / stats_filename
     with open(stats_path, "w") as f:
         json.dump(stats, f, indent=2)

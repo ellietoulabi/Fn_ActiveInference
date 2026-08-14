@@ -24,6 +24,7 @@ from environments.RedBlueButton.TwoAgentRedBlueButton import TwoAgentRedBlueButt
 from generative_models.MA_ActiveInference.RedBlueButton.FullyCollective import (
     A_fn, B_fn, C_fn, D_fn, model_init, env_utils
 )
+from generative_models.MA_ActiveInference.RedBlueButton.FullyCollective import B as B_module
 from agents.ActiveInferenceRedBlueButtonExact.agent import Agent
 
 
@@ -201,15 +202,15 @@ def _validate_ma_model(env):
     assert isinstance(prefs, dict), "C_fn must return a dict"
 
 
-def create_centralized_agent(env):
+def create_centralized_agent(env, action_selection="deterministic"):
     """Create a centralized Active Inference agent that controls both agents."""
-    
+
     state_factors = list(model_init.states.keys())
     state_sizes = {factor: len(values) for factor, values in model_init.states.items()}
-    
+
     # Joint action space: 36 actions (6x6)
     joint_actions = list(range(model_init.N_JOINT_ACTIONS))
-    
+
     agent = Agent(
         A_fn=A_fn,
         B_fn=B_fn,
@@ -224,7 +225,8 @@ def create_centralized_agent(env):
         policy_len=2,  # 36x36=1296 two-step joint policies (36 joint actions per step, not 36 policies)
         gamma=2.0,  # Policy precision
         alpha=1.0,  # Action precision
-        # action_selection left at the class default ("deterministic"). Root cause of
+        action_selection=action_selection,
+        # Default is "deterministic". Root cause of
         # the deadlock previously seen here (real losing episode, seed=0, got stuck
         # repeating an identical joint action for 25 consecutive steps once q_pi hit
         # exactly uniform, entropy == ln(1296) to float precision) was traced to the
@@ -425,7 +427,7 @@ def run_seed_experiment(seed, num_episodes, episodes_per_config, max_steps,
                         verbose=False, csv_writer=None, episode_progress=False,
                         show_beliefs=False, show_policies=False,
                         policy_log_fh=None, log_policy_top_k=5, log_full_q_pi=False, log_state_beliefs=False,
-                        print_steps=False, progress_callback=None):
+                        print_steps=False, progress_callback=None, action_selection="deterministic"):
     """Run experiment for a single seed."""
     rng = np.random.default_rng(seed)
     np.random.seed(seed)
@@ -454,7 +456,7 @@ def run_seed_experiment(seed, num_episodes, episodes_per_config, max_steps,
                 max_steps=max_steps,
             )
             _validate_ma_model(env)
-            centralized_agent = create_centralized_agent(env)
+            centralized_agent = create_centralized_agent(env, action_selection=action_selection)
             if verbose:
                 print(f"\n{'='*80}")
                 print(f"SEED {seed} - CONFIG {config_idx + 1}")
@@ -534,7 +536,12 @@ def main():
     parser.add_argument("--log-full-q-pi", action="store_true", help="In JSONL, include full policy posterior q_pi")
     parser.add_argument("--log-state-beliefs", action="store_true", help="In JSONL, include full state beliefs per factor")
     parser.add_argument("--stats-output", type=str, default=None, help="Also write stats JSON to this path (for comparison scripts)")
+    parser.add_argument("--stochastic", action="store_true", help="Use stochastic (sampled) action selection instead of the default deterministic argmax -- breaks ties/stalls at the cost of occasional noise on otherwise-clear decisions. See ai/02-debug.md.")
+    parser.add_argument("--press-success-prob", type=float, default=None, help="Override B.PRESS_SUCCESS_PROB (default 0.85) for a noise-level sweep. Patches the shared FullyCollective.B module before any agent is built.")
     args = parser.parse_args()
+    if args.press_success_prob is not None:
+        print(f"Overriding B.PRESS_SUCCESS_PROB: {B_module.PRESS_SUCCESS_PROB} -> {args.press_success_prob}")
+        B_module.PRESS_SUCCESS_PROB = args.press_success_prob
 
     # Parameters
     # If --seed is provided, run only that seed; otherwise use --seeds
@@ -556,7 +563,7 @@ def main():
     log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"two_aif_agents_fully_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_{timestamp}.csv"
+    csv_filename = f"two_aif_agents_fully_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}.csv"
     csv_path = log_dir / csv_filename
     
     csv_fieldnames = [
@@ -577,7 +584,7 @@ def main():
     jsonl_path = None
     jsonl_fh = None
     if args.log_policy_beliefs:
-        jsonl_filename = f"two_aif_agents_fully_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_{timestamp}_policy_log.jsonl"
+        jsonl_filename = f"two_aif_agents_fully_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}_policy_log.jsonl"
         jsonl_path = log_dir / jsonl_filename
         jsonl_fh = open(jsonl_path, "w")
 
@@ -630,6 +637,7 @@ def main():
                 log_state_beliefs=args.log_state_beliefs,
                 print_steps=args.print_steps,
                 progress_callback=pbar.update,
+                action_selection=("stochastic" if args.stochastic else "deterministic"),
                 )
 
                 all_results.extend(results)
@@ -686,7 +694,7 @@ def main():
         "std_steps": float(np.std([r["steps"] for r in all_results])),
         "seed_summaries": seed_summaries_serializable,
     }
-    stats_filename = f"two_aif_agents_fully_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_{timestamp}_stats.json"
+    stats_filename = f"two_aif_agents_fully_collective_seeds{NUM_SEEDS_FOR_FILENAME}_ep{NUM_EPISODES_PER_SEED}_step{MAX_STEPS}_redblue_{timestamp}_stats.json"
     stats_path = log_dir / stats_filename
     with open(stats_path, "w") as f:
         json.dump(stats, f, indent=2)

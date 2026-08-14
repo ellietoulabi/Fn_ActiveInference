@@ -115,6 +115,19 @@ def B_static_with_noise(parents, self_key, noise):
     return new / np.maximum(np.sum(new), 1e-8)
 
 
+# Genuine action-effect noise: even certainly standing on the button and
+# pressing, there's a small chance it doesn't register -- the same kind of
+# deliberate, task-relevant uncertainty as Overcooked's PROGRESS_SUCCESS_PROB
+# (ai/02-debug.md, MA Overcooked section A / J.9), and the *proven* value is
+# reused directly (0.85) rather than picking a new number. This gives the
+# epistemic-value term something genuine and consistent to resolve right at
+# the one action that actually decides the task, instead of (or in addition
+# to) relying on movement noise, which is the pattern already found harmful
+# in Overcooked (MOVE_UNCERTAINTY) and in this file (see the noise inventory
+# entry, MA Red-Blue-Button section).
+PRESS_SUCCESS_PROB = 0.85
+
+
 def B_red_button_state(parents, action, noise):
     """
     parents = {
@@ -135,18 +148,18 @@ def B_red_button_state(parents, action, noise):
     # OPEN action: check if agent is at button position
     # Compute P(agent_pos == red_button_pos)
     p_at_button = np.sum(q_agent * q_button)
-    
+
     q0, q1 = q_state[0], q_state[1]
-    
-    # If at button and not pressed ->  pressed (80% success, 20% fail)
+
+    # If at button and not pressed -> pressed, with probability PRESS_SUCCESS_PROB
     # If at button and pressed -> stays pressed (100%)
     # If not at button -> stays exactly the same (deterministic)
-    next0 = q0 * (p_at_button * 0.05 + (1.0 - p_at_button) * 1.0)
-    next1 = q0 * p_at_button * 0.95 + q1 * 1.0
-    
+    next0 = q0 * (p_at_button * (1.0 - PRESS_SUCCESS_PROB) + (1.0 - p_at_button) * 1.0)
+    next1 = q0 * p_at_button * PRESS_SUCCESS_PROB + q1 * 1.0
+
     result = np.array([next0, next1])
     result = result / np.maximum(np.sum(result), 1e-8)
-    return result  
+    return result
 
 
 def B_blue_button_state(parents, action, noise):
@@ -169,15 +182,15 @@ def B_blue_button_state(parents, action, noise):
     # OPEN action: check if agent is at button position
     # Compute P(agent_pos == blue_button_pos)
     p_at_button = np.sum(q_agent * q_button)
-    
+
     q0, q1 = q_state[0], q_state[1]
-    
-    # If at button and not pressed → pressed (80% success, 20% fail)
-    # If at button and pressed → stays pressed (100%)
-    # If not at button → stays exactly the same (deterministic)
-    next0 = q0 * (p_at_button * 0.05 + (1.0 - p_at_button) * 1.0)
-    next1 = q0 * p_at_button * 0.95 + q1 * 1.0
-    
+
+    # If at button and not pressed -> pressed, with probability PRESS_SUCCESS_PROB
+    # If at button and pressed -> stays pressed (100%)
+    # If not at button -> stays exactly the same (deterministic)
+    next0 = q0 * (p_at_button * (1.0 - PRESS_SUCCESS_PROB) + (1.0 - p_at_button) * 1.0)
+    next1 = q0 * p_at_button * PRESS_SUCCESS_PROB + q1 * 1.0
+
     result = np.array([next0, next1])
     result = result / np.maximum(np.sum(result), 1e-8)
     return result  # Return numpy, not jax
@@ -186,7 +199,23 @@ def B_blue_button_state(parents, action, noise):
 # --------------------------------
 # apply_B
 # --------------------------------
-def B_fn(qs, action, width, height, B_NOISE_LEVEL=0.05):
+def B_fn(qs, action, width, height, B_NOISE_LEVEL=0.0):
+    """
+    B_NOISE_LEVEL now controls ONLY movement noise (via B_agent_pos), decoupled
+    from press-success noise (which is its own named PRESS_SUCCESS_PROB
+    constant above -- previously these were accidentally conflated: the same
+    parameter was threaded into both, but press-success silently ignored it
+    and used a hardcoded value anyway).
+
+    Default changed from 0.05 to 0.0: the real environment's movement is
+    100% deterministic, and spreading belief uniformly across all 8 other
+    cells on every move is the same structural pattern already found to
+    backfire in Overcooked (MOVE_UNCERTAINTY -- a spurious, path-length-
+    proportional "distance bias" leaked into info gain). Matches
+    FullyCollective/IndividuallyCollective, whose movement has always been
+    exactly deterministic. See ai/02-debug.md, MA Red-Blue-Button noise
+    inventory + this redesign entry.
+    """
     new_qs = {}
 
     for factor, deps in state_state_dependencies.items():
@@ -204,9 +233,13 @@ def B_fn(qs, action, width, height, B_NOISE_LEVEL=0.05):
             new_qs[factor] = B_static_with_noise(parents, factor, OTHER_POS_NOISE)
 
         elif factor in ("red_button_pos", "blue_button_pos"):
-            # Small noise for non-stationary environment (buttons may slowly drift)
-            # Beliefs decay slowly unless confirmed by observations
-            BUTTON_POS_NOISE = 0.01  # 1% uncertainty per step
+            # Buttons are exactly static within an episode (they only relocate
+            # at config/episode boundaries, which belief retention via
+            # reset(keep_factors=...) already handles correctly). No noise
+            # needed here -- matches FullyCollective/IndividuallyCollective's
+            # BUTTON_POS_NOISE=0.0 exactly. Previously 0.01, an unnecessary
+            # drift term for a quantity that never actually drifts intra-episode.
+            BUTTON_POS_NOISE = 0.0
             new_qs[factor] = B_static_with_noise(parents, factor, BUTTON_POS_NOISE)
 
         elif factor == "red_button_state":

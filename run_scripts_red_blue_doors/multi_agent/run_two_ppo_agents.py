@@ -1,11 +1,26 @@
 """
-Run two PPO agents on TwoAgentRedBlueButton with the same state as AIF agents.
+Run two PPO agents on TwoAgentRedBlueButton, trained as genuine MAPPO
+(centralized-training, decentralized-execution -- Yu et al. 2021, "The
+Surprising Effectiveness of PPO in Cooperative Multi-Agent Games").
 
-Uses Ray RLlib PPO (PPOConfig). Observation is the same as the AIF model observation:
-env_obs_to_model_obs(env_obs, width) flattened to a 10-D vector, so PPO sees the same
-state as the Fully Collective AIF agent. Both PPO agents receive this joint observation.
-Runs the same evaluation protocol as the AIF scripts (seeds, episodes, episodes_per_config,
-configs) and supports --stats-output for comparison.
+Each agent's ACTOR sees only its own local, egocentric observation (own_pos,
+other_pos, on_red/on_blue for itself, button states, game_result,
+button_just_pressed) -- exactly the same factors Independent AIF observes
+(generative_models/SA_ActiveInference/RedBlueButtonIndependent). This is what
+keeps execution genuinely decentralized: nothing about how an action is
+chosen depends on anything the agent couldn't observe on its own at
+deployment time.
+
+Each agent's CRITIC (used only during training, discarded at inference) sees
+the full joint observation: its own local vector concatenated with the
+partner's own local vector. This is the actual, defining architectural
+feature of MAPPO -- previously entirely absent here (both agents received an
+identical, non-ego-relative 10-D vector fed to a single shared actor-critic
+network, i.e. plain IPPO with an artificially large local observation, not
+MAPPO). See ai/02-debug.md, MA Red-Blue-Button PPO section.
+
+Runs the same evaluation protocol as the AIF scripts (seeds, episodes,
+episodes_per_config, configs) and supports --stats-output for comparison.
 
 Two training protocols are supported via --mode:
   - "pretrained" (default): generous offline training budget, on domain-randomized maps
@@ -41,8 +56,14 @@ from generative_models.MA_ActiveInference.RedBlueButton.FullyCollective import e
 try:
     from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.algorithms.algorithm import Algorithm
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec, RLModule
+    from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
+    from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
+    from ray.rllib.core.columns import Columns
+    from ray.rllib.utils.annotations import override
     import ray
     import torch
+    import torch.nn as nn
     RAY_AVAILABLE = True
 except ImportError as e:
     RAY_AVAILABLE = False
@@ -50,31 +71,66 @@ except ImportError as e:
 
 
 # -----------------------------------------------------------------------------
-# Observation: same state as AIF agent (model_obs flattened)
+# Observation: ego-relative local state per agent, matching Independent AIF's
+# own observation model exactly (own_pos, other_pos, on_red/on_blue (mine),
+# both button states, game_result, button_just_pressed).
 # -----------------------------------------------------------------------------
 
-def env_obs_to_ppo_vector(env_obs, width=3):
+OWN_OBS_KEYS = [
+    "my_pos", "other_pos", "on_red_button", "on_blue_button",
+    "red_button_state", "blue_button_state", "game_result", "button_just_pressed",
+]
+OWN_OBS_DIM = len(OWN_OBS_KEYS)  # 8
+# Normalization denominators, matching each field's real max value: positions
+# range 0..8 (9 cells), game_result ranges 0..2 (neutral/win/lose), everything
+# else is already binary.
+OWN_OBS_NORM_DEN = np.array([8.0, 8.0, 1.0, 1.0, 1.0, 1.0, 2.0, 1.0], dtype=np.float32)
+
+
+def _own_obs_vec(env_obs, agent_idx, width=3):
     """
-    Convert env observation to the same state the AIF agent sees, as a flat vector.
-    Uses the same env_obs_to_model_obs as FullyCollective, then flattens to fixed order.
+    Ego-relative local observation for ONE physical agent.
+
+    agent_idx: 0 for physical agent 1, 1 for physical agent 2 (matches
+    TwoAgentRedBlueButton's fixed a1-acts-first/a2-acts-second convention and
+    this file's RLlib "agent_0"/"agent_1" naming).
     """
     model_obs = aif_env_utils.env_obs_to_model_obs(env_obs, width=width)
-    # Fixed order matching model_obs keys (same as AIF state)
-    return np.array([
-        float(model_obs["agent1_pos"]),
-        float(model_obs["agent2_pos"]),
-        float(model_obs["agent1_on_red_button"]),
-        float(model_obs["agent1_on_blue_button"]),
-        float(model_obs["agent2_on_red_button"]),
-        float(model_obs["agent2_on_blue_button"]),
-        float(model_obs["red_button_state"]),
-        float(model_obs["blue_button_state"]),
-        float(model_obs["game_result"]),
-        float(model_obs["button_just_pressed"]),
+    if agent_idx == 0:
+        my_pos = model_obs["agent1_pos"]
+        other_pos = model_obs["agent2_pos"]
+        on_red = model_obs["agent1_on_red_button"]
+        on_blue = model_obs["agent1_on_blue_button"]
+    else:
+        my_pos = model_obs["agent2_pos"]
+        other_pos = model_obs["agent1_pos"]
+        on_red = model_obs["agent2_on_red_button"]
+        on_blue = model_obs["agent2_on_blue_button"]
+    vals = np.array([
+        my_pos, other_pos, on_red, on_blue,
+        model_obs["red_button_state"], model_obs["blue_button_state"],
+        model_obs["game_result"], model_obs["button_just_pressed"],
     ], dtype=np.float32)
+    return vals / OWN_OBS_NORM_DEN
 
 
-OBS_VECTOR_SIZE = 10
+def _build_joint_obs(env_obs, width=3):
+    """
+    Build the per-agent observation RLlib sees: [own_obs (OWN_OBS_DIM), other_obs
+    (OWN_OBS_DIM)] -- "own" is always this agent's own egocentric vector, "other"
+    is the partner's own egocentric vector, in that canonical slot regardless of
+    which physical agent this is. The actor architecturally only ever reads the
+    first OWN_OBS_DIM entries (see CentralizedCriticPPOTorchRLModule); the critic
+    reads the full thing. Standard CTDE: privileged critic, decentralized actor.
+    """
+    own = {0: _own_obs_vec(env_obs, 0, width=width), 1: _own_obs_vec(env_obs, 1, width=width)}
+    return {
+        "agent_0": np.concatenate([own[0], own[1]]).astype(np.float32),
+        "agent_1": np.concatenate([own[1], own[0]]).astype(np.float32),
+    }
+
+
+JOINT_OBS_DIM = 2 * OWN_OBS_DIM  # 16
 
 
 # -----------------------------------------------------------------------------
@@ -90,7 +146,12 @@ except ImportError:
 class RedBlueButtonPPOWrapper(MultiAgentEnv):
     """
     Wraps TwoAgentRedBlueButton (same as AIF) for RLlib.
-    Both agents receive the same observation: AIF model_obs flattened (same state as AIF).
+
+    Each agent's observation is its own ego-relative local state concatenated
+    with the partner's ego-relative local state (see _build_joint_obs) -- the
+    actor (CentralizedCriticPPOTorchRLModule) reads only the first half at
+    both train and inference time; the critic reads the full vector, but only
+    during training.
 
     Training map-config strategy is controlled via env_config["config_mode"]:
       - "fixed": button positions fixed at construction for the whole run (legacy behavior).
@@ -129,22 +190,14 @@ class RedBlueButtonPPOWrapper(MultiAgentEnv):
         self.agents = ["agent_0", "agent_1"]
         self.possible_agents = self.agents.copy()
 
-        # Observation space: same state as AIF, flattened to vector
-        self.observation_space = spaces.Dict({
-            "agent_0": spaces.Box(
-                low=-np.inf, high=np.inf, shape=(OBS_VECTOR_SIZE,), dtype=np.float32
-            ),
-            "agent_1": spaces.Box(
-                low=-np.inf, high=np.inf, shape=(OBS_VECTOR_SIZE,), dtype=np.float32
-            ),
-        })
-        self.action_space = spaces.Dict({
-            "agent_0": spaces.Discrete(6),
-            "agent_1": spaces.Discrete(6),
-        })
+        single_obs_space = spaces.Box(low=0.0, high=1.0, shape=(JOINT_OBS_DIM,), dtype=np.float32)
+        self.single_observation_space = single_obs_space
+        self.single_action_space = spaces.Discrete(6)
+        self.observation_space = spaces.Dict({aid: single_obs_space for aid in self.agents})
+        self.action_space = spaces.Dict({aid: self.single_action_space for aid in self.agents})
 
-    def _obs_to_vec(self, env_obs):
-        return env_obs_to_ppo_vector(env_obs, width=self.width)
+    def _obs_dict(self, env_obs):
+        return _build_joint_obs(env_obs, width=self.width)
 
     def _next_training_config(self):
         if self._config_mode == "matched_schedule" and self._schedule_configs:
@@ -172,8 +225,7 @@ class RedBlueButtonPPOWrapper(MultiAgentEnv):
             )
         self._reset_count += 1
         env_obs, _ = self.base_env.reset(seed=seed, options=options)
-        vec = self._obs_to_vec(env_obs)
-        observations = {"agent_0": vec.copy(), "agent_1": vec.copy()}
+        observations = self._obs_dict(env_obs)
         infos = {"agent_0": {}, "agent_1": {}}
         return observations, infos
 
@@ -182,13 +234,96 @@ class RedBlueButtonPPOWrapper(MultiAgentEnv):
         action2 = int(actions["agent_1"])
         env_obs, reward, terminated, truncated, info = self.base_env.step((action1, action2))
         reward = float(reward)
-        vec = self._obs_to_vec(env_obs)
-        observations = {"agent_0": vec.copy(), "agent_1": vec.copy()}
+        observations = self._obs_dict(env_obs)
         rewards = {"agent_0": reward, "agent_1": reward}
         terminated_dict = {"agent_0": terminated, "agent_1": terminated, "__all__": terminated}
         truncated_dict = {"agent_0": truncated, "agent_1": truncated, "__all__": truncated}
         infos = {"agent_0": info.copy(), "agent_1": info.copy()}
         return observations, rewards, terminated_dict, truncated_dict, infos
+
+
+# -----------------------------------------------------------------------------
+# Genuine CTDE: decentralized actor, centralized critic (Yu et al. 2021)
+# -----------------------------------------------------------------------------
+
+if RAY_AVAILABLE:
+
+    def _mlp(in_dim: int, hidden: int, out_dim: int) -> "nn.Module":
+        """Small orthogonal-initialized MLP encoder+head (Yu et al. 2021 /
+        "37 implementation details" best practice: orthogonal init, tanh
+        activations, small-gain policy output layer -- see the output-layer
+        gain override on self.pi below)."""
+        layers = [
+            nn.Linear(in_dim, hidden), nn.Tanh(),
+            nn.Linear(hidden, hidden), nn.Tanh(),
+        ]
+        head = nn.Linear(hidden, out_dim)
+        for layer in layers + [head]:
+            if isinstance(layer, nn.Linear):
+                nn.init.orthogonal_(layer.weight)
+                nn.init.zeros_(layer.bias)
+        return nn.Sequential(*layers, head)
+
+    class CentralizedCriticPPOTorchRLModule(TorchRLModule, ValueFunctionAPI):
+        """
+        PPO RLModule implementing a genuine CTDE centralized critic for
+        RedBlueButton, mirroring agents/PPO/MA_PPO/mappo_simple.py's Overcooked
+        implementation (see ai/02-debug.md, that entry, for the original
+        finding of this gap and the design rationale).
+
+        The actor sees ONLY the first `own_obs_dim` entries of the observation
+        (this agent's own local, egocentric state -- identical in kind to what
+        Independent AIF observes). The critic sees the FULL observation (own +
+        partner's own local state, i.e. the joint/global state) -- the defining
+        architectural feature that distinguishes MAPPO from independent PPO.
+
+        Execution stays fully decentralized: at inference/rollout time nothing
+        changes about what the policy conditions on (still local-only) -- only
+        the value function used during training gets the privileged joint view.
+        """
+
+        def setup(self):
+            own_dim = int(self.model_config.get("own_obs_dim", OWN_OBS_DIM))
+            hidden = int(self.model_config.get("hidden_dim", 64))
+            n_actions = int(self.action_space.n)
+            self._own_dim = own_dim
+
+            self.actor_encoder = _mlp(own_dim, hidden, hidden)
+            self.pi = nn.Linear(hidden, n_actions)
+            nn.init.orthogonal_(self.pi.weight, gain=0.01)
+            nn.init.zeros_(self.pi.bias)
+
+            joint_dim = int(self.observation_space.shape[0])
+            self.critic_encoder = _mlp(joint_dim, hidden, hidden)
+            self.vf = nn.Linear(hidden, 1)
+            nn.init.orthogonal_(self.vf.weight)
+            nn.init.zeros_(self.vf.bias)
+
+        def get_initial_state(self) -> dict:
+            return {}
+
+        def _actor_forward(self, batch):
+            obs = batch[Columns.OBS]
+            own = obs[..., : self._own_dim]
+            logits = self.pi(self.actor_encoder(own))
+            return {Columns.ACTION_DIST_INPUTS: logits}
+
+        @override(RLModule)
+        def _forward(self, batch, **kwargs):
+            return self._actor_forward(batch)
+
+        @override(RLModule)
+        def _forward_train(self, batch, **kwargs):
+            return self._actor_forward(batch)
+
+        @override(ValueFunctionAPI)
+        def compute_values(self, batch, embeddings=None):
+            # Always recompute from the raw (full, joint) observation rather
+            # than reusing any actor-side embedding -- actor and critic here
+            # deliberately do NOT share an encoder (different input widths).
+            obs = batch[Columns.OBS]
+            vf_out = self.vf(self.critic_encoder(obs))
+            return vf_out.squeeze(-1)
 
 
 # -----------------------------------------------------------------------------
@@ -287,6 +422,18 @@ def train_ppo(
     env_instance = RedBlueButtonPPOWrapper(env_config)
 
     train_batch_size = min(2000, 200 * max_steps)
+
+    # Genuine CTDE centralized critic (see CentralizedCriticPPOTorchRLModule
+    # above): actor conditions on local obs only (own_obs_dim entries), critic
+    # conditions on the full joint observation (own + partner's own state).
+    # This bypasses RLlib's default Catalog-built shared-obs-space module
+    # entirely, so it also directly implements the orthogonal-init /
+    # separate-encoders best practices from Yu et al. 2021 natively.
+    rl_module_spec = RLModuleSpec(
+        module_class=CentralizedCriticPPOTorchRLModule,
+        model_config={"own_obs_dim": OWN_OBS_DIM, "hidden_dim": 64},
+    )
+
     config = (
         PPOConfig()
         .environment(env=RedBlueButtonPPOWrapper, env_config=env_config)
@@ -300,6 +447,8 @@ def train_ppo(
             train_batch_size=train_batch_size,
             minibatch_size=128,
             num_epochs=10,
+            grad_clip=10.0,
+            grad_clip_by="global_norm",
         )
         .resources(num_gpus=0)
         .env_runners(num_env_runners=1, num_envs_per_env_runner=4, num_cpus_per_env_runner=1)
@@ -310,6 +459,7 @@ def train_ppo(
             },
             policy_mapping_fn=lambda agent_id, episode, **kwargs: agent_id,
         )
+        .rl_module(rl_module_spec=rl_module_spec)
         .debugging(seed=seed)
     )
 
@@ -360,17 +510,68 @@ def train_ppo(
 
 
 # -----------------------------------------------------------------------------
+# Action selection (shared by evaluation): deterministic (greedy) by default,
+# or reproducible seeded-stochastic sampling.
+# -----------------------------------------------------------------------------
+
+def _select_action(module, obs_vec, stochastic=False, generator=None):
+    """
+    Args:
+        stochastic: if False (default), always take the greedy/argmax action --
+            standard practice for reporting frozen-policy evaluation performance,
+            and (unlike relying on a possibly-missing `deterministic_sample`)
+            requires no RNG at all, so it's trivially reproducible.
+        generator: only used when stochastic=True. A torch.Generator seeded per
+            agent/eval-seed, so re-running the same --seed reproduces the exact
+            same stochastic action sequence. Without this, evaluation-time
+            sampling draws from PyTorch's global, unseeded RNG and produces a
+            different trajectory on every re-run even with the same --seed --
+            see ai/02-debug.md, MA Red-Blue-Button PPO section, for the
+            original finding (the previous code's `hasattr(dist,
+            "deterministic_sample")` check was always False for the installed
+            RLlib's TorchCategorical, so it silently always fell through to
+            unseeded `dist.sample()`, every step, every episode).
+    """
+    obs_t = torch.tensor(obs_vec, dtype=torch.float32).unsqueeze(0)
+    with torch.no_grad():
+        fwd = module.forward_inference({"obs": obs_t})
+    logits = fwd["action_dist_inputs"]
+    if stochastic:
+        probs = torch.softmax(logits, dim=-1)
+        if generator is not None:
+            # torch.distributions.Categorical.sample() has no generator hook
+            # (it calls probs.multinomial() internally with no way to pass one
+            # through), so draw manually via torch.multinomial instead, which
+            # does accept a generator.
+            act_t = torch.multinomial(probs, num_samples=1, generator=generator).squeeze(-1)
+        else:
+            act_t = torch.multinomial(probs, num_samples=1).squeeze(-1)
+    else:
+        act_t = torch.argmax(logits, dim=-1)
+    action = int(act_t.reshape(-1)[0].item())
+    probs_list = torch.softmax(logits[0], dim=-1).tolist()
+    return action, probs_list
+
+
+# -----------------------------------------------------------------------------
 # Evaluate with same protocol as AIF (seeds, episodes, configs)
 # -----------------------------------------------------------------------------
 
 def run_seed_experiment(
     algo, seed, num_episodes, episodes_per_config, max_steps,
-    progress_callback=None, csv_writer=None,
+    progress_callback=None, csv_writer=None, stochastic=False,
 ):
-    np.random.seed(seed)
     results = []
     configs = build_eval_configs(seed, num_episodes, episodes_per_config)
     action_names = TwoAgentRedBlueButtonEnv.ACTION_MEANING
+    # Per-agent generators, seeded from the eval seed, only consumed when
+    # stochastic=True -- see _select_action's docstring. Independent per-agent
+    # streams mirror the AIF scripts' own per-agent-seed convention.
+    agent_generators = {
+        "agent_0": torch.Generator().manual_seed(int(seed) * 2 + 1),
+        "agent_1": torch.Generator().manual_seed(int(seed) * 2 + 2),
+    }
+    modules = {aid: algo.get_module(aid) for aid in ("agent_0", "agent_1")}
     env = None
     for episode in range(1, num_episodes + 1):
         config_idx = (episode - 1) // episodes_per_config
@@ -385,42 +586,20 @@ def run_seed_experiment(
                 max_steps=max_steps,
             )
         obs, _ = env.reset(seed=seed + episode)
-        vec = env_obs_to_ppo_vector(obs, width=env.width)
         episode_reward = 0.0
         step = 0
         for step in range(1, max_steps + 1):
+            obs_dict = _build_joint_obs(obs, width=env.width)
             actions = {}
             action_probs = {}
             for agent_id in ["agent_0", "agent_1"]:
-                try:
-                    module = algo.get_module(agent_id)
-                    obs_tensor = torch.FloatTensor(vec).unsqueeze(0)
-                    with torch.no_grad():
-                        fwd = module.forward_inference({"obs": obs_tensor})
-                    if "action_dist_inputs" in fwd:
-                        try:
-                            dist_cls = module.get_inference_action_dist_cls()
-                            dist = dist_cls.from_logits(fwd["action_dist_inputs"])
-                            action = dist.deterministic_sample() if hasattr(dist, "deterministic_sample") else dist.sample()
-                        except Exception:
-                            action = torch.argmax(fwd["action_dist_inputs"], dim=-1)
-                        if csv_writer is not None:
-                            try:
-                                probs = torch.softmax(fwd["action_dist_inputs"][0], dim=-1).tolist()
-                                action_probs[agent_id] = [round(p, 4) for p in probs]
-                            except Exception:
-                                action_probs[agent_id] = None
-                    else:
-                        action = fwd["action"]
-                        action_probs[agent_id] = None
-                    action = action[0].item() if isinstance(action, torch.Tensor) and action.dim() > 0 else (action.item() if isinstance(action, torch.Tensor) else int(action))
-                    actions[agent_id] = int(action)
-                except Exception:
-                    actions[agent_id] = int(np.random.randint(0, 6))
-                    action_probs[agent_id] = None
+                action, probs = _select_action(
+                    modules[agent_id], obs_dict[agent_id],
+                    stochastic=stochastic, generator=agent_generators[agent_id],
+                )
+                actions[agent_id] = action
+                action_probs[agent_id] = [round(p, 4) for p in probs]
 
-            # Pre-step state/map for the row (same convention as the AIF CSV logs: log the
-            # state the action was chosen from, plus the resulting reward/outcome below).
             if csv_writer is not None:
                 model_obs = aif_env_utils.env_obs_to_model_obs(obs, width=env.width)
                 grid = env.render(mode="silent")
@@ -462,7 +641,6 @@ def run_seed_experiment(
                     "agent1_action_probs": action_probs.get("agent_1"),
                 })
 
-            vec = env_obs_to_ppo_vector(obs, width=env.width)
             if terminated or truncated:
                 break
         results.append({
@@ -476,7 +654,7 @@ def run_seed_experiment(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Two PPO agents on RedBlueButton (same state as AIF)")
+    parser = argparse.ArgumentParser(description="Two-agent MAPPO on RedBlueButton (centralized critic, decentralized actor)")
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--episodes", type=int, default=200)
@@ -487,6 +665,11 @@ def main():
     parser.add_argument("--stats-output", type=str, default=None)
     parser.add_argument("--episode-progress", action="store_true")
     parser.add_argument("--verbose", action="store_true", default=True)
+    parser.add_argument(
+        "--stochastic", action="store_true",
+        help="Sample actions from the policy distribution at eval time instead of greedy "
+             "argmax (reproducibly, via a per-agent seeded generator). Default is greedy.",
+    )
     parser.add_argument(
         "--mode", type=str, choices=["pretrained", "online"], default="pretrained",
         help=(
@@ -523,7 +706,7 @@ def main():
             print("Error: --checkpoint required when using --no-train")
             sys.exit(1)
         checkpoint_path = Path(args.checkpoint)
-        if not checkpoint_path.is_abs():
+        if not checkpoint_path.is_absolute():
             checkpoint_path = project_root / checkpoint_path
     else:
         checkpoint_path, training_meta = train_ppo(
@@ -546,7 +729,7 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     csv_path = (
-        log_dir / f"two_ppo_agents_{args.mode}_seeds{len(seeds_to_run)}_ep{num_episodes}_{timestamp}.csv"
+        log_dir / f"two_ppo_agents_{args.mode}_seeds{len(seeds_to_run)}_ep{num_episodes}_step{max_steps}_redblue_{timestamp}.csv"
     )
     csv_fieldnames = [
         "seed", "episode", "step", "config_idx",
@@ -573,6 +756,7 @@ def main():
                 results = run_seed_experiment(
                     algo, seed, num_episodes, episodes_per_config, max_steps,
                     progress_callback=pbar.update, csv_writer=csv_writer_obj,
+                    stochastic=args.stochastic,
                 )
                 all_results.extend(results)
                 n = len(results)
@@ -597,7 +781,7 @@ def main():
         for s in seed_summaries
     ]
     stats = {
-        "paradigm": f"ppo_{args.mode}",
+        "paradigm": f"mappo_{args.mode}",
         "ppo_mode": args.mode,
         "training_budget": training_meta,
         "n_seeds": len(seeds_to_run),
@@ -614,7 +798,7 @@ def main():
         "seed_summaries": seed_summaries_ser,
     }
     stats_path = (
-        log_dir / f"two_ppo_agents_{args.mode}_seeds{len(seeds_to_run)}_ep{num_episodes}_{timestamp}_stats.json"
+        log_dir / f"two_ppo_agents_{args.mode}_seeds{len(seeds_to_run)}_ep{num_episodes}_step{max_steps}_redblue_{timestamp}_stats.json"
     )
     with open(stats_path, "w") as f:
         json.dump(stats, f, indent=2)
@@ -623,7 +807,7 @@ def main():
             json.dump(stats, f, indent=2)
 
     print("\n" + "=" * 80)
-    print(f"TWO PPO AGENTS ({args.mode.upper()}) - RESULTS (same state as AIF)")
+    print(f"TWO MAPPO AGENTS ({args.mode.upper()}) - RESULTS (centralized critic, decentralized actor)")
     print("=" * 80)
     if training_meta:
         print(

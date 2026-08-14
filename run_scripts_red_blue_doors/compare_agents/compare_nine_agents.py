@@ -397,6 +397,8 @@ def main():
                              '(full q_pi, entropy, top-k policies).')
     parser.add_argument('--aif-belief-top-k', type=int, default=5,
                         help='Number of top policies to include per step in the AIF belief JSONL log (default: 5).')
+    parser.add_argument('--max-steps', type=int, default=50,
+                        help='Max steps per episode, applied identically to all 9 agents (default: 50).')
     args = parser.parse_args()
 
     seed_idx = args.seed_idx
@@ -410,7 +412,7 @@ def main():
     # Parameters
     NUM_EPISODES = 200  # Changed to 100 episodes
     EPISODES_PER_CONFIG = 25  # Change button positions every 20 episodes
-    MAX_STEPS = 50
+    MAX_STEPS = args.max_steps
     PLANNING_STEPS = 2
     RECENCY_DECAYS = [0.99, 0.95, 0.90, 0.85]  # Different recency bias levels
     BASE_SEED = 42  # Base seed for reproducibility
