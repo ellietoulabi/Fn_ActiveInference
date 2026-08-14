@@ -11,6 +11,8 @@ SLURM scripts to run two-agent **RedBlueButton** experiments on Alliance (Comput
 | `two_aif_independent.sh` | Two AIF agents, Independent paradigm (each plans alone) | `run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_independent.py` |
 | `two_aif_individually_collective.sh` | Two AIF agents, IndividuallyCollective paradigm (joint model per agent) | `run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_individually_collective.py` |
 | `two_aif_fully_collective.sh` | Two AIF agents, FullyCollective paradigm (centralized joint planner + follower) | `run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_fully_collective.py` |
+| `mappo.sh` | Two agents, genuine MAPPO (centralized critic, decentralized actor) | `run_scripts_red_blue_doors/multi_agent/run_two_ppo_agents.py` |
+| `two_opsrl.sh` | Two independent OPSRL agents (Bayesian model-based RL baseline, same ego-relative observation as Independent AIF) | `run_scripts_red_blue_doors/multi_agent/run_two_opsrl_agents.py` |
 | `three_plus_ppo.sh` | Compares three AIF pairings + a PPO baseline | `run_scripts_red_blue_doors/compare_agents/compare_three_pairings_plus_ppo.py` |
 | `nine.sh` | Nine-agent comparison (Q-learning variants, etc.) | `run_scripts_red_blue_doors/compare_agents/compare_nine_agents.py` |
 | `eight.sh` | Eight-agent comparison | `run_scripts_red_blue_doors/compare_agents/compare_eight_agents.py` |
@@ -27,6 +29,8 @@ SLURM scripts to run two-agent **RedBlueButton** experiments on Alliance (Comput
    sbatch cc_scripts/redbluebutton/two_aif_independent.sh
    sbatch cc_scripts/redbluebutton/two_aif_individually_collective.sh
    sbatch cc_scripts/redbluebutton/two_aif_fully_collective.sh
+   sbatch cc_scripts/redbluebutton/mappo.sh
+   sbatch cc_scripts/redbluebutton/two_opsrl.sh
    sbatch cc_scripts/redbluebutton/three_plus_ppo.sh
    sbatch cc_scripts/redbluebutton/nine.sh
    sbatch cc_scripts/redbluebutton/eight.sh
@@ -47,9 +51,35 @@ Each is a SLURM array job (`--array=0-4` by default → 5 seeds). Override with 
 - Stats JSON: `two_aif_agents_<paradigm>_seeds{N}_ep{E}_<timestamp>_stats.json` — aggregate success rate, mean reward/steps, per-seed summary.
 - SLURM's own stdout/stderr (containing the `--verbose` belief/policy printout) stays as `slurm-<jobid>_<taskid>.out` in the directory you ran `sbatch` from; it is **not** copied to `DEST_BASE`.
 
+### `two_opsrl.sh` output files
+
+The agent name is baked into every path/filename this job touches, so its output is never
+ambiguous with the AIF/MAPPO logs living alongside it in the same parent `logs/` directory:
+
+- Destination folder: `ma_opsrl_redbluebutton_step{MAX_STEPS}_30seed/`
+- Verbose step log: `ma_opsrl_seed{N}.log`
+- CSV: `two_opsrl_agents_seed{N}_ep{E}_step{S}_redblue_{timestamp}.csv` — one row per primitive
+  step (positions, button states, actions, rewards, and each agent's own discrete OPSRL state
+  index).
+- Stats JSON: `two_opsrl_agents_seed{N}_ep{E}_step{S}_redblue_{timestamp}_stats.json` — aggregate
+  success rate, mean reward/steps, per-seed summary, and the OPSRL hyperparameters used.
+- SLURM stdout/stderr: `ma_opsrl_<jobid>_<taskid>.out` in the submit directory.
+
+Each of the two agents is an independent `MAOPSRLAgent` (`agents/OPSRL/ma_agent.py`) — a
+Bayesian model-based RL baseline (posterior over transitions/rewards, Thompson-sampled +
+backward induction each episode), not an AIF paradigm. See `ai/02-debug.md` for what OPSRL
+is being compared against and why.
+
 ## Walltime notes
 
 `two_aif_individually_collective.sh` is the slowest of the three paradigms (36×36 joint-action space, computed per agent per step) and defaults to 2000 episodes; raise `#SBATCH --time` if it doesn't fit the default `0-2:00` budget, or test with `sbatch --array=0` first and check elapsed time via `sacct`.
+
+`two_opsrl.sh`'s backward induction runs over a 1296-state joint table (own position × partner
+position × on-red × on-blue × red-pressed × blue-pressed) — 9x larger than Stage 1's single-agent
+144-state table — so each episode costs noticeably more than a single-agent OPSRL episode.
+Measured locally at `max_steps=50`: ~1.7s/episode, i.e. ~3 minutes for the default 100-episode
+protocol; the `#SBATCH --time=0-2:00` default leaves a wide margin over that, but re-check with
+`sacct` if `--episodes` or `--max-steps` are increased.
 
 ## Monitoring
 

@@ -514,13 +514,25 @@ def train_ppo(
 # or reproducible seeded-stochastic sampling.
 # -----------------------------------------------------------------------------
 
-def _select_action(module, obs_vec, stochastic=False, generator=None):
+def _select_action(module, obs_vec, stochastic=True, generator=None):
     """
     Args:
-        stochastic: if False (default), always take the greedy/argmax action --
-            standard practice for reporting frozen-policy evaluation performance,
-            and (unlike relying on a possibly-missing `deterministic_sample`)
-            requires no RNG at all, so it's trivially reproducible.
+        stochastic: if True (default, as of 2026-08-14), sample from the policy
+            distribution via a per-agent seeded generator (see `generator`
+            below) -- fully reproducible, not "noisy" in the way an unseeded
+            sample would be. Greedy/argmax (stochastic=False) was the original
+            default on the "standard practice for reporting frozen-policy
+            performance" theory, but empirically causes collision deadlocks on
+            this environment: a real trained policy evaluated greedy scored
+            0/20 wins (every episode hitting the full step-timeout, byte-for-
+            byte identical trajectory every episode) on a map config that the
+            *same* policy solved 20/20 under stochastic sampling. Same failure
+            mode already documented for Independent AIF's `alpha=8.0` (fixed
+            by lowering to 1.0) -- near-deterministic action selection walks
+            two agents into a repeated mutual-blocking loop with nothing to
+            break the tie. See ai/02-debug.md, MA Red-Blue-Button PPO section.
+            Pass stochastic=False (CLI: --greedy) only for debugging/comparison
+            against this known-bad mode, not for reporting real numbers.
         generator: only used when stochastic=True. A torch.Generator seeded per
             agent/eval-seed, so re-running the same --seed reproduces the exact
             same stochastic action sequence. Without this, evaluation-time
@@ -559,7 +571,7 @@ def _select_action(module, obs_vec, stochastic=False, generator=None):
 
 def run_seed_experiment(
     algo, seed, num_episodes, episodes_per_config, max_steps,
-    progress_callback=None, csv_writer=None, stochastic=False,
+    progress_callback=None, csv_writer=None, stochastic=True,
 ):
     results = []
     configs = build_eval_configs(seed, num_episodes, episodes_per_config)
@@ -666,9 +678,14 @@ def main():
     parser.add_argument("--episode-progress", action="store_true")
     parser.add_argument("--verbose", action="store_true", default=True)
     parser.add_argument(
-        "--stochastic", action="store_true",
-        help="Sample actions from the policy distribution at eval time instead of greedy "
-             "argmax (reproducibly, via a per-agent seeded generator). Default is greedy.",
+        "--greedy", action="store_true",
+        help="Use deterministic greedy argmax at eval time instead of the default "
+             "reproducible stochastic sampling. WARNING: empirically causes collision "
+             "deadlocks on this environment -- a real trained policy scored 0/20 wins "
+             "under greedy on a map config it solved 20/20 under stochastic (same "
+             "mechanism as Independent AIF's alpha=8.0 deadlock). Kept only for "
+             "debugging/comparison against this known-bad mode; do not use it for "
+             "reporting real numbers. See ai/02-debug.md, MA Red-Blue-Button PPO section.",
     )
     parser.add_argument(
         "--mode", type=str, choices=["pretrained", "online"], default="pretrained",
@@ -765,7 +782,7 @@ def main():
                 results = run_seed_experiment(
                     algo, seed, num_episodes, episodes_per_config, max_steps,
                     progress_callback=pbar.update, csv_writer=csv_writer_obj,
-                    stochastic=args.stochastic,
+                    stochastic=not args.greedy,
                 )
                 all_results.extend(results)
                 n = len(results)
