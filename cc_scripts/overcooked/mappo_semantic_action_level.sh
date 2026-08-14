@@ -83,7 +83,14 @@ if ! pip install --no-input --prefer-binary "ray==${RAY_VER}"; then
     echo "ERROR: pip install ray==${RAY_VER} failed."
     exit 1
 fi
-if ! pip install --no-input --prefer-binary "torch" "dm-tree" "lz4" "tensorboardX" "pandas"; then
+# pydantic: ray 2.55.1's ray.train.v2 imports it unconditionally
+# (ray/train/__init__.py) but it isn't pulled in as a declared dependency on
+# this wheelhouse -- confirmed via a real CC job failure, "ModuleNotFoundError:
+# No module named 'pydantic'" surfacing through ray.rllib's own import chain
+# (rllib -> tune -> train -> pydantic). Not present when this script was
+# originally written; a change in ray's own dependency tree since, not
+# something introduced by any script here.
+if ! pip install --no-input --prefer-binary "torch" "dm-tree" "lz4" "tensorboardX" "pandas" "pydantic"; then
     echo "ERROR: pip install of RLlib dependencies failed."
     exit 1
 fi

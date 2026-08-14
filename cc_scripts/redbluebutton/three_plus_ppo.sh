@@ -72,8 +72,13 @@ if ! pip install --no-input --prefer-binary "ray==${RAY_VER}"; then
     echo "ERROR: pip install ray==${RAY_VER} failed."
     exit 1
 fi
+# pydantic: ray 2.55.1's ray.train.v2 imports it unconditionally but it isn't
+# pulled in as a declared dependency on this wheelhouse -- confirmed via a
+# real CC job failure (ModuleNotFoundError: No module named 'pydantic',
+# surfacing through rllib -> tune -> train -> pydantic). See
+# cc_scripts/overcooked/mappo_semantic_action_level.sh for the same fix.
 if ! pip install --no-input --prefer-binary \
-    "dm-tree" "lz4" "tensorboardX" "gymnasium" "pandas"; then
+    "dm-tree" "lz4" "tensorboardX" "gymnasium" "pandas" "pydantic"; then
     echo "ERROR: pip install of RLlib dependencies failed."
     exit 1
 fi
@@ -120,8 +125,8 @@ cp logs/two_aif_agents_*_seed${SEED_IDX}_ep*_*_stats.json "${DEST}/" 2>/dev/null
 cp logs/two_aif_agents_*_seed${SEED_IDX}_ep*_*_policy_log.jsonl "${DEST}/" 2>/dev/null || echo "Warning: AIF policy belief JSONL logs not found"
 
 # PPO step CSVs + stats (pretrained + online)
-cp logs/two_ppo_agents_*_seeds*_ep*_*.csv "${DEST}/" 2>/dev/null || echo "Warning: PPO CSV logs not found"
-cp logs/two_ppo_agents_*_seeds*_ep*_*_stats.json "${DEST}/" 2>/dev/null || echo "Warning: PPO stats JSONs not found"
+cp logs/two_ppo_agents_*_seed${SEED_IDX}_ep*_*.csv "${DEST}/" 2>/dev/null || echo "Warning: PPO CSV logs not found"
+cp logs/two_ppo_agents_*_seed${SEED_IDX}_ep*_*_stats.json "${DEST}/" 2>/dev/null || echo "Warning: PPO stats JSONs not found"
 
 echo "Copy done -> ${DEST}"
 

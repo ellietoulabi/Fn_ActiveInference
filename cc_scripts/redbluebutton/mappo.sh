@@ -80,8 +80,13 @@ if ! pip install --no-input --prefer-binary "ray==${RAY_VER}"; then
     echo "ERROR: pip install ray==${RAY_VER} failed."
     exit 1
 fi
+# pydantic: ray 2.55.1's ray.train.v2 imports it unconditionally but it isn't
+# pulled in as a declared dependency on this wheelhouse -- confirmed via a
+# real CC job failure (ModuleNotFoundError: No module named 'pydantic',
+# surfacing through rllib -> tune -> train -> pydantic). See
+# cc_scripts/overcooked/mappo_semantic_action_level.sh for the same fix.
 if ! pip install --no-input --prefer-binary \
-    "dm-tree" "lz4" "tensorboardX" "gymnasium" "pandas"; then
+    "dm-tree" "lz4" "tensorboardX" "gymnasium" "pandas" "pydantic"; then
     echo "ERROR: pip install of RLlib dependencies failed."
     exit 1
 fi

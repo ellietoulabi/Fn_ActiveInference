@@ -120,3 +120,8 @@ Budget=50000: 0 deliveries at eval, 112 episodes completed during training. Cont
 Budget=100000: still 0 deliveries, 240 episodes completed during training. Continuing.
 
 Budget=150000: still 0 deliveries at eval, 368 episodes completed. This matches the earlier coarse sweep's result exactly. Now moving into the finer-grained range (200k-400k) where the crossovers should actually be.
+
+
+
+MAX_TRAIN_STEPS=200000 sbatch cc_scripts/overcooked/mappo_semantic_action_level.sh
+MAX_TRAIN_STEPS=250000 sbatch cc_scripts/overcooked/mappo_semantic_action_level.sh
