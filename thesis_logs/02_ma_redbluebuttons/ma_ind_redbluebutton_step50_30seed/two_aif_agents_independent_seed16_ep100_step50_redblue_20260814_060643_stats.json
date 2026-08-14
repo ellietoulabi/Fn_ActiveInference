@@ -1,0 +1,26 @@
+{
+  "paradigm": "independent",
+  "n_seeds": 1,
+  "n_episodes_per_seed": 100,
+  "episodes_per_config": 20,
+  "max_steps": 50,
+  "total_episodes": 100,
+  "total_successes": 62,
+  "success_rate": 62.0,
+  "mean_reward": 0.24,
+  "std_reward": 0.970772887960928,
+  "mean_steps": 21.86,
+  "std_steps": 22.048138243398235,
+  "seed_summaries": [
+    {
+      "seed": 16,
+      "successes": 62,
+      "total": 100,
+      "success_rate": 62.0,
+      "avg_reward": 0.24,
+      "avg_steps": 21.86,
+      "first_half_wins": 12,
+      "second_half_wins": 50
+    }
+  ]
+}

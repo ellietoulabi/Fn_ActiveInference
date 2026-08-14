@@ -103,20 +103,3 @@ MAX_STEPS=50 sbatch cc_scripts/redbluebutton/two_aif_individually_collective.sh
 MAX_STEPS=30 sbatch cc_scripts/redbluebutton/two_aif_fully_collective.sh
 MAX_STEPS=30 sbatch cc_scripts/redbluebutton/two_aif_independent.sh
 MAX_STEPS=30 sbatch cc_scripts/redbluebutton/two_aif_individually_collective.sh
-
-
-
-
-
-
-Budget=1500: 0 deliveries (consistent with before). Training curve shows only 2 iterations, 0 episodes completed during training itself — confirms this budget is too small to even finish one training episode, let alone learn. Continuing to watch.
-
-Budget=5000: 0 deliveries, 5 training iterations, still 0 episodes completed during training (400-step horizon means 5000 steps across 16 parallel envs still isn't quite enough for any to finish). Continuing.
-
-Budget=15000: still 0 deliveries at eval, but training curve shows 32 episodes completed by the end (first budget where episodes actually finish). Continuing.
-
-Budget=50000: 0 deliveries at eval, 112 episodes completed during training. Continuing.
-
-Budget=100000: still 0 deliveries, 240 episodes completed during training. Continuing.
-
-Budget=150000: still 0 deliveries at eval, 368 episodes completed. This matches the earlier coarse sweep's result exactly. Now moving into the finer-grained range (200k-400k) where the crossovers should actually be.

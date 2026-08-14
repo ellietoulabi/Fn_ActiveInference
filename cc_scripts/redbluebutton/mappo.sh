@@ -13,8 +13,10 @@
 # Genuine MAPPO (centralized critic, decentralized actor -- see
 # run_two_ppo_agents.py::CentralizedCriticPPOTorchRLModule) on TwoAgentRedBlueButton.
 # Trains a fresh policy for this seed (--mode pretrained: domain-randomized maps,
-# generous budget), then evaluates on the same 200-episode/25-per-config schedule
-# used by the AIF paradigms.
+# generous budget), then evaluates on the same 100-episode/20-per-config schedule
+# used by the AIF paradigms (two_aif_agents_{independent,individually_collective,
+# fully_collective}.sh) -- keep these three numbers in sync with those scripts;
+# a mismatch here silently breaks the apples-to-apples comparison.
 #
 # Override episode length / training budget at submit time, e.g.:
 #   MAX_STEPS=30 sbatch cc_scripts/redbluebutton/mappo.sh
@@ -96,14 +98,14 @@ echo "---- Starting seed index ${SEED_IDX} (mode=${MODE} max_steps=${MAX_STEPS})
 
 export PYTHONHASHSEED=0
 
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_mappo_30seed"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_mappo_redbluebutton_step${MAX_STEPS}_30seed"}
 mkdir -p "${DEST_BASE}"
 LOG_FILE="$SLURM_TMPDIR/ma_mappo_seed${SEED_IDX}.log"
 
 python -u run_scripts_red_blue_doors/multi_agent/run_two_ppo_agents.py \
   --seed ${SEED_IDX} \
-  --episodes 200 \
-  --episodes-per-config 25 \
+  --episodes 100 \
+  --episodes-per-config 20 \
   --max-steps ${MAX_STEPS} \
   --mode ${MODE} \
   --stats-output "logs/ma_mappo_seed${SEED_IDX}_stats.json" > "$LOG_FILE" 2>&1
@@ -112,7 +114,7 @@ EXIT_CODE=$?
 
 echo "Copying logs..."
 cp "$LOG_FILE" "${DEST_BASE}/" 2>/dev/null || echo "Warning: log file not found"
-cp logs/two_ppo_agents_*_seeds*_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
+cp logs/two_ppo_agents_*_seed${SEED_IDX}_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
 cp "logs/ma_mappo_seed${SEED_IDX}_stats.json" "${DEST_BASE}/" 2>/dev/null || echo "Warning: stats JSON file not found"
 echo "Copy done"
 

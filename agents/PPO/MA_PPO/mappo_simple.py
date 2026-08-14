@@ -944,7 +944,7 @@ def main():
             "collision deadlock (block_other_agent=True can freeze both agents "
             "permanently on this 6-tile layout) by raising this to 0.10 was tried and "
             "REVERTED: a real 500k-step training run at 0.10 produced a policy that "
-            "stayed at ~99% of max entropy (statistically uniform-random) for the "
+            "stayed at ~99%% of max entropy (statistically uniform-random) for the "
             "entire run and never converged to any task-directed behavior at all -- "
             "worse than the original problem, not better. Reward here is sparse enough "
             "(a soup needs ~8+ correctly-ordered macro picks out of 20 options, 0 "

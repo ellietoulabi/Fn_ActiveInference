@@ -696,6 +696,15 @@ def main():
         sys.exit(1)
 
     seeds_to_run = [args.seed] if args.seed is not None else list(range(args.seeds))
+    # Tag output filenames with the actual seed value, not just a count -- SLURM
+    # array tasks (mappo.sh, --array=0-29) launch within the same wall-clock
+    # second often enough that a timestamp-only name collides across tasks,
+    # silently overwriting one another's output when copied into a shared
+    # destination folder. Same fix already applied to the three AIF scripts
+    # (run_two_aif_agents_{independent,individually_collective,fully_collective}.py)
+    # and to Overcooked's sal_step_csv_log.py::make_log_path. A unique seed value
+    # can never collide between array tasks; a per-second timestamp can.
+    SEED_TAG = f"seed{args.seed}" if args.seed is not None else f"seeds{args.seeds}"
     num_episodes = args.episodes
     episodes_per_config = args.episodes_per_config
     max_steps = args.max_steps
@@ -729,7 +738,7 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     csv_path = (
-        log_dir / f"two_ppo_agents_{args.mode}_seeds{len(seeds_to_run)}_ep{num_episodes}_step{max_steps}_redblue_{timestamp}.csv"
+        log_dir / f"two_ppo_agents_{args.mode}_{SEED_TAG}_ep{num_episodes}_step{max_steps}_redblue_{timestamp}.csv"
     )
     csv_fieldnames = [
         "seed", "episode", "step", "config_idx",
@@ -798,7 +807,7 @@ def main():
         "seed_summaries": seed_summaries_ser,
     }
     stats_path = (
-        log_dir / f"two_ppo_agents_{args.mode}_seeds{len(seeds_to_run)}_ep{num_episodes}_step{max_steps}_redblue_{timestamp}_stats.json"
+        log_dir / f"two_ppo_agents_{args.mode}_{SEED_TAG}_ep{num_episodes}_step{max_steps}_redblue_{timestamp}_stats.json"
     )
     with open(stats_path, "w") as f:
         json.dump(stats, f, indent=2)

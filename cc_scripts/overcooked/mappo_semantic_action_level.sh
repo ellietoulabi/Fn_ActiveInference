@@ -21,7 +21,13 @@ set -uo pipefail                      # no -e: we still copy logs on failure
 
 MAX_STEPS=${MAX_STEPS:-1500}
 MAX_TRAIN_STEPS=${MAX_TRAIN_STEPS:-1000000}
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sal_mappo"}
+# Step budget is embedded in DEST_BASE (not just the job name) because
+# open_mappo_log()'s CSV filename only encodes episode_seed/agent0_seed/
+# agent1_seed, not the training budget -- two submissions at different
+# MAX_TRAIN_STEPS for the same seed pool would otherwise silently overwrite
+# each other's copied-back CSVs in a shared destination folder. See
+# ai/02-debug.md, MAPPO teleportation / sample-hungry-cliff sweep entries.
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sal_mappo_${MAX_TRAIN_STEPS}steps"}
 
 module purge
 module load python/3.11.4 scipy-stack
@@ -124,7 +130,7 @@ mkdir -p "$DEST_BASE"
 CSV_DIR="$SLURM_TMPDIR/logs_sal"
 mkdir -p "$CSV_DIR"
 CKPT_DIR="$SLURM_TMPDIR/checkpoints_sal"
-LOG_FILE="$SLURM_TMPDIR/mappo_sal_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}.log"
+LOG_FILE="$SLURM_TMPDIR/mappo_sal_ep${EP_SEED}_a0_${A0_SEED}_a1_${A1_SEED}_steps${MAX_TRAIN_STEPS}.log"
 
 # One seed per array task: --n-runs 1 --episode-start ${EP_SEED} derives
 # agent0/agent1 seeds as 1000+SEED_IDX / 2000+SEED_IDX internally (see
