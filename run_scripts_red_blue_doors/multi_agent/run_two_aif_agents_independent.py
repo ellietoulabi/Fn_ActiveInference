@@ -20,10 +20,10 @@ from datetime import datetime
 import argparse
 from tqdm import tqdm
 from environments.RedBlueButton.TwoAgentRedBlueButton import TwoAgentRedBlueButtonEnv
-from generative_models.SA_ActiveInference.RedBlueButton import (
+from generative_models.SA_ActiveInference.RedBlueButtonIndependent import (
     A_fn, B_fn, C_fn, D_fn, model_init, env_utils
 )
-from agents.ActiveInference.agent import Agent
+from agents.ActiveInferenceRedBlueButtonExact.agent import Agent
 
 
 # =============================================================================
@@ -193,24 +193,30 @@ def env_obs_to_log_obs(env_obs, width=3):
 def two_agent_obs_to_single_agent_obs(env_obs, agent_id, width=3):
     """
     Convert two-agent environment observation to single-agent model format.
-    
+
     Each agent sees the world from its own perspective:
     - position = my position
+    - other_position = the other agent's position (observed as an
+      environmental fact, not a co-planned entity -- see
+      ai/02-debug.md, MA Red-Blue-Button collision-blindness entry)
     - on_red_button = am I on red button
     - on_blue_button = am I on blue button
     """
     if agent_id == 1:
         position = env_obs['agent1_position']
+        other_position = env_obs['agent2_position']
         on_red = env_obs['agent1_on_red_button']
         on_blue = env_obs['agent1_on_blue_button']
     else:
         position = env_obs['agent2_position']
+        other_position = env_obs['agent1_position']
         on_red = env_obs['agent2_on_red_button']
         on_blue = env_obs['agent2_on_blue_button']
-    
+
     # Convert to single-agent model format
     return {
         'position': position,
+        'other_position': other_position,
         'on_red_button': on_red,
         'on_blue_button': on_blue,
         'red_button_pressed': env_obs['red_button_pressed'],
@@ -223,25 +229,32 @@ def two_agent_obs_to_single_agent_obs(env_obs, agent_id, width=3):
 def get_D_config_for_agent(env, agent_id, width=3):
     """
     Get D_fn configuration for a specific agent in the two-agent environment.
-    
+
     Returns config compatible with single-agent D_fn.
     """
     if agent_id == 1:
         start_pos = env.agent1_start_pos
+        other_start_pos = env.agent2_start_pos
     else:
         start_pos = env.agent2_start_pos
-    
+        other_start_pos = env.agent1_start_pos
+
     agent_x, agent_y = start_pos
+    other_x, other_y = other_start_pos
     red_x, red_y = env.red_button
     blue_x, blue_y = env.blue_button
-    
+
     # IMPORTANT: SA `D_fn` only consumes:
     # - agent_start_pos
+    # - other_start_pos
     # - button_pos_uncertainty
     # - button_state_uncertainty
     # Button positions are NOT directly observable in SA, so we start uncertain and infer.
+    # The other agent's start position IS directly observable (like our own),
+    # so it seeds a certain prior, same as agent_start_pos.
     return {
         'agent_start_pos': xy_to_index(agent_x, agent_y, width),
+        'other_start_pos': xy_to_index(other_x, other_y, width),
         'button_pos_uncertainty': True,
         'button_state_uncertainty': False,
     }
@@ -309,9 +322,22 @@ def create_aif_agent(agent_id, env):
         env_params={'width': 3, 'height': 3},
         observation_state_dependencies=model_init.observation_state_dependencies,
         actions=list(range(6)),  # UP, DOWN, LEFT, RIGHT, PRESS, NOOP
-        policy_len=2,  # Two-step lookahead (fair comparison with FC/IC paradigms)
+        policy_len=2,  # Two-step lookahead (fair comparison with FC/IC paradigms); 6x6=36 policies
         gamma=2.0,  # Policy precision
         alpha=1.0,  # Action precision
+        # action_selection left at the class default ("deterministic"). The root
+        # cause of the FC deadlock (see run_two_aif_agents_fully_collective.py) was
+        # traced to the old entropy-threshold-based info-gain/utility computation
+        # silently going policy-invariant once all beliefs are certain -- not
+        # action selection itself. Switching to ActiveInferenceRedBlueButtonExact's
+        # per-group-exact info-gain (fixes the utility flattening, not just info
+        # gain) resolves the deadlock at its source without injecting sampling
+        # noise into otherwise-clear decisions. An earlier attempt fixed this via
+        # action_selection="stochastic" instead; that broke the deadlock too but
+        # measurably regressed IND's success rate (100% -> 70% on a fixed seed),
+        # because alpha=1.0 stochastic sampling draws from raw (unsharpened) q_pi
+        # and picks a suboptimal action too often even when a genuine best choice
+        # exists, not just under real ties. See ai/02-debug.md.
         num_iter=16,
     )
     

@@ -1,0 +1,64 @@
+# Notes
+
+## MA Red-Blue-Button — plotting commands
+
+Each of the three paradigm run scripts has a built-in `--plots` flag (2x2 figure:
+success-rate learning curve + other panels, saved as PNG to `results/`). Add it
+to any run to generate figures alongside the console summary. Same
+`--seed/--episodes/--episodes-per-config/--max-steps` convention across all three
+(currently all on the `ActiveInferenceRedBlueButtonExact` package, deterministic
+action selection).
+
+```bash
+# Independent
+python3 run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_independent.py \
+  --seed 0 --episodes 20 --episodes-per-config 5 --max-steps 15 --plots
+
+# Fully Collective
+python3 run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_fully_collective.py \
+  --seed 0 --episodes 20 --episodes-per-config 5 --max-steps 15 --plots
+
+# Individually Collective
+python3 run_scripts_red_blue_doors/multi_agent/run_two_aif_agents_individually_collective.py \
+  --seed 0 --episodes 20 --episodes-per-config 5 --max-steps 15 --plots
+```
+
+Output: `results/two_aif_agents_{independent,fully_collective,individually_collective}_seeds1_ep20.png`
+
+Add `--print-steps` to see a live per-episode win/loss line in stdout (useful for
+watching a run in progress rather than waiting for the final summary), and
+`--log-csv` to get a per-step CSV under `logs/` (needed if you want to tally
+wins/episodes from a run that's still in progress, since `--plots` only writes
+at the very end).
+
+---
+
+## Overcooked (Stage 3) — plotting commands
+
+```bash
+# Single-paradigm summary + plots
+python3 utils/plotting/plot_sal_semantic_action_level.py <log_dir> -o <output_dir>
+
+# Paired comparison between two paradigms on their common episode_seeds
+python3 utils/plotting/plot_sal_pair_comparison.py \
+  --a <log_dir_A> --b <log_dir_B> --label-a <A> --label-b <B> -o <output_dir>
+```
+
+Example (used this session):
+```bash
+python3 utils/plotting/plot_sal_semantic_action_level.py \
+  thesis_logs/03_ma_overcooked/sal_fc_30seed_collisionfix \
+  -o thesis_plots/03_ma_overcooked/sal_fc_30seed_collisionfix
+
+python3 utils/plotting/plot_sal_pair_comparison.py \
+  --a thesis_logs/03_ma_overcooked/sal_fc_30seed_collisionfix \
+  --b thesis_logs/03_ma_overcooked/sal_ind_30seed \
+  --label-a FC --label-b IND \
+  -o thesis_plots/03_ma_overcooked/compare_fc_ind
+```
+
+
+
+python3 utils/plotting/plot_sal_triple_comparison.py \
+  --base-dir thesis_logs/03_ma_overcooked \
+  -o thesis_plots/03_ma_overcooked/compare_ind_ic_fc 2>&1 | tail -20

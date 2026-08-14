@@ -59,6 +59,13 @@ class TwoAgentRedBlueButtonEnv(gym.Env):
         self.blue_button_pressed = False
         self.button_just_pressed = None  # Track which button was just pressed this step
         self.button_pressed_by = None  # Track which agent pressed a button this step
+        # Per-button presser, tracked separately from button_pressed_by (ai/02-debug.md,
+        # MA Red-Blue-Button #4): if agent 1 presses red and agent 2 presses blue in the
+        # SAME step (the fastest cooperative win), button_pressed_by's single scalar slot
+        # only keeps the second press -- these two fields never overwrite each other since
+        # each button has its own slot, so both agents' contributions stay attributable.
+        self.red_button_pressed_by = None
+        self.blue_button_pressed_by = None
         self.step_count = 0
         self.cumulative_reward = 0.0
 
@@ -85,6 +92,8 @@ class TwoAgentRedBlueButtonEnv(gym.Env):
             "win_lose_neutral": win_lose_neutral,  # 0=neutral, 1=win, 2=lose
             "button_just_pressed": self.button_just_pressed,  # None, "red", or "blue"
             "button_pressed_by": self.button_pressed_by,  # None, 1, or 2
+            "red_button_pressed_by": self.red_button_pressed_by,  # None, 1, or 2
+            "blue_button_pressed_by": self.blue_button_pressed_by,  # None, 1, or 2
         }
 
         return observation, {}
@@ -108,6 +117,8 @@ class TwoAgentRedBlueButtonEnv(gym.Env):
         truncated = False
         self.button_just_pressed = None
         self.button_pressed_by = None
+        self.red_button_pressed_by = None
+        self.blue_button_pressed_by = None
         win_lose_neutral = 0
 
         info = {
@@ -120,6 +131,8 @@ class TwoAgentRedBlueButtonEnv(gym.Env):
             "blue_button_pressed": self.blue_button_pressed,
             "button_just_pressed": self.button_just_pressed,
             "button_pressed_by": self.button_pressed_by,
+            "red_button_pressed_by": self.red_button_pressed_by,
+            "blue_button_pressed_by": self.blue_button_pressed_by,
             "result": "neutral",
         }
 
@@ -173,6 +186,8 @@ class TwoAgentRedBlueButtonEnv(gym.Env):
         info["cumulative_reward"] = self.cumulative_reward
         info["button_just_pressed"] = self.button_just_pressed
         info["button_pressed_by"] = self.button_pressed_by
+        info["red_button_pressed_by"] = self.red_button_pressed_by
+        info["blue_button_pressed_by"] = self.blue_button_pressed_by
         info["map"] = self.render(mode="silent")
 
         if win_lose_neutral == 0:
@@ -198,6 +213,8 @@ class TwoAgentRedBlueButtonEnv(gym.Env):
             "win_lose_neutral": win_lose_neutral,  # 0=neutral, 1=win, 2=lose
             "button_just_pressed": self.button_just_pressed,
             "button_pressed_by": self.button_pressed_by,
+            "red_button_pressed_by": self.red_button_pressed_by,
+            "blue_button_pressed_by": self.blue_button_pressed_by,
         }
 
         return observation, reward, terminated, truncated, info
@@ -239,6 +256,7 @@ class TwoAgentRedBlueButtonEnv(gym.Env):
             self.red_button_pressed = True
             self.button_just_pressed = "red"
             self.button_pressed_by = agent_id
+            self.red_button_pressed_by = agent_id
             return (0, False, 0)  # neutral
 
         # If on blue button and blue not pressed
@@ -246,6 +264,7 @@ class TwoAgentRedBlueButtonEnv(gym.Env):
             self.blue_button_pressed = True
             self.button_just_pressed = "blue"
             self.button_pressed_by = agent_id
+            self.blue_button_pressed_by = agent_id
 
             # If red pressed: press blue, win (reward 1), terminate
             if self.red_button_pressed:

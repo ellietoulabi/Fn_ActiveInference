@@ -28,7 +28,7 @@ from environments.RedBlueButton.TwoAgentRedBlueButton import TwoAgentRedBlueButt
 from generative_models.MA_ActiveInference.RedBlueButton.IndividuallyCollective import (
     A_fn, B_fn, C_fn, D_fn, model_init, env_utils
 )
-from agents.ActiveInference.agent import Agent
+from agents.ActiveInferenceRedBlueButtonExact.agent import Agent
 
 
 # =============================================================================
@@ -232,25 +232,63 @@ def create_aif_agent(agent_id, env):
         state_factors=state_factors,
         state_sizes=state_sizes,
         observation_labels=model_init.observations,
-        env_params={'width': 3, 'height': 3},
+        # ego_agent_index tells B_fn which physical agent this belief belongs to,
+        # so it can resolve collisions/press-order in the environment's true
+        # fixed order (physical agent 1 always first) even for agent 2's
+        # ego-relabeled belief, instead of always trusting whichever label
+        # currently says "agent1". See FullyCollective/B.py's docstrings and
+        # ai/02-debug.md, MA Red-Blue-Button "backwards beliefs about turn order".
+        env_params={'width': 3, 'height': 3, 'ego_agent_index': agent_id},
         observation_state_dependencies=model_init.observation_state_dependencies,
         actions=joint_actions,
-        policy_len=2,  # 36 policies; len=2 for two-step lookahead (fair comparison across paradigms)
+        policy_len=2,  # 36x36=1296 two-step joint policies (36 joint actions per step, not 36 policies)
         gamma=2.0,  # Policy precision
         alpha=1.0,  # Action precision
+        # action_selection left at the class default ("deterministic"). See
+        # run_two_aif_agents_fully_collective.py's create_centralized_agent for the
+        # full root-cause writeup: the deadlock traced to
+        # ActiveInferenceRedBlueButton's entropy-threshold-based info-gain/utility
+        # computation going policy-invariant once all beliefs are certain, not to
+        # action selection. IC shares the same joint generative model and EFE
+        # landscape as FC, so it's exposed to the identical bug; switching to
+        # ActiveInferenceRedBlueButtonExact (per-group-exact info gain, verified
+        # mathematically equal to brute-force enumeration) fixes it at the source
+        # for IC too, without the accuracy cost a stochastic-sampling fix carries
+        # (measured as a 100% -> 70% regression on IND under alpha=1.0 sampling).
         num_iter=16,
     )
     
-    # Get config from environment (same for both agents in this paradigm)
+    # Get config from environment. State factors are ego-relative -- "agent1_pos"
+    # always means "my position", "agent2_pos" always means "the other agent's
+    # position" -- matching env_obs_to_model_obs_for_agent's swap for agent 2's
+    # observations (ai/02-debug.md, MA Red-Blue-Button #3). get_D_config_from_env
+    # always returns the physical, unswapped (real agent1_start_pos, real
+    # agent2_start_pos), so without swapping here, agent 2's "my position" prior
+    # is wrongly seeded with agent 1's real start position every episode.
     d_config = env_utils.get_D_config_from_env(env)
+    if agent_id == 2:
+        d_config = dict(d_config)
+        d_config["agent1_start_pos"], d_config["agent2_start_pos"] = (
+            d_config["agent2_start_pos"],
+            d_config["agent1_start_pos"],
+        )
     agent.reset(config=d_config)
-    
+
     return agent
 
 
-def reset_agent_beliefs(agent, env):
+def reset_agent_beliefs(agent, env, agent_id):
     """Reset agent beliefs for new episode (preserving button position beliefs)."""
     d_config = env_utils.get_D_config_from_env(env)
+    # Same ego-relative swap as create_aif_agent (ai/02-debug.md, MA Red-Blue-Button
+    # #3) -- without it, agent 2's "my position" prior gets reseeded with agent 1's
+    # real start position at every episode boundary, not just the first episode.
+    if agent_id == 2:
+        d_config = dict(d_config)
+        d_config["agent1_start_pos"], d_config["agent2_start_pos"] = (
+            d_config["agent2_start_pos"],
+            d_config["agent1_start_pos"],
+        )
     # Preserve button-position beliefs across episodes within the same config.
     agent.reset(config=d_config, keep_factors=['red_button_pos', 'blue_button_pos'])
 
@@ -275,8 +313,8 @@ def run_episode(
 ):
     """Run one episode with two AIF agents using IndividuallyCollective paradigm."""
     obs, _ = env.reset()
-    reset_agent_beliefs(agent1, env)
-    reset_agent_beliefs(agent2, env)
+    reset_agent_beliefs(agent1, env, agent_id=1)
+    reset_agent_beliefs(agent2, env, agent_id=2)
 
     if verbose:
         print(f"\n{'='*80}")
@@ -303,12 +341,35 @@ def run_episode(
         model_obs_1 = env_utils.env_obs_to_model_obs_for_agent(joint_obs, env.width, agent_id=1)
         model_obs_2 = env_utils.env_obs_to_model_obs_for_agent(joint_obs, env.width, agent_id=2)
 
-        joint_action1_idx = int(agent1.step(model_obs_1))
-        joint_action2_idx = int(agent2.step(model_obs_2))
+        # Belief/environment desync fix (ai/02-debug.md, MA Red-Blue-Button #2):
+        # agent.step() internally samples a full joint policy via sample_action()
+        # (sampling_mode="full") and uses THAT to set self.action for next-step
+        # belief propagation -- but the action actually sent to env.step() was a
+        # SEPARATELY-computed marginal via sample_my_component(), which can pick
+        # a different own-component whenever q_pi is multimodal. Fixed by not
+        # calling agent.step() as one bundled call: infer state/policies first,
+        # derive the marginal-based own action (same sample_my_component logic,
+        # marginalization design intentionally unchanged), then explicitly set
+        # self.action to the joint index that's actually consistent with what
+        # gets executed, so next step's infer_states() propagates from the same
+        # action that was really taken.
+        agent1.infer_states(model_obs_1)
+        agent1.infer_policies()
+        agent2.infer_states(model_obs_2)
+        agent2.infer_policies()
+
         # With perspective obs, each agent's policy is over (my_action, other_action), so "my" is always component 0.
         action1 = int(env_utils.sample_my_component(agent1.get_policy_posterior(), agent1.policies, 0))
         action2 = int(env_utils.sample_my_component(agent2.get_policy_posterior(), agent2.policies, 0))
         actions = (action1, action2)
+
+        consistent_joint_idx = int(env_utils.encode_joint_action(action1, action2))
+        agent1.action = consistent_joint_idx
+        agent2.action = consistent_joint_idx
+        agent1.step_time()
+        agent2.step_time()
+        joint_action1_idx = consistent_joint_idx
+        joint_action2_idx = consistent_joint_idx
 
         grid = env.render(mode="silent")
         map_str = "|".join(["".join(row) for row in grid])

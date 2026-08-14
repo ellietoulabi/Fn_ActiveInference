@@ -43,21 +43,45 @@ def _compute_new_pos(pos, action, width, height):
     return ny * width + nx
 
 
-def _joint_move_step(p1, p2, a1, a2, width, height):
+def _joint_move_step(p1, p2, a1, a2, width, height, ego_agent_index=1):
     """
-    Deterministic joint move with sequential order and collision blocking.
+    Deterministic joint move with sequential order and collision blocking,
+    matching TwoAgentRedBlueButton's FIXED physical execution order: the real
+    environment always processes physical agent 1's move before physical
+    agent 2's, regardless of which agent is doing the reasoning.
+
+    `ego_agent_index` tells us which physical agent the labels p1/a1
+    ("agent1_pos"/its action) in this call actually refer to as "self".
+    FullyCollective (single brain, no relabeling) and IndividuallyCollective's
+    own agent 1 both have ego_agent_index=1 -- p1/a1 IS physical agent 1, the
+    real first mover, so behavior here is byte-identical to the original
+    (pre-fix) code. IndividuallyCollective's agent 2 relabels its observations
+    so that ITS OWN position is stored under "agent1_pos" (see
+    IndividuallyCollective/env_utils.py::env_obs_to_model_obs_for_agent) --
+    for that belief, p2/a2 is the one that's physically agent 1 (the real
+    first mover), not p1/a1. ego_agent_index=2 resolves in that true physical
+    order instead.
     """
     p1 = int(p1)
     p2 = int(p2)
     a1 = int(a1)
     a2 = int(a2)
 
-    # Agent1 moves first; blocked if moving into agent2 current cell.
+    if ego_agent_index == 2:
+        # p2/a2 is physically agent 1 (real first mover); p1/a1 is physically agent 2.
+        np2 = _compute_new_pos(p2, a2, width, height)
+        if np2 == p1:
+            np2 = p2
+        np1 = _compute_new_pos(p1, a1, width, height)
+        if np1 == np2:
+            np1 = p1
+        return np1, np2
+
+    # ego_agent_index == 1 (default): p1/a1 is physically agent 1, the real first mover.
     np1 = _compute_new_pos(p1, a1, width, height)
     if np1 == p2:
         np1 = p1
 
-    # Agent2 moves next; blocked if moving into agent1 new cell.
     np2 = _compute_new_pos(p2, a2, width, height)
     if np2 == np1:
         np2 = p2
@@ -65,10 +89,11 @@ def _joint_move_step(p1, p2, a1, a2, width, height):
     return np1, np2
 
 
-def B_agent_positions(parents, joint_action, width, height):
+def B_agent_positions(parents, joint_action, width, height, ego_agent_index=1):
     """
     Update marginals for (agent1_pos, agent2_pos) given joint action.
     Assumes factorised belief q(p1)q(p2) and returns marginal next beliefs.
+    See _joint_move_step's docstring for what ego_agent_index means.
     """
     q1 = np.array(parents["agent1_pos"], dtype=float)
     q2 = np.array(parents["agent2_pos"], dtype=float)
@@ -86,7 +111,7 @@ def B_agent_positions(parents, joint_action, width, height):
             w = q1[p1] * q2[p2]
             if w <= 1e-16:
                 continue
-            np1, np2 = _joint_move_step(p1, p2, a1, a2, width, height)
+            np1, np2 = _joint_move_step(p1, p2, a1, a2, width, height, ego_agent_index=ego_agent_index)
             next_q1[np1] += w
             next_q2[np2] += w
 
@@ -150,7 +175,7 @@ def B_blue_button_state(parents, joint_action, noise):
     return _press_update(q_state, p_any)
 
 
-def B_button_states(parents, joint_action, width, height):
+def B_button_states(parents, joint_action, width, height, ego_agent_index=1):
     """
     Order-aware button state transition that better matches the environment logic.
 
@@ -163,6 +188,13 @@ def B_button_states(parents, joint_action, width, height):
     beliefs for positions and button positions and applying the same
     sequential 'first press wins' logic per joint state sample, then
     aggregating back to marginals over red/blue button states.
+
+    `ego_agent_index` -- see _joint_move_step's docstring. The real
+    environment always processes physical agent 1's press before physical
+    agent 2's; when this belief belongs to IndividuallyCollective's agent 2
+    (ego_agent_index=2), (p1,a1)/(p2,a2) have been relabeled so p2/a2 is the
+    one that's actually physical agent 1, and the press-order loop below
+    must be evaluated in that true physical order instead.
     """
     q_red_state = np.array(parents["red_button_state"], dtype=float)
     q_blue_state = np.array(parents["blue_button_state"], dtype=float)
@@ -212,8 +244,11 @@ def B_button_states(parents, joint_action, width, height):
                             red_s = r
                             blue_s = b
 
-                            # Sequential press processing: agent1 then agent2
-                            for pos, act in ((p1, a1), (p2, a2)):
+                            # Sequential press processing, in TRUE physical order
+                            # (agent1 then agent2) regardless of which physical
+                            # agent's ego-relabeled belief this is.
+                            press_order = ((p2, a2), (p1, a1)) if ego_agent_index == 2 else ((p1, a1), (p2, a2))
+                            for pos, act in press_order:
                                 if act != model_init.PRESS:
                                     continue
                                 # Press on red?
@@ -231,12 +266,20 @@ def B_button_states(parents, joint_action, width, height):
     return normalize(next_red), normalize(next_blue)
 
 
-def B_fn(qs, action, width=3, height=3, B_NOISE_LEVEL=0.0):
+def B_fn(qs, action, width=3, height=3, B_NOISE_LEVEL=0.0, ego_agent_index=1):
     """
     JOINT transition. `action` is the JOINT action index in [0, 35].
 
     Note: We set movement noise to 0.0 by default for the collective planner to
     better match the deterministic environment.
+
+    `ego_agent_index=1` (default) preserves the original behavior exactly --
+    correct for FullyCollective (single brain, physical labels always) and
+    for IndividuallyCollective's own agent 1. IndividuallyCollective's agent 2
+    must pass ego_agent_index=2 (via env_params) so the fixed real-environment
+    execution order (physical agent 1 always first) is respected even though
+    that agent's own belief has "agent1_pos"/"agent2_pos" relabeled to mean
+    "me"/"other". See _joint_move_step and B_button_states docstrings.
     """
     joint_action = int(action)
     new_qs = {}
@@ -249,6 +292,7 @@ def B_fn(qs, action, width=3, height=3, B_NOISE_LEVEL=0.0):
         joint_action,
         width,
         height,
+        ego_agent_index=ego_agent_index,
     )
     new_qs["agent1_pos"] = q1_next
     new_qs["agent2_pos"] = q2_next
@@ -270,6 +314,7 @@ def B_fn(qs, action, width=3, height=3, B_NOISE_LEVEL=0.0):
         joint_action,
         width,
         height,
+        ego_agent_index=ego_agent_index,
     )
     new_qs["red_button_state"] = new_red_state
     new_qs["blue_button_state"] = new_blue_state

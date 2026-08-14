@@ -24,7 +24,7 @@ from environments.RedBlueButton.TwoAgentRedBlueButton import TwoAgentRedBlueButt
 from generative_models.MA_ActiveInference.RedBlueButton.FullyCollective import (
     A_fn, B_fn, C_fn, D_fn, model_init, env_utils
 )
-from agents.ActiveInference.agent import Agent
+from agents.ActiveInferenceRedBlueButtonExact.agent import Agent
 
 
 # =============================================================================
@@ -221,9 +221,28 @@ def create_centralized_agent(env):
         env_params={'width': 3, 'height': 3},
         observation_state_dependencies=model_init.observation_state_dependencies,
         actions=joint_actions,
-        policy_len=2,  # 36 policies; len=2 for two-step lookahead (fair comparison across paradigms)
+        policy_len=2,  # 36x36=1296 two-step joint policies (36 joint actions per step, not 36 policies)
         gamma=2.0,  # Policy precision
         alpha=1.0,  # Action precision
+        # action_selection left at the class default ("deterministic"). Root cause of
+        # the deadlock previously seen here (real losing episode, seed=0, got stuck
+        # repeating an identical joint action for 25 consecutive steps once q_pi hit
+        # exactly uniform, entropy == ln(1296) to float precision) was traced to the
+        # generative model's info-gain/utility computation, not action selection:
+        # ActiveInferenceRedBlueButton's old entropy-threshold-based observation
+        # marginalization silently makes *utility* policy-invariant (not just info
+        # gain, which is legitimately zero) the moment every belief factor is
+        # certain -- confirmed directly by instrumenting the exact frozen belief
+        # state: utility was identically 1.0 across all 1296 policies under the old
+        # code, vs. ranging 1.0-5.2 (2 distinct values, correctly favoring the
+        # policy that presses the remaining button) under Exact's per-group-exact
+        # decomposition. Switching to ActiveInferenceRedBlueButtonExact fixes this
+        # at the source: the same deadlocked config now wins in 6 steps under plain
+        # deterministic argmax, no sampling noise needed. An earlier attempt fixed
+        # the deadlock via action_selection="stochastic" instead; that also broke
+        # it, but measurably regressed IND's success rate (100% -> 70%), since
+        # alpha=1.0 stochastic sampling draws from raw q_pi and picks a suboptimal
+        # action too often even when a genuine best choice exists. See ai/02-debug.md.
         num_iter=16,
     )
     
