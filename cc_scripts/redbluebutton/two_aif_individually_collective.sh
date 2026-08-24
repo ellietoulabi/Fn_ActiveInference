@@ -75,6 +75,10 @@ cp "$LOG_FILE" "${DEST_BASE}/" 2>/dev/null || echo "Warning: verbose log file no
 cp logs/two_aif_agents_individually_collective_seed${SEED_IDX}_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
 cp logs/two_aif_agents_individually_collective_seed${SEED_IDX}_ep*_*_stats.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: stats JSON file not found"
 cp logs/two_aif_agents_individually_collective_seed${SEED_IDX}_ep*_*_policy_log.jsonl "${DEST_BASE}/" 2>/dev/null || echo "Warning: policy belief JSONL file not found"
+# Configs JSON (2026-08-24): exact button-position sequence for this seed, so an
+# additional baseline can be run later against the identical maps -- would
+# otherwise be lost with the rest of SLURM_TMPDIR once this job ends.
+cp logs/two_aif_agents_individually_collective_seed${SEED_IDX}_ep*_*_configs.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: configs JSON file not found"
 echo "Copy done"
 
 if [ $EXIT_CODE -ne 0 ]; then

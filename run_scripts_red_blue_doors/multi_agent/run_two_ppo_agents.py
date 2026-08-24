@@ -571,10 +571,35 @@ def _select_action(module, obs_vec, stochastic=True, generator=None):
 
 def run_seed_experiment(
     algo, seed, num_episodes, episodes_per_config, max_steps,
-    progress_callback=None, csv_writer=None, stochastic=True,
+    progress_callback=None, csv_writer=None, stochastic=True, configs_path=None,
 ):
+    """
+    configs_path: if given and the file already exists, the EVAL config
+    sequence is LOADED from it (byte-identical maps, robust against any
+    future change to generate_random_config/build_eval_configs or their RNG)
+    instead of regenerated -- lets an additional baseline be run later
+    against the exact same eval maps as this run. Training's own map
+    schedule (--mode online's schedule_configs) is unaffected by this flag.
+    If given and the file does not exist, the generated sequence is saved
+    there. See ai/02-debug.md, 2026-08-24.
+    """
     results = []
-    configs = build_eval_configs(seed, num_episodes, episodes_per_config)
+    num_configs = (num_episodes + episodes_per_config - 1) // episodes_per_config
+    if configs_path is not None and Path(configs_path).exists():
+        with open(configs_path, 'r') as f:
+            loaded = json.load(f)
+        configs = [{'red_pos': tuple(c['red_pos']), 'blue_pos': tuple(c['blue_pos'])} for c in loaded]
+        assert len(configs) == num_configs, (
+            f"Loaded {len(configs)} configs from {configs_path}, but this run needs {num_configs} "
+            f"(episodes={num_episodes}, episodes_per_config={episodes_per_config})."
+        )
+        print(f"  Loaded {len(configs)} configs from {configs_path} (RNG-based generation skipped)")
+    else:
+        configs = build_eval_configs(seed, num_episodes, episodes_per_config)
+        if configs_path is not None:
+            with open(configs_path, 'w') as f:
+                json.dump(configs, f, indent=2)
+            print(f"  Saved {len(configs)} configs to {configs_path}")
     action_names = TwoAgentRedBlueButtonEnv.ACTION_MEANING
     # Per-agent generators, seeded from the eval seed, only consumed when
     # stochastic=True -- see _select_action's docstring. Independent per-agent
@@ -706,6 +731,16 @@ def main():
         "--train-steps-budget", type=int, default=None,
         help="Override total training env-steps (default depends on --mode)",
     )
+    parser.add_argument(
+        "--configs-file", type=str, default=None,
+        help="Path to a JSON file of this seed's EVAL button-position configs. If it already "
+             "exists, configs are LOADED from it (byte-identical map sequence) instead of "
+             "regenerated -- use this to run an additional baseline later against the exact same "
+             "eval maps as an earlier run. If it does not exist (or this flag is omitted), configs "
+             "are generated as usual and always auto-saved next to the CSV log. Training's own map "
+             "schedule (--mode online) is unaffected. Only valid with a single seed (--seed, or "
+             "--seeds 1).",
+    )
     args = parser.parse_args()
 
     if not RAY_AVAILABLE:
@@ -713,6 +748,34 @@ def main():
         sys.exit(1)
 
     seeds_to_run = [args.seed] if args.seed is not None else list(range(args.seeds))
+
+    # --mode online's "trains on the exact same map schedule it's evaluated
+    # on" guarantee only holds for seeds_to_run[0] -- train_ppo() below is
+    # only ever called with seed=seeds_to_run[0], so its matched_schedule
+    # training maps are keyed to that one seed, while every seed in
+    # seeds_to_run then gets evaluated (each against its OWN, different eval
+    # schedule) against that single frozen policy. Silent for a single seed
+    # (the real cluster protocol always passes one --seed per invocation),
+    # but for --seeds N>1 every seed but the first would be scored
+    # out-of-training-schedule while still being reported as schedule-
+    # matched. Found 2026-08-24; see ai/02-debug.md. Fail loudly rather than
+    # let that happen unnoticed.
+    _effective_config_mode = args.train_config_mode or ("matched_schedule" if args.mode == "online" else "domain_random")
+    if len(seeds_to_run) > 1 and args.mode == "online" and _effective_config_mode == "matched_schedule" and not (args.checkpoint or args.no_train):
+        raise SystemExit(
+            "--mode online with --train-config-mode matched_schedule (the default for "
+            "--mode online) only trains on seeds_to_run[0]'s map schedule, so evaluating "
+            "--seeds > 1 this way would silently score the other seeds out-of-schedule "
+            "while still reporting them as schedule-matched. Run with a single --seed "
+            "per invocation (matching the real cluster protocol), or pass "
+            "--train-config-mode domain_random/fixed if you specifically want a local "
+            "multi-seed sweep in online mode."
+        )
+    if args.configs_file is not None and len(seeds_to_run) > 1:
+        raise SystemExit(
+            f"--configs-file only makes sense for a single seed (--seed, or --seeds 1); "
+            f"got {len(seeds_to_run)} seeds. Run once per seed instead."
+        )
     # Tag output filenames with the actual seed value, not just a count -- SLURM
     # array tasks (mappo.sh, --array=0-29) launch within the same wall-clock
     # second often enough that a timestamp-only name collides across tasks,
@@ -779,10 +842,15 @@ def main():
     try:
         with tqdm(total=total_episodes, desc="Total", unit="ep", position=0) as pbar:
             for seed in seeds_to_run:
+                configs_path = args.configs_file if args.configs_file is not None else (
+                    log_dir / f"two_ppo_agents_{args.mode}_seed{seed}_ep{num_episodes}_"
+                              f"step{max_steps}_redblue_{timestamp}_configs.json"
+                )
                 results = run_seed_experiment(
                     algo, seed, num_episodes, episodes_per_config, max_steps,
                     progress_callback=pbar.update, csv_writer=csv_writer_obj,
                     stochastic=not args.greedy,
+                    configs_path=configs_path,
                 )
                 all_results.extend(results)
                 n = len(results)

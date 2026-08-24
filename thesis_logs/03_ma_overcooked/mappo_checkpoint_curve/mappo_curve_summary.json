@@ -1,0 +1,172 @@
+{
+  "budgets": {
+    "0": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 3.6666666666666665,
+      "std_deliveries_across_train_seeds": 0.09428090415820621,
+      "mean_return_across_train_seeds": 73.33333333333333,
+      "std_return_across_train_seeds": 1.8856180831641267,
+      "per_train_seed_mean_deliveries": [
+        3.6,
+        3.8,
+        3.6
+      ]
+    },
+    "25000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 1.3999999999999997,
+      "std_deliveries_across_train_seeds": 0.32659863237109044,
+      "mean_return_across_train_seeds": 28.0,
+      "std_return_across_train_seeds": 6.531972647421808,
+      "per_train_seed_mean_deliveries": [
+        1.8,
+        1.0,
+        1.4
+      ]
+    },
+    "50000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 2.1999999999999997,
+      "std_deliveries_across_train_seeds": 0.7118052168020874,
+      "mean_return_across_train_seeds": 44.0,
+      "std_return_across_train_seeds": 14.236104336041748,
+      "per_train_seed_mean_deliveries": [
+        1.8,
+        3.2,
+        1.6
+      ]
+    },
+    "75000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 3.8666666666666667,
+      "std_deliveries_across_train_seeds": 1.5520595635763752,
+      "mean_return_across_train_seeds": 77.33333333333333,
+      "std_return_across_train_seeds": 31.04119127152751,
+      "per_train_seed_mean_deliveries": [
+        3.8,
+        2.0,
+        5.8
+      ]
+    },
+    "100000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 4.266666666666667,
+      "std_deliveries_across_train_seeds": 0.573488351136175,
+      "mean_return_across_train_seeds": 85.33333333333333,
+      "std_return_across_train_seeds": 11.469767022723502,
+      "per_train_seed_mean_deliveries": [
+        5.0,
+        4.2,
+        3.6
+      ]
+    },
+    "150000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 4.199999999999999,
+      "std_deliveries_across_train_seeds": 2.9439202887759484,
+      "mean_return_across_train_seeds": 84.0,
+      "std_return_across_train_seeds": 58.87840577551898,
+      "per_train_seed_mean_deliveries": [
+        8.2,
+        1.2,
+        3.2
+      ]
+    },
+    "200000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 3.266666666666666,
+      "std_deliveries_across_train_seeds": 1.247219128924647,
+      "mean_return_across_train_seeds": 65.33333333333333,
+      "std_return_across_train_seeds": 24.94438257849294,
+      "per_train_seed_mean_deliveries": [
+        3.6,
+        4.6,
+        1.6
+      ]
+    },
+    "225000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 5.066666666666667,
+      "std_deliveries_across_train_seeds": 2.322833518691246,
+      "mean_return_across_train_seeds": 101.33333333333333,
+      "std_return_across_train_seeds": 46.45667037382492,
+      "per_train_seed_mean_deliveries": [
+        6.4,
+        7.0,
+        1.8
+      ]
+    },
+    "250000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 2.0666666666666664,
+      "std_deliveries_across_train_seeds": 0.4714045207910317,
+      "mean_return_across_train_seeds": 41.333333333333336,
+      "std_return_across_train_seeds": 9.428090415820632,
+      "per_train_seed_mean_deliveries": [
+        2.4,
+        2.4,
+        1.4
+      ]
+    },
+    "275000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 5.6000000000000005,
+      "std_deliveries_across_train_seeds": 1.8832595855767378,
+      "mean_return_across_train_seeds": 112.0,
+      "std_return_across_train_seeds": 37.66519171153476,
+      "per_train_seed_mean_deliveries": [
+        3.2,
+        5.8,
+        7.8
+      ]
+    },
+    "300000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 9.666666666666666,
+      "std_deliveries_across_train_seeds": 3.2673468679580924,
+      "mean_return_across_train_seeds": 193.33333333333334,
+      "std_return_across_train_seeds": 65.34693735916184,
+      "per_train_seed_mean_deliveries": [
+        9.8,
+        13.6,
+        5.6
+      ]
+    },
+    "350000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 8.933333333333334,
+      "std_deliveries_across_train_seeds": 1.2256517540566827,
+      "mean_return_across_train_seeds": 178.66666666666666,
+      "std_return_across_train_seeds": 24.513035081133648,
+      "per_train_seed_mean_deliveries": [
+        7.2,
+        9.8,
+        9.8
+      ]
+    },
+    "400000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 11.6,
+      "std_deliveries_across_train_seeds": 1.3366625103842287,
+      "mean_return_across_train_seeds": 232.0,
+      "std_return_across_train_seeds": 26.733250207684563,
+      "per_train_seed_mean_deliveries": [
+        13.4,
+        10.2,
+        11.2
+      ]
+    },
+    "500000": {
+      "n_train_seeds": 3,
+      "mean_deliveries_across_train_seeds": 19.0,
+      "std_deliveries_across_train_seeds": 10.435835695653063,
+      "mean_return_across_train_seeds": 380.0,
+      "std_return_across_train_seeds": 208.71671391306128,
+      "per_train_seed_mean_deliveries": [
+        33.4,
+        14.6,
+        9.0
+      ]
+    }
+  }
+}

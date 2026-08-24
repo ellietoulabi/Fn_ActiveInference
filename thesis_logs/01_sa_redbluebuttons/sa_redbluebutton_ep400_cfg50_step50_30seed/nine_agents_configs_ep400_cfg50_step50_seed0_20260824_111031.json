@@ -1,0 +1,98 @@
+[
+  {
+    "red_pos": [
+      1,
+      1
+    ],
+    "blue_pos": [
+      1,
+      2
+    ],
+    "red_idx": 4,
+    "blue_idx": 5
+  },
+  {
+    "red_pos": [
+      0,
+      1
+    ],
+    "blue_pos": [
+      1,
+      0
+    ],
+    "red_idx": 1,
+    "blue_idx": 3
+  },
+  {
+    "red_pos": [
+      2,
+      0
+    ],
+    "blue_pos": [
+      2,
+      2
+    ],
+    "red_idx": 6,
+    "blue_idx": 8
+  },
+  {
+    "red_pos": [
+      2,
+      2
+    ],
+    "blue_pos": [
+      0,
+      1
+    ],
+    "red_idx": 8,
+    "blue_idx": 1
+  },
+  {
+    "red_pos": [
+      2,
+      2
+    ],
+    "blue_pos": [
+      0,
+      2
+    ],
+    "red_idx": 8,
+    "blue_idx": 2
+  },
+  {
+    "red_pos": [
+      1,
+      0
+    ],
+    "blue_pos": [
+      2,
+      0
+    ],
+    "red_idx": 3,
+    "blue_idx": 6
+  },
+  {
+    "red_pos": [
+      2,
+      0
+    ],
+    "blue_pos": [
+      1,
+      1
+    ],
+    "red_idx": 6,
+    "blue_idx": 4
+  },
+  {
+    "red_pos": [
+      0,
+      1
+    ],
+    "blue_pos": [
+      2,
+      1
+    ],
+    "red_idx": 1,
+    "blue_idx": 7
+  }
+]

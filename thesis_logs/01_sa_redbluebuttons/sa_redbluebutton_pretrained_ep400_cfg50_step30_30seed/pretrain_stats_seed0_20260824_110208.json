@@ -1,0 +1,42 @@
+{
+  "QLearning": {
+    "n_episodes": 1500,
+    "converged": false,
+    "final_windowed_win_rate": 0.66
+  },
+  "Vanilla": {
+    "n_episodes": 1250,
+    "converged": true,
+    "final_windowed_win_rate": 0.14
+  },
+  "Recency0.99": {
+    "n_episodes": 1500,
+    "converged": false,
+    "final_windowed_win_rate": 0.02
+  },
+  "Recency0.95": {
+    "n_episodes": 1350,
+    "converged": true,
+    "final_windowed_win_rate": 0.1
+  },
+  "Recency0.9": {
+    "n_episodes": 1500,
+    "converged": false,
+    "final_windowed_win_rate": 0.12
+  },
+  "Recency0.85": {
+    "n_episodes": 1500,
+    "converged": false,
+    "final_windowed_win_rate": 0.14
+  },
+  "TrajSampling": {
+    "n_episodes": 850,
+    "converged": true,
+    "final_windowed_win_rate": 0.0
+  },
+  "OPSRL": {
+    "n_episodes": 1500,
+    "converged": false,
+    "final_windowed_win_rate": 0.1
+  }
+}

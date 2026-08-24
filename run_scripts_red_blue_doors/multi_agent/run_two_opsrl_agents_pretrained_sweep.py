@@ -133,7 +133,7 @@ def pretrain_pair_fixed_budget(agent1, agent2, pretrain_rng, max_steps, n_episod
 def run_seed_at_budget(seed, budget, num_episodes, episodes_per_config, max_steps,
                         opsrl_kwargs, verbose=False, csv_writer=None,
                         episode_progress=False, print_steps=False,
-                        progress_callback=None):
+                        progress_callback=None, configs_path=None):
     """
     Pretrain a fresh agent pair for exactly `budget` episodes, then run the
     standard scored evaluation protocol on them. Agents are constructed
@@ -141,6 +141,14 @@ def run_seed_at_budget(seed, budget, num_episodes, episodes_per_config, max_step
     across config boundaries during the scored protocol -- same
     no-privileged-reset behavior as the cold-start and convergence-based
     scripts, and (as of 2026-08-20) the MA AIF scripts.
+
+    configs_path: if given and the file already exists, the EVAL config
+    sequence is LOADED from it instead of regenerated -- lets an additional
+    baseline be run later against the exact same eval maps. Since eval_rng
+    only depends on `seed` (not `budget`), every budget level for a given
+    seed already produces the identical eval sequence on its own; this just
+    makes that sequence explicit and independent of any future change to
+    generate_random_config or its RNG. See ai/02-debug.md, 2026-08-24.
     """
     eval_rng = np.random.default_rng(seed)
     # Distinct pretrain RNG stream per (seed, budget) -- offset by budget too,
@@ -149,10 +157,25 @@ def run_seed_at_budget(seed, budget, num_episodes, episodes_per_config, max_step
     pretrain_rng = np.random.default_rng(int(seed) * 1_000_003 + int(budget) * 131 + 987)
 
     results = []
-    configs = []
     num_configs = (num_episodes + episodes_per_config - 1) // episodes_per_config
-    for _ in range(num_configs):
-        configs.append(generate_random_config(eval_rng))
+
+    if configs_path is not None and Path(configs_path).exists():
+        with open(configs_path, 'r') as f:
+            loaded = json.load(f)
+        configs = [{'red_pos': tuple(c['red_pos']), 'blue_pos': tuple(c['blue_pos'])} for c in loaded]
+        assert len(configs) == num_configs, (
+            f"Loaded {len(configs)} configs from {configs_path}, but this run needs {num_configs} "
+            f"(episodes={num_episodes}, episodes_per_config={episodes_per_config})."
+        )
+        print(f"  Loaded {len(configs)} configs from {configs_path} (RNG-based generation skipped)")
+    else:
+        configs = []
+        for _ in range(num_configs):
+            configs.append(generate_random_config(eval_rng))
+        if configs_path is not None:
+            with open(configs_path, 'w') as f:
+                json.dump(configs, f, indent=2)
+            print(f"  Saved {len(configs)} configs to {configs_path}")
 
     agent1 = create_opsrl_agent_sweep(seed=int(seed) * 2 + 1, max_steps=max_steps, **opsrl_kwargs)
     agent2 = create_opsrl_agent_sweep(seed=int(seed) * 2 + 2, max_steps=max_steps, **opsrl_kwargs)
@@ -228,6 +251,15 @@ def main():
     parser.add_argument("--stage-dependent", action="store_true")
     parser.add_argument("--reward-free", action="store_true")
     parser.add_argument("--no-bernoullized-reward", action="store_true")
+    parser.add_argument("--configs-file", type=str, default=None,
+                         help="Path to a JSON file of this seed's EVAL button-position configs "
+                              "(shared across all --budgets, since eval configs only depend on "
+                              "seed). If it already exists, configs are LOADED from it instead of "
+                              "regenerated -- use this to run an additional baseline later against "
+                              "the exact same eval maps as an earlier run. If it does not exist (or "
+                              "this flag is omitted), configs are generated as usual and always "
+                              "auto-saved next to the CSV log. Only valid with a single seed "
+                              "(--seed, or --seeds 1).")
     args = parser.parse_args()
 
     if args.seed is not None:
@@ -239,6 +271,11 @@ def main():
 
     BUDGETS = sorted(set(args.budgets))
     NUM_SEEDS = len(SEEDS_TO_RUN)
+    if args.configs_file is not None:
+        assert NUM_SEEDS == 1, (
+            f"--configs-file only makes sense for a single seed (--seed, or --seeds 1); "
+            f"got {NUM_SEEDS} seeds. Run once per seed instead."
+        )
     NUM_EPISODES_PER_SEED = args.episodes
     EPISODES_PER_CONFIG = args.episodes_per_config
     MAX_STEPS = args.max_steps
@@ -310,6 +347,13 @@ def main():
 
                     seed_csv_writer = SeedBudgetCSVWriter(csv_writer, seed, budget)
 
+                    # Named by seed only (not budget) -- eval configs only depend on seed,
+                    # so every budget level for this seed shares the same file.
+                    configs_path = args.configs_file if args.configs_file is not None else (
+                        log_dir / f"two_opsrl_agents_pretrained_sweep_seed{seed}_ep{NUM_EPISODES_PER_SEED}_"
+                                  f"step{MAX_STEPS}_redblue_{timestamp}_configs.json"
+                    )
+
                     results, configs, pretrain_stats = run_seed_at_budget(
                         seed=seed,
                         budget=budget,
@@ -322,6 +366,7 @@ def main():
                         episode_progress=args.episode_progress,
                         print_steps=args.print_steps,
                         progress_callback=pbar.update,
+                        configs_path=configs_path,
                     )
 
                     all_results.extend(results)

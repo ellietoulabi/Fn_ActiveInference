@@ -144,3 +144,7 @@ EPISODES=200 EPISODES_PER_CONFIG=25 MAX_STEPS=30 sbatch cc_scripts/redbluebutton
 # --- Setup 4: 200 episodes / relocate every 25 / max_steps 50 ---
 EPISODES=200 EPISODES_PER_CONFIG=25 MAX_STEPS=50 sbatch cc_scripts/redbluebutton/nine.sh
 EPISODES=200 EPISODES_PER_CONFIG=25 MAX_STEPS=50 sbatch cc_scripts/redbluebutton/nine_pretrained.sh
+
+
+
+BUDGETS="0 25000 75000 100000 150000 200000 250000 300000 350000 400000 500000" sbatch cc_scripts/overcooked/mappo_checkpoint_curve.sh

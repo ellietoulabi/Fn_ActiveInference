@@ -1,0 +1,215 @@
+{
+  "train_seed": 76,
+  "budgets_completed": [
+    0,
+    25000,
+    50000,
+    75000,
+    100000,
+    150000,
+    200000,
+    225000,
+    250000,
+    275000,
+    300000,
+    350000,
+    400000
+  ],
+  "results_by_budget": {
+    "0": {
+      "actual_steps": 0,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 0.0,
+          "deliveries": 0.0
+        }
+      ],
+      "mean_deliveries": 0.0,
+      "std_deliveries": 0.0,
+      "mean_return": 0.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.948124885559082
+    },
+    "25000": {
+      "actual_steps": 28000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 0.0,
+          "deliveries": 0.0
+        }
+      ],
+      "mean_deliveries": 0.0,
+      "std_deliveries": 0.0,
+      "mean_return": 0.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.7702791690826416
+    },
+    "50000": {
+      "actual_steps": 52000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 0.0,
+          "deliveries": 0.0
+        }
+      ],
+      "mean_deliveries": 0.0,
+      "std_deliveries": 0.0,
+      "mean_return": 0.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.8673100471496582
+    },
+    "75000": {
+      "actual_steps": 76000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 40.0,
+          "deliveries": 2.0
+        }
+      ],
+      "mean_deliveries": 2.0,
+      "std_deliveries": 0.0,
+      "mean_return": 40.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.7986938953399658
+    },
+    "100000": {
+      "actual_steps": 100000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 80.0,
+          "deliveries": 4.0
+        }
+      ],
+      "mean_deliveries": 4.0,
+      "std_deliveries": 0.0,
+      "mean_return": 80.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.7991647720336914
+    },
+    "150000": {
+      "actual_steps": 152000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 220.0,
+          "deliveries": 11.0
+        }
+      ],
+      "mean_deliveries": 11.0,
+      "std_deliveries": 0.0,
+      "mean_return": 220.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.6995210647583008
+    },
+    "200000": {
+      "actual_steps": 200000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 0.0,
+          "deliveries": 0.0
+        }
+      ],
+      "mean_deliveries": 0.0,
+      "std_deliveries": 0.0,
+      "mean_return": 0.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.792539119720459
+    },
+    "225000": {
+      "actual_steps": 228000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 280.0,
+          "deliveries": 14.0
+        }
+      ],
+      "mean_deliveries": 14.0,
+      "std_deliveries": 0.0,
+      "mean_return": 280.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.6700620651245117
+    },
+    "250000": {
+      "actual_steps": 252000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 180.0,
+          "deliveries": 9.0
+        }
+      ],
+      "mean_deliveries": 9.0,
+      "std_deliveries": 0.0,
+      "mean_return": 180.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.7624051570892334
+    },
+    "275000": {
+      "actual_steps": 276000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 240.0,
+          "deliveries": 12.0
+        }
+      ],
+      "mean_deliveries": 12.0,
+      "std_deliveries": 0.0,
+      "mean_return": 240.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.6875250339508057
+    },
+    "300000": {
+      "actual_steps": 300000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 280.0,
+          "deliveries": 14.0
+        }
+      ],
+      "mean_deliveries": 14.0,
+      "std_deliveries": 0.0,
+      "mean_return": 280.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.6249110698699951
+    },
+    "350000": {
+      "actual_steps": 352000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 100.0,
+          "deliveries": 5.0
+        }
+      ],
+      "mean_deliveries": 5.0,
+      "std_deliveries": 0.0,
+      "mean_return": 100.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.6758549213409424
+    },
+    "400000": {
+      "actual_steps": 400000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 260.0,
+          "deliveries": 13.0
+        }
+      ],
+      "mean_deliveries": 13.0,
+      "std_deliveries": 0.0,
+      "mean_return": 260.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.0762922763824463
+    }
+  }
+}

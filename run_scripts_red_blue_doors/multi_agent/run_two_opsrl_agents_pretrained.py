@@ -192,7 +192,7 @@ def run_seed_experiment(seed, num_episodes, episodes_per_config, max_steps,
                          opsrl_kwargs, pretrain_kwargs,
                          verbose=False, csv_writer=None,
                          episode_progress=False, print_steps=False,
-                         progress_callback=None):
+                         progress_callback=None, configs_path=None):
     """
     1) Pretrain both agents jointly against domain-randomized configs (a
        SEPARATE RNG stream from the scored-evaluation configs -- seeded
@@ -205,15 +205,40 @@ def run_seed_experiment(seed, num_episodes, episodes_per_config, max_steps,
        matching the 2026-08-20 fix applied to the MA AIF scripts (see
        ai/02-debug.md), so no paradigm anywhere in this comparison gets a
        privileged "the environment just changed" reset.
+
+    configs_path: if given and the file already exists, the EVAL config
+    sequence is LOADED from it (byte-identical maps, robust against any
+    future change to generate_random_config or its RNG) instead of
+    regenerated -- lets an additional baseline be run later against the
+    exact same eval maps as this run. Pretraining's own configs are never
+    saved/loaded (they're not meant to be reproduced -- only the scored
+    protocol's maps need to match across baselines). If given and the file
+    does not exist, the generated eval sequence is saved there. See
+    ai/02-debug.md, 2026-08-24.
     """
     eval_rng = np.random.default_rng(seed)
     pretrain_rng = np.random.default_rng(int(seed) * 1_000_003 + 987)
 
     results = []
-    configs = []
     num_configs = (num_episodes + episodes_per_config - 1) // episodes_per_config
-    for _ in range(num_configs):
-        configs.append(generate_random_config(eval_rng))
+
+    if configs_path is not None and Path(configs_path).exists():
+        with open(configs_path, 'r') as f:
+            loaded = json.load(f)
+        configs = [{'red_pos': tuple(c['red_pos']), 'blue_pos': tuple(c['blue_pos'])} for c in loaded]
+        assert len(configs) == num_configs, (
+            f"Loaded {len(configs)} configs from {configs_path}, but this run needs {num_configs} "
+            f"(episodes={num_episodes}, episodes_per_config={episodes_per_config})."
+        )
+        print(f"  Loaded {len(configs)} configs from {configs_path} (RNG-based generation skipped)")
+    else:
+        configs = []
+        for _ in range(num_configs):
+            configs.append(generate_random_config(eval_rng))
+        if configs_path is not None:
+            with open(configs_path, 'w') as f:
+                json.dump(configs, f, indent=2)
+            print(f"  Saved {len(configs)} configs to {configs_path}")
 
     agent1 = create_opsrl_agent_pretrained(seed=int(seed) * 2 + 1, max_steps=max_steps, **opsrl_kwargs)
     agent2 = create_opsrl_agent_pretrained(seed=int(seed) * 2 + 2, max_steps=max_steps, **opsrl_kwargs)
@@ -312,6 +337,15 @@ def main():
                          help="Hard safety cap on pretraining episodes")
     parser.add_argument("--pretrain-min-episodes", type=int, default=200,
                          help="Minimum pretraining episodes before convergence can be declared")
+    parser.add_argument("--configs-file", type=str, default=None,
+                         help="Path to a JSON file of this seed's EVAL button-position configs. If "
+                              "it already exists, configs are LOADED from it (byte-identical map "
+                              "sequence) instead of regenerated -- use this to run an additional "
+                              "baseline later against the exact same eval maps as an earlier run. "
+                              "If it does not exist (or this flag is omitted), configs are "
+                              "generated as usual and always auto-saved next to the CSV log. "
+                              "Pretraining's own configs are not affected by this flag. Only valid "
+                              "with a single seed (--seed, or --seeds 1).")
     args = parser.parse_args()
 
     if args.seed is not None:
@@ -322,6 +356,11 @@ def main():
         SEED_TAG = f"seeds{args.seeds}"
 
     NUM_SEEDS = len(SEEDS_TO_RUN)
+    if args.configs_file is not None:
+        assert NUM_SEEDS == 1, (
+            f"--configs-file only makes sense for a single seed (--seed, or --seeds 1); "
+            f"got {NUM_SEEDS} seeds. Run once per seed instead."
+        )
     NUM_EPISODES_PER_SEED = args.episodes
     EPISODES_PER_CONFIG = args.episodes_per_config
     MAX_STEPS = args.max_steps
@@ -398,6 +437,11 @@ def main():
 
                 seed_csv_writer = SeedCSVWriter(csv_writer, seed)
 
+                configs_path = args.configs_file if args.configs_file is not None else (
+                    log_dir / f"two_opsrl_agents_pretrained_convergence_seed{seed}_ep{NUM_EPISODES_PER_SEED}_"
+                              f"step{MAX_STEPS}_redblue_{timestamp}_configs.json"
+                )
+
                 results, configs, pretrain_stats = run_seed_experiment(
                     seed=seed,
                     num_episodes=NUM_EPISODES_PER_SEED,
@@ -410,6 +454,7 @@ def main():
                     episode_progress=args.episode_progress,
                     print_steps=args.print_steps,
                     progress_callback=pbar.update,
+                    configs_path=configs_path,
                 )
 
                 all_results.extend(results)

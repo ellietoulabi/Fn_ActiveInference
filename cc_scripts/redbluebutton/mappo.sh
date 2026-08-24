@@ -115,7 +115,12 @@ BUDGET_SUFFIX=""
 if [ -n "${TRAIN_STEPS_BUDGET}" ]; then
     BUDGET_SUFFIX="_budget${TRAIN_STEPS_BUDGET}"
 fi
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/def-jrwright/toulabin/logs/ma_mappo_redbluebutton_step${MAX_STEPS}${BUDGET_SUFFIX}_30seed"}
+# MODE included so `pretrained` and `online` submissions at the same MAX_STEPS
+# can never collide/overwrite each other's copied-back logs -- same
+# don't-silently-collide principle as BUDGET_SUFFIX above (found 2026-08-24:
+# this was previously missing, and both modes would have written to the same
+# destination folder).
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/def-jrwright/toulabin/logs/ma_mappo_redbluebutton_${MODE}_step${MAX_STEPS}${BUDGET_SUFFIX}_30seed"}
 mkdir -p "${DEST_BASE}"
 LOG_FILE="$SLURM_TMPDIR/ma_mappo_seed${SEED_IDX}.log"
 
@@ -139,6 +144,10 @@ echo "Copying logs..."
 cp "$LOG_FILE" "${DEST_BASE}/" 2>/dev/null || echo "Warning: log file not found"
 cp logs/two_ppo_agents_*_seed${SEED_IDX}_ep*_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
 cp "logs/ma_mappo_seed${SEED_IDX}_stats.json" "${DEST_BASE}/" 2>/dev/null || echo "Warning: stats JSON file not found"
+# Configs JSON (2026-08-24): exact EVAL button-position sequence for this seed, so an
+# additional baseline can be run later against the identical maps -- would
+# otherwise be lost with the rest of SLURM_TMPDIR once this job ends.
+cp logs/two_ppo_agents_*_seed${SEED_IDX}_ep*_*_configs.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: configs JSON file not found"
 echo "Copy done"
 
 if [ $EXIT_CODE -ne 0 ]; then

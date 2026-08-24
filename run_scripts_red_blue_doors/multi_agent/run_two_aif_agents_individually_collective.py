@@ -512,15 +512,39 @@ def run_seed_experiment(seed, num_episodes, episodes_per_config, max_steps,
                         verbose=False, csv_writer=None, episode_progress=False,
                         show_beliefs=False, show_policies=False,
                         policy_log_fh=None, log_policy_top_k=5, log_full_q_pi=False,                         log_state_beliefs=False,
-                        print_steps=False, progress_callback=None):
-    """Run experiment for a single seed."""
+                        print_steps=False, progress_callback=None,
+                        configs_path=None):
+    """Run experiment for a single seed.
+
+    configs_path: if given and the file already exists, the button-config
+    sequence is LOADED from it (byte-identical maps, robust against any
+    future change to generate_random_config or its RNG) instead of
+    regenerated -- lets an additional baseline be run later against the
+    exact same maps as this run. If given and the file does not exist, the
+    generated sequence is saved there. See ai/02-debug.md, 2026-08-24.
+    """
     rng = np.random.default_rng(seed)
     np.random.seed(seed)
     results = []
-    configs = []
     num_configs = (num_episodes + episodes_per_config - 1) // episodes_per_config
-    for _ in range(num_configs):
-        configs.append(generate_random_config(rng))
+
+    if configs_path is not None and Path(configs_path).exists():
+        with open(configs_path, 'r') as f:
+            loaded = json.load(f)
+        configs = [{'red_pos': tuple(c['red_pos']), 'blue_pos': tuple(c['blue_pos'])} for c in loaded]
+        assert len(configs) == num_configs, (
+            f"Loaded {len(configs)} configs from {configs_path}, but this run needs {num_configs} "
+            f"(episodes={num_episodes}, episodes_per_config={episodes_per_config})."
+        )
+        print(f"  Loaded {len(configs)} configs from {configs_path} (RNG-based generation skipped)")
+    else:
+        configs = []
+        for _ in range(num_configs):
+            configs.append(generate_random_config(rng))
+        if configs_path is not None:
+            with open(configs_path, 'w') as f:
+                json.dump(configs, f, indent=2)
+            print(f"  Saved {len(configs)} configs to {configs_path}")
     env = None
     agent1 = None
     agent2 = None
@@ -624,6 +648,14 @@ def main():
     parser.add_argument("--log-state-beliefs", action="store_true", help="In JSONL, include full state beliefs per factor for both agents")
     parser.add_argument("--stats-output", type=str, default=None, help="Also write stats JSON to this path (for comparison scripts)")
     parser.add_argument("--press-success-prob", type=float, default=None, help="Override B.PRESS_SUCCESS_PROB (default 0.85) for a noise-level sweep. Patches the shared FullyCollective.B module before any agent is built.")
+    parser.add_argument("--configs-file", type=str, default=None,
+                         help="Path to a JSON file of this seed's button-position configs. If it "
+                              "already exists, configs are LOADED from it (byte-identical map "
+                              "sequence) instead of regenerated -- use this to run an additional "
+                              "baseline later against the exact same maps as an earlier run. If it "
+                              "does not exist (or this flag is omitted), configs are generated as "
+                              "usual and always auto-saved next to the CSV log. Only valid with a "
+                              "single seed (--seed, or --seeds 1).")
     args = parser.parse_args()
     if args.press_success_prob is not None:
         print(f"Overriding B.PRESS_SUCCESS_PROB: {B_module.PRESS_SUCCESS_PROB} -> {args.press_success_prob}")
@@ -648,6 +680,11 @@ def main():
         SEED_TAG = f"seeds{args.seeds}"
     
     NUM_SEEDS = len(SEEDS_TO_RUN)
+    if args.configs_file is not None:
+        assert NUM_SEEDS == 1, (
+            f"--configs-file only makes sense for a single seed (--seed, or --seeds 1); "
+            f"got {NUM_SEEDS} seeds. Run once per seed instead."
+        )
     NUM_EPISODES_PER_SEED = args.episodes
     EPISODES_PER_CONFIG = args.episodes_per_config
     MAX_STEPS = args.max_steps
@@ -715,6 +752,11 @@ def main():
 
                 seed_csv_writer = SeedCSVWriter(csv_writer, seed)
 
+                configs_path = args.configs_file if args.configs_file is not None else (
+                    log_dir / f"two_aif_agents_individually_collective_seed{seed}_ep{NUM_EPISODES_PER_SEED}_"
+                              f"step{MAX_STEPS}_redblue_{timestamp}_configs.json"
+                )
+
                 results, configs = run_seed_experiment(
                     seed=seed,
                     num_episodes=NUM_EPISODES_PER_SEED,
@@ -731,6 +773,7 @@ def main():
                     log_state_beliefs=args.log_state_beliefs,
                     print_steps=args.print_steps,
                     progress_callback=pbar.update,
+                    configs_path=configs_path,
                 )
 
                 all_results.extend(results)

@@ -196,7 +196,7 @@ def smooth_curves(mean: np.ndarray, ci_low: np.ndarray, ci_high: np.ndarray, w: 
 def add_config_boundaries(ax, max_ep: float, episodes_per_config: Optional[int]):
     if episodes_per_config is not None and episodes_per_config > 0:
         for config_ep in range(episodes_per_config, int(max_ep), episodes_per_config):
-            ax.axvline(x=config_ep, color='gray', linestyle=':', linewidth=0.8, alpha=0.5, zorder=1)
+            ax.axvline(x=config_ep, color='gray', linestyle='--', linewidth=1.0, alpha=0.6, zorder=1)
 
 
 def _draw_ci_if_visible(
@@ -303,7 +303,7 @@ def plot_learning_curve_means_only(
     ax.set_ylabel(ylabel)
     ax.set_title(title_base + ' (means only)')
     ax.legend(loc='best', ncol=3, fontsize=8)
-    ax.grid(True, alpha=0.3)
+    ax.grid(True, axis='y', alpha=0.3)
     ax.set_xlim(0, max_ep + 1)
     if ylim is not None:
         ax.set_ylim(*ylim)
@@ -353,7 +353,7 @@ def plot_learning_curve_facet(
                 )
         add_config_boundaries(ax, max_ep, episodes_per_config)
         ax.set_title(focus_alg, fontsize=10, color=AGENT_COLORS.get(focus_alg, '#333'))
-        ax.grid(True, alpha=0.3)
+        ax.grid(True, axis='y', alpha=0.3)
         if ylim is not None:
             ax.set_ylim(*ylim)
 
@@ -400,7 +400,7 @@ def plot_learning_curve_sparse_ci(
         + f' — sparse error bars (every {sparse_every} ep.)'
     )
     ax.legend(loc='best', ncol=3, fontsize=8)
-    ax.grid(True, alpha=0.3)
+    ax.grid(True, axis='y', alpha=0.3)
     ax.set_xlim(0, max_ep + 1)
     if ylim is not None:
         ax.set_ylim(*ylim)
@@ -449,7 +449,7 @@ def plot_learning_curve_grouped(
         add_config_boundaries(ax, max_ep, episodes_per_config)
         ax.set_title(group_title)
         ax.legend(loc='best', fontsize=8)
-        ax.grid(True, alpha=0.3)
+        ax.grid(True, axis='y', alpha=0.3)
         if ylim is not None:
             ax.set_ylim(*ylim)
 
@@ -489,7 +489,7 @@ def plot_learning_curve_overlaid(
     ax.set_ylabel(ylabel)
     ax.set_title(title_base + _ci_title_suffix(n_seeds))
     ax.legend(loc='best', ncol=3, fontsize=8)
-    ax.grid(True, alpha=0.3)
+    ax.grid(True, axis='y', alpha=0.3)
     ax.set_xlim(0, max_ep + 1)
     if ylim is not None:
         ax.set_ylim(*ylim)

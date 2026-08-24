@@ -1,0 +1,66 @@
+{
+  "paradigm": "independent",
+  "n_seeds": 5,
+  "n_episodes_per_seed": 100,
+  "episodes_per_config": 20,
+  "max_steps": 50,
+  "total_episodes": 500,
+  "total_successes": 382,
+  "success_rate": 76.4,
+  "mean_reward": 0.528,
+  "std_reward": 0.8492443700137199,
+  "mean_steps": 14.004,
+  "std_steps": 17.854298754081608,
+  "seed_summaries": [
+    {
+      "seed": 0,
+      "successes": 61,
+      "total": 100,
+      "success_rate": 61.0,
+      "avg_reward": 0.22,
+      "avg_steps": 12.76,
+      "first_half_wins": 21,
+      "second_half_wins": 40
+    },
+    {
+      "seed": 1,
+      "successes": 45,
+      "total": 100,
+      "success_rate": 45.0,
+      "avg_reward": -0.1,
+      "avg_steps": 30.17,
+      "first_half_wins": 13,
+      "second_half_wins": 32
+    },
+    {
+      "seed": 2,
+      "successes": 80,
+      "total": 100,
+      "success_rate": 80.0,
+      "avg_reward": 0.6,
+      "avg_steps": 14.43,
+      "first_half_wins": 40,
+      "second_half_wins": 40
+    },
+    {
+      "seed": 3,
+      "successes": 98,
+      "total": 100,
+      "success_rate": 98.0,
+      "avg_reward": 0.96,
+      "avg_steps": 5.9,
+      "first_half_wins": 48,
+      "second_half_wins": 50
+    },
+    {
+      "seed": 4,
+      "successes": 98,
+      "total": 100,
+      "success_rate": 98.0,
+      "avg_reward": 0.96,
+      "avg_steps": 6.76,
+      "first_half_wins": 48,
+      "second_half_wins": 50
+    }
+  ]
+}
