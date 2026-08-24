@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright
+#SBATCH --account=aip-jrwright
 #SBATCH --job-name=ma_mappo_checkpoint_curve
 #SBATCH --array=0-29                  # 30 seeds (0..29), one per array task -- same seed pool as
                                        # nine.sh / two_aif_{independent,fully_collective,
@@ -56,10 +56,15 @@ EVAL_EPISODES_PER_CONFIG=${EVAL_EPISODES_PER_CONFIG:-20}
 # principle already applied to every other launcher in this project (see
 # e.g. mappo.sh's own ${MODE} tag).
 BUDGET_TAG=$(echo "${BUDGETS}" | tr ' ' '_')
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/def-jrwright/toulabin/logs/ma_mappo_checkpoint_curve_${MODE}_step${MAX_STEPS}_budgets${BUDGET_TAG}_30seed"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_mappo_checkpoint_curve_${MODE}_step${MAX_STEPS}_budgets${BUDGET_TAG}_30seed"}
 
 module purge
 module load python/3.11.4 scipy-stack
+# Ray/RLlib depends on pyarrow. On Alliance, `pip install pyarrow` hits a dummy wheel that
+# always fails; the real package comes from the Arrow module. Load it BEFORE creating /
+# activating the venv (see https://docs.alliancecan.ca/wiki/Arrow, and mappo.sh's identical
+# fix -- this launcher was missing it entirely until caught by a real CC job failure).
+module load gcc arrow
 
 if [ "${SLURM_TMPDIR:-}" = "" ]; then
     echo "Error: SLURM_TMPDIR not defined"
@@ -90,6 +95,12 @@ pip install --no-input --upgrade pip setuptools wheel
 pip install --no-input -r requirements_cc.txt
 echo "Dependencies installed."
 
+echo "Checking pyarrow from Arrow module (must work before ray install)..."
+python -c "import pyarrow; print('pyarrow OK', getattr(pyarrow, '__version__', '?'))" || {
+    echo "ERROR: pyarrow not importable. Load 'gcc arrow' before activating the venv."
+    exit 1
+}
+
 echo "Installing ray + RLlib deps (not in requirements.txt per its own comment)..."
 RAY_VER="2.55.1"
 if ! pip install --no-input --prefer-binary "ray==${RAY_VER}"; then
@@ -101,10 +112,10 @@ if ! pip install --no-input --prefer-binary \
     echo "ERROR: pip install of RLlib dependencies failed."
     exit 1
 fi
-echo "ray + RLlib deps installed."
+echo "ray + RLlib deps installed (pyarrow from Arrow module)."
 
-python -c "import ray; from ray.rllib.algorithms.ppo import PPOConfig; import torch; print('ray/rllib/torch import OK')" || {
-    echo "ERROR: ray/rllib/torch import check failed after install."
+python -c "import pyarrow; import ray; from ray.rllib.algorithms.ppo import PPOConfig; import torch; print('ray/rllib/torch/pyarrow import OK')" || {
+    echo "ERROR: ray/rllib/torch/pyarrow import check failed after install."
     exit 1
 }
 echo "ray/rllib/torch import check OK."
@@ -112,6 +123,7 @@ echo "ray/rllib/torch import check OK."
 echo "Preflight (mappo_checkpoint_curve): checking imports..."
 python -c "
 import numpy as np  # noqa: F401
+import pyarrow  # noqa: F401
 import ray  # noqa: F401
 import torch  # noqa: F401
 from ray.rllib.algorithms.ppo import PPOConfig  # noqa: F401

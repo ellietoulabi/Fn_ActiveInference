@@ -20,12 +20,12 @@ SLURM scripts to run two-agent **RedBlueButton** experiments on Alliance (Comput
 ## Before you submit
 
 1. **Push to GitHub.** Jobs clone `https://github.com/ellietoulabi/Fn_ActiveInference.git` on the compute node, so any local changes must be pushed to the branch that gets cloned (default branch) before submitting.
-2. **Account.** Scripts use `#SBATCH --account=def-jrwright`. Change this line if your allocation differs.
-3. **Log destination.** Output CSV/JSON files are copied to `${HOME}/projects/def-jrwright/toulabin/logs/` after each task finishes. Edit `DEST_BASE` in the script if your home path differs.
+2. **Account.** Scripts use `#SBATCH --account=aip-jrwright`. Change this line if your allocation differs.
+3. **Log destination.** Output CSV/JSON files are copied to `${HOME}/projects/aip-jrwright/toulabin/logs/` after each task finishes. Edit `DEST_BASE` in the script if your home path differs.
 4. **Submit from the repo:**
 
    ```bash
-   cd ~/projects/def-jrwright/toulabin/Fn_ActiveInference   # or your clone on CC
+   cd ~/projects/aip-jrwright/toulabin/Fn_ActiveInference   # or your clone on CC
    sbatch cc_scripts/redbluebutton/two_aif_independent.sh
    sbatch cc_scripts/redbluebutton/two_aif_individually_collective.sh
    sbatch cc_scripts/redbluebutton/two_aif_fully_collective.sh

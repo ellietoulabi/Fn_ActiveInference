@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright
+#SBATCH --account=aip-jrwright
 #SBATCH --job-name=sa_redblue_nine_agents
 #SBATCH --array=0-29
 #SBATCH --cpus-per-task=8
@@ -64,7 +64,7 @@ if ! python -u run_scripts_red_blue_doors/compare_agents/compare_nine_agents.py 
     exit $EXIT_CODE
 fi
 
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/def-jrwright/toulabin/logs/sa_redbluebutton_ep${EPISODES}_cfg${EPISODES_PER_CONFIG}_step${MAX_STEPS}_30seed"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sa_redbluebutton_ep${EPISODES}_cfg${EPISODES_PER_CONFIG}_step${MAX_STEPS}_30seed"}
 mkdir -p "${DEST_BASE}"
 
 echo "Copying logs and Q-tables to home directory..."

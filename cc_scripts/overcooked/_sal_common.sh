@@ -2,7 +2,17 @@
 # Source from the repo root after: cd .../Fn_ActiveInference
 
 sal_setup_pythonpath() {
-    export PYTHONPATH="$PWD:$PWD/run_scripts_overcooked:$PWD/environments/overcooked_ai/src"
+    # Prepend (not overwrite) -- a hard overwrite here previously destroyed
+    # whatever `module load gcc arrow` put on PYTHONPATH to make pyarrow
+    # importable (Alliance's pip pyarrow is a dummy wheel that always fails;
+    # the real package only comes from that module). Confirmed via a real CC
+    # job: `pyarrow OK` succeeded right after the module load, then
+    # `ModuleNotFoundError: No module named 'pyarrow'` appeared the moment
+    # this function first ran (inside sal_verify_imports) and stayed broken
+    # for the rest of the job, since every later call just re-applied the
+    # same arrow-free value. Repo-local paths still come first, so nothing
+    # about import priority for this project's own modules changes.
+    export PYTHONPATH="$PWD:$PWD/run_scripts_overcooked:$PWD/environments/overcooked_ai/src${PYTHONPATH:+:$PYTHONPATH}"
     export PYTHONIOENCODING=utf-8
 }
 

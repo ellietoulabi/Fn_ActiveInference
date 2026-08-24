@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright
+#SBATCH --account=aip-jrwright
 #SBATCH --job-name=ma_mappo
 #SBATCH --array=0-29                  # 30 seeds (0..29), one per array task -- same seed pool as
                                        # two_aif_fully_collective.sh / _independent.sh /
@@ -120,7 +120,7 @@ fi
 # don't-silently-collide principle as BUDGET_SUFFIX above (found 2026-08-24:
 # this was previously missing, and both modes would have written to the same
 # destination folder).
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/def-jrwright/toulabin/logs/ma_mappo_redbluebutton_${MODE}_step${MAX_STEPS}${BUDGET_SUFFIX}_30seed"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_mappo_redbluebutton_${MODE}_step${MAX_STEPS}${BUDGET_SUFFIX}_30seed"}
 mkdir -p "${DEST_BASE}"
 LOG_FILE="$SLURM_TMPDIR/ma_mappo_seed${SEED_IDX}.log"
 

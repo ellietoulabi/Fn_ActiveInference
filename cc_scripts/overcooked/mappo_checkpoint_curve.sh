@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=def-jrwright
+#SBATCH --account=aip-jrwright
 #SBATCH --job-name=mappo_checkpoint_curve
 #SBATCH --array=0-29                  # 30 seeds, one per array task -- EXACT same pool the AIF
                                        # paradigms (ind/ic/fc) and the existing MAPPO comparator
@@ -42,7 +42,7 @@ BUDGETS=${BUDGETS:-"0 25000 50000 75000 100000 150000 200000 225000 250000 27500
 # already applied to every other launcher in this project (see e.g.
 # cc_scripts/overcooked/mappo_semantic_action_level.sh's MAX_TRAIN_STEPS tag).
 BUDGET_TAG=$(echo "${BUDGETS}" | tr ' ' '_')
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/def-jrwright/toulabin/logs/mappo_checkpoint_curve_step${MAX_STEPS}_budgets${BUDGET_TAG}_30seed"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/mappo_checkpoint_curve_step${MAX_STEPS}_budgets${BUDGET_TAG}_30seed"}
 
 module purge
 module load python/3.11.4 scipy-stack
