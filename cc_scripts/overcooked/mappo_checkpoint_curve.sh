@@ -105,6 +105,20 @@ source cc_scripts/overcooked/_sal_common.sh
 sal_ensure_venv_runtime_deps || exit 1
 sal_verify_imports || exit 1
 
+# sal_ensure_venv_runtime_deps (above) force-reinstalls numpy/scipy directly
+# into this venv's own site-packages via --ignore-installed -- confirmed by a
+# real CC job failure that pandas (never itself force-installed, only ever
+# resolved via --system-site-packages inheritance) becomes invisible to
+# ray.tune's own `import pandas` right after that reinstall, even though the
+# identical import succeeded moments earlier before it ran. Force pandas the
+# same way, after the numpy/scipy reinstall, so it's guaranteed present
+# regardless of whatever that workaround does to site-packages visibility.
+echo "Re-ensuring pandas is visible after the numpy/scipy venv workaround..."
+pip install --no-input --prefer-binary --ignore-installed pandas || {
+    echo "ERROR: pip install --ignore-installed pandas failed."
+    exit 1
+}
+
 echo "Preflight (mappo checkpoint curve): checking imports..."
 sal_setup_pythonpath
 python -c "

@@ -1,0 +1,109 @@
+{
+  "references": {
+    "independent": {
+      "n_seeds": 5,
+      "mean": 76.4,
+      "std": 20.828826179120128,
+      "ci95": 28.910410736618736,
+      "per_seed": [
+        61.0,
+        45.0,
+        80.0,
+        98.0,
+        98.0
+      ],
+      "source": "/Users/ellie/dev/source/Fn_ActiveInference/thesis_logs/02_ma_redbluebuttons/test_5seed_ep100_cfg20_step50/independent_stats.json"
+    },
+    "opsrl": {
+      "n_seeds": 5,
+      "mean": 3.2,
+      "std": 4.019950248448357,
+      "ci95": 5.579690944846318,
+      "per_seed": [
+        11.0,
+        0.0,
+        1.0,
+        3.0,
+        1.0
+      ],
+      "source": "/Users/ellie/dev/source/Fn_ActiveInference/thesis_logs/02_ma_redbluebuttons/test_5seed_ep100_cfg20_step50/opsrl_coldstart_stats.json"
+    }
+  },
+  "mappo_curve": {
+    "rows": [
+      {
+        "budget": 0,
+        "mean": 23.666666666666668,
+        "std": 2.0548046676563256,
+        "n_train_seeds": 3
+      },
+      {
+        "budget": 2000,
+        "mean": 24.666666666666668,
+        "std": 1.699673171197595,
+        "n_train_seeds": 3
+      },
+      {
+        "budget": 4000,
+        "mean": 24.666666666666668,
+        "std": 3.6817870057290856,
+        "n_train_seeds": 3
+      },
+      {
+        "budget": 6000,
+        "mean": 30.666666666666668,
+        "std": 2.494438257849293,
+        "n_train_seeds": 3
+      },
+      {
+        "budget": 10000,
+        "mean": 36.0,
+        "std": 2.160246899469287,
+        "n_train_seeds": 3
+      },
+      {
+        "budget": 15000,
+        "mean": 43.0,
+        "std": 6.164414002968976,
+        "n_train_seeds": 3
+      },
+      {
+        "budget": 20000,
+        "mean": 50.0,
+        "std": 6.976149845485447,
+        "n_train_seeds": 3
+      },
+      {
+        "budget": 30000,
+        "mean": 64.0,
+        "std": 8.16496580927726,
+        "n_train_seeds": 3
+      },
+      {
+        "budget": 40000,
+        "mean": 80.33333333333333,
+        "std": 1.699673171197595,
+        "n_train_seeds": 3
+      },
+      {
+        "budget": 50000,
+        "mean": 90.66666666666667,
+        "std": 2.494438257849294,
+        "n_train_seeds": 3
+      },
+      {
+        "budget": 75000,
+        "mean": 96.0,
+        "std": 0.816496580927726,
+        "n_train_seeds": 3
+      },
+      {
+        "budget": 100000,
+        "mean": 99.0,
+        "std": 0.816496580927726,
+        "n_train_seeds": 3
+      }
+    ],
+    "source": "summary"
+  }
+}

@@ -13,7 +13,8 @@
     275000,
     300000,
     350000,
-    400000
+    400000,
+    500000
   ],
   "results_by_budget": {
     "0": {
@@ -210,6 +211,21 @@
       "mean_return": 260.0,
       "std_return": 0.0,
       "eval_wall_seconds": 2.0762922763824463
+    },
+    "500000": {
+      "actual_steps": 500000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 60.0,
+          "deliveries": 3.0
+        }
+      ],
+      "mean_deliveries": 3.0,
+      "std_deliveries": 0.0,
+      "mean_return": 60.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 1.8097147941589355
     }
   }
 }
