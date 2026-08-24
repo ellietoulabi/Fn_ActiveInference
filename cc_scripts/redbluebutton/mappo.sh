@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=aip-jrwright
+#SBATCH --account=def-jrwright
 #SBATCH --job-name=ma_mappo
 #SBATCH --array=0-29                  # 30 seeds (0..29), one per array task -- same seed pool as
                                        # two_aif_fully_collective.sh / _independent.sh /
@@ -7,7 +7,7 @@
                                        # so seed N gives the same map here as in those three).
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --time=0-2:00
+#SBATCH --time=0-12:00
 #SBATCH --output=ma_mappo_%A_%a.out
 
 # Genuine MAPPO (centralized critic, decentralized actor -- see
@@ -115,7 +115,7 @@ BUDGET_SUFFIX=""
 if [ -n "${TRAIN_STEPS_BUDGET}" ]; then
     BUDGET_SUFFIX="_budget${TRAIN_STEPS_BUDGET}"
 fi
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_mappo_redbluebutton_step${MAX_STEPS}${BUDGET_SUFFIX}_30seed"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/def-jrwright/toulabin/logs/ma_mappo_redbluebutton_step${MAX_STEPS}${BUDGET_SUFFIX}_30seed"}
 mkdir -p "${DEST_BASE}"
 LOG_FILE="$SLURM_TMPDIR/ma_mappo_seed${SEED_IDX}.log"
 

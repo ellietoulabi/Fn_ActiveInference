@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=aip-jrwright
+#SBATCH --account=def-jrwright
 #SBATCH --job-name=ma_redblue_opsrl
 #SBATCH --array=0-29                   # 30 seeds (0..29), one per array task -- same seed pool as
                                         # two_aif_independent.sh / _individually_collective.sh /
@@ -68,7 +68,7 @@ export PYTHONHASHSEED=0
 # "opsrl" is baked into both the destination folder and every copied filename so
 # results from this agent are never ambiguous with the AIF/MAPPO paradigms' logs
 # sitting alongside them in the same parent logs directory.
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_opsrl_redbluebutton_step${MAX_STEPS}_30seed"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/def-jrwright/toulabin/logs/ma_opsrl_redbluebutton_step${MAX_STEPS}_30seed"}
 mkdir -p "${DEST_BASE}"
 LOG_FILE="$SLURM_TMPDIR/ma_opsrl_seed${SEED_IDX}.log"
 

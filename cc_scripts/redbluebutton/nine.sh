@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --account=aip-jrwright
+#SBATCH --account=def-jrwright
 #SBATCH --job-name=sa_redblue_nine_agents
 #SBATCH --array=0-29
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --time=0-6:00
+#SBATCH --time=0-12:00
 
 # Override the protocol at submit time, e.g.:
 #   EPISODES=400 EPISODES_PER_CONFIG=50 MAX_STEPS=30 sbatch cc_scripts/redbluebutton/nine.sh
@@ -64,7 +64,7 @@ if ! python -u run_scripts_red_blue_doors/compare_agents/compare_nine_agents.py 
     exit $EXIT_CODE
 fi
 
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sa_redbluebutton_ep${EPISODES}_cfg${EPISODES_PER_CONFIG}_step${MAX_STEPS}_30seed"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/def-jrwright/toulabin/logs/sa_redbluebutton_ep${EPISODES}_cfg${EPISODES_PER_CONFIG}_step${MAX_STEPS}_30seed"}
 mkdir -p "${DEST_BASE}"
 
 echo "Copying logs and Q-tables to home directory..."

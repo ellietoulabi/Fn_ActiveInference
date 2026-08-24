@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=aip-jrwright
+#SBATCH --account=def-jrwright
 #SBATCH --job-name=three_plus_ppo
 #SBATCH --array=0-29              # 30 seeds (0..29), one per array task
 #SBATCH --cpus-per-task=16
@@ -97,7 +97,7 @@ echo "---- Starting compare_three_pairings_plus_ppo for seed index ${SEED_IDX} -
 
 export PYTHONHASHSEED=0
 
-DEST_BASE="/home/toulabin/projects/aip-jrwright/toulabin/logs"
+DEST_BASE="/home/toulabin/projects/def-jrwright/toulabin/logs"
 DEST="${DEST_BASE}/three_plus_ppo_redbluebutton_step${MAX_STEPS}_30seed/seed${SEED_IDX}"
 mkdir -p "${DEST}"
 LOG_FILE="$SLURM_TMPDIR/three_plus_ppo_seed${SEED_IDX}.log"

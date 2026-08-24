@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --account=aip-jrwright
+#SBATCH --account=def-jrwright
 #SBATCH --job-name=sa_redblue_nine_agents_pretrained
 #SBATCH --array=0-29
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --time=0-8:00
+#SBATCH --time=0-12:00
 
 # Pretrained-fair variant of nine.sh: the 8 non-AIF agents are pretrained to
 # convergence against domain-randomized configs before the scored relocation
@@ -83,7 +83,7 @@ if ! python -u run_scripts_red_blue_doors/compare_agents/compare_nine_agents_pre
     exit $EXIT_CODE
 fi
 
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sa_redbluebutton_pretrained_ep${EPISODES}_cfg${EPISODES_PER_CONFIG}_step${MAX_STEPS}_30seed"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/def-jrwright/toulabin/logs/sa_redbluebutton_pretrained_ep${EPISODES}_cfg${EPISODES_PER_CONFIG}_step${MAX_STEPS}_30seed"}
 mkdir -p "${DEST_BASE}"
 
 echo "Copying logs to home directory..."

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --account=aip-jrwright
+#SBATCH --account=def-jrwright
 #SBATCH --job-name=ma_redblue_aif_ind
 #SBATCH --array=0-29                   # 30 seeds (0..29), one per array task
 #SBATCH --cpus-per-task=16
@@ -54,7 +54,7 @@ echo "---- Starting seed index ${SEED_IDX} ----"
 # Reproducible runs: seed is passed via --seed; Python script uses it directly.
 export PYTHONHASHSEED=0
 
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_ind_redbluebutton_step${MAX_STEPS}_30seed"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/def-jrwright/toulabin/logs/ma_ind_redbluebutton_step${MAX_STEPS}_30seed"}
 mkdir -p "${DEST_BASE}"
 LOG_FILE="$SLURM_TMPDIR/ma_ind_seed${SEED_IDX}.log"
 
