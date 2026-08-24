@@ -33,12 +33,19 @@ python utils/plotting/plot_sa_redbluebuttons_nine.py logs/seed0.csv logs/seed1.c
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
+from thesis_style import AGENT_COLORS  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Global constants (from spec)
@@ -65,18 +72,8 @@ AGENT_GROUPS: List[Tuple[str, List[str]]] = [
 # Default for experiments: 200 episodes, change config every 25 episodes, max_step 50
 EPISODES_PER_CONFIG_DEFAULT = 25
 
-# Agent order and colors (match plot_nine_agents_aggregated)
-AGENT_COLORS = {
-    'AIF': '#1A1A1A',
-    'QLearning': '#000000',
-    'Vanilla': '#2E86AB',
-    'Recency0.99': '#06A77D',
-    'Recency0.95': '#A23B72',
-    'Recency0.9': '#F18F01',
-    'Recency0.85': '#E63946',
-    'TrajSampling': '#7209B7',
-    'OPSRL': '#FF6B35',
-}
+# Agent order and colors: imported from thesis_style.py (shared across every
+# stage's plotting script) -- same values as before this was centralized.
 
 
 def load_episode_data(log_files: List[Path]) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray]:

@@ -35,9 +35,20 @@ def backward_induction_in_place(Q, V, R, P, horizon, gamma, v_max):
     if P.ndim == 4:
         P = np.mean(P, axis=3)  # Average over samples: (S, A, S, B) -> (S, A, S)
     
-    # Initialize V at horizon
+    # Initialize Q and V at the terminal stage. No bootstrapped future value
+    # exists at hh=horizon-1 (there is no hh=horizon), so Q there is exactly
+    # the immediate reward. Previously only V[horizon-1,:] was set directly
+    # via np.max(R, axis=1), leaving Q[horizon-1,:,:] at whatever it was
+    # before this call (zeros, from the agent's own np.zeros((H,S,A)) init,
+    # and never revisited by any later call since this function only ever
+    # writes hh < horizon-1) -- meaning _get_action(state, hh=horizon-1) saw
+    # identical (zero) Q-values for every action, forever, and its own
+    # "all values equal -> pick randomly" fallback fired on every episode's
+    # final decision whenever an episode actually reached the full horizon.
+    # See ai/02-debug.md, 2026-08-22 OPSRL entry.
+    Q[horizon - 1, :, :] = R
     V[horizon - 1, :] = np.max(R, axis=1)
-    
+
     # Backward induction
     for hh in reversed(range(horizon - 1)):
         for s in range(S):
@@ -75,9 +86,11 @@ def backward_induction_sd(Q, V, R, P, gamma, v_max):
     if P.ndim == 5:
         P = np.mean(P, axis=4)  # Average over samples: (H, S, A, S, B) -> (H, S, A, S)
     
-    # Initialize V at horizon
+    # Initialize Q and V at the terminal stage -- see the identical fix and
+    # comment in backward_induction_in_place above.
+    Q[H - 1, :, :] = R[H - 1, :, :]
     V[H - 1, :] = np.max(R[H - 1, :, :], axis=1)
-    
+
     # Backward induction
     for hh in reversed(range(H - 1)):
         for s in range(S):

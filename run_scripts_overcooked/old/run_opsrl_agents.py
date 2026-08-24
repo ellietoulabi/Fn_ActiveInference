@@ -362,12 +362,13 @@ def run_episodes_opsrl(env, agents, num_episodes, log_dir, verbose=True):
             # Sample rewards and transitions
             R_samples_0 = agents["agent_0"].rng.beta(M_sab_zero, M_sab_one)
             P_samples_0 = agents["agent_0"].rng.gamma(N_sasb) + 1e-10
-            if agents["agent_0"].stage_dependent:
-                sums = P_samples_0.sum(-2, keepdims=True)
-                P_samples_0 = P_samples_0 / sums
-            else:
-                sums = P_samples_0.sum(-1, keepdims=True)
-                P_samples_0 = P_samples_0 / sums
+            # Next-state axis is always second-to-last (Thompson-sample axis B
+            # is always appended last by np.repeat(..., axis=-1) above), in
+            # both branches -- see ai/02-debug.md, 2026-08-22 OPSRL entry.
+            # (This file is currently dead code, unreferenced anywhere in the
+            # repo -- fixed anyway since it's the identical bug.)
+            sums = P_samples_0.sum(-2, keepdims=True)
+            P_samples_0 = P_samples_0 / sums
             R_samples_0 = 2.0 * R_samples_0 - 1.0
             
             # Update Q for agent 0
@@ -392,12 +393,9 @@ def run_episodes_opsrl(env, agents, num_episodes, log_dir, verbose=True):
             
             R_samples_1 = agents["agent_1"].rng.beta(M_sab_zero, M_sab_one)
             P_samples_1 = agents["agent_1"].rng.gamma(N_sasb) + 1e-10
-            if agents["agent_1"].stage_dependent:
-                sums = P_samples_1.sum(-2, keepdims=True)
-                P_samples_1 = P_samples_1 / sums
-            else:
-                sums = P_samples_1.sum(-1, keepdims=True)
-                P_samples_1 = P_samples_1 / sums
+            # See the identical fix/comment for agent_0 above.
+            sums = P_samples_1.sum(-2, keepdims=True)
+            P_samples_1 = P_samples_1 / sums
             R_samples_1 = 2.0 * R_samples_1 - 1.0
             
             if agents["agent_1"].stage_dependent:
@@ -487,7 +485,7 @@ def create_opsrl_agents(env, horizon=150, gamma=0.99, seed=0):
         horizon=horizon,
         bernoullized_reward=True,
         scale_prior_reward=1.0,
-        thompson_samples=1,
+        thompson_samples=10,  # was 1; see ai/02-debug.md 2026-08-23 entry (dead code, fixed for consistency)
         prior_transition='uniform',
         reward_free=False,
         stage_dependent=False,
@@ -500,7 +498,7 @@ def create_opsrl_agents(env, horizon=150, gamma=0.99, seed=0):
         horizon=horizon,
         bernoullized_reward=True,
         scale_prior_reward=1.0,
-        thompson_samples=1,
+        thompson_samples=10,  # was 1; see ai/02-debug.md 2026-08-23 entry (dead code, fixed for consistency)
         prior_transition='uniform',
         reward_free=False,
         stage_dependent=False,

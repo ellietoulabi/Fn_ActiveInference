@@ -6,10 +6,15 @@
 #SBATCH --mem=16G
 #SBATCH --time=0-6:00
 
-# Override episode length at submit time, e.g.:
-#   MAX_STEPS=30 sbatch cc_scripts/redbluebutton/nine.sh
+# Override the protocol at submit time, e.g.:
+#   EPISODES=400 EPISODES_PER_CONFIG=50 MAX_STEPS=30 sbatch cc_scripts/redbluebutton/nine.sh
+# DEST_BASE is auto-named from these three values so different protocols
+# submitted this way can never collide/overwrite each other's copied-back
+# logs; override DEST_BASE_OVERRIDE directly only if you want a custom name.
 set -euo pipefail
 
+EPISODES=${EPISODES:-200}
+EPISODES_PER_CONFIG=${EPISODES_PER_CONFIG:-25}
 MAX_STEPS=${MAX_STEPS:-50}
 
 module purge
@@ -47,18 +52,19 @@ pip install --no-input -r requirements_cc.txt
 echo "Dependencies installed"
 
 SEED_IDX=$SLURM_ARRAY_TASK_ID
-echo "---- Starting seed index ${SEED_IDX} (max_steps=${MAX_STEPS}) ----"
+echo "---- Starting seed index ${SEED_IDX} (episodes=${EPISODES} episodes_per_config=${EPISODES_PER_CONFIG} max_steps=${MAX_STEPS}) ----"
 
 # Reproducible runs: seed is passed via --seed_idx; Python script uses BASE_SEED + seed_idx.
 # PYTHONHASHSEED=0 makes dict/set iteration order deterministic across runs.
 export PYTHONHASHSEED=0
-if ! python -u run_scripts_red_blue_doors/compare_agents/compare_nine_agents.py --seed_idx ${SEED_IDX} --log-aif-beliefs --max-steps ${MAX_STEPS}; then
+if ! python -u run_scripts_red_blue_doors/compare_agents/compare_nine_agents.py --seed_idx ${SEED_IDX} --log-aif-beliefs \
+    --episodes ${EPISODES} --episodes-per-config ${EPISODES_PER_CONFIG} --max-steps ${MAX_STEPS}; then
     EXIT_CODE=$?
     echo "compare_nine_agents.py for seed index $SEED_IDX failed with exit code $EXIT_CODE"
     exit $EXIT_CODE
 fi
 
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sa_redbluebutton"}
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/sa_redbluebutton_ep${EPISODES}_cfg${EPISODES_PER_CONFIG}_step${MAX_STEPS}_30seed"}
 mkdir -p "${DEST_BASE}"
 
 echo "Copying logs and Q-tables to home directory..."
@@ -66,6 +72,10 @@ echo "Copying logs and Q-tables to home directory..."
 cp logs/nine_agents_comparison_ep*_step*_seed${SEED_IDX}_*.csv "${DEST_BASE}/" 2>/dev/null || echo "Warning: CSV log file not found"
 cp logs/nine_agents_qtable_ep*_step*_seed${SEED_IDX}_*.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: Some Q-table files not found"
 cp logs/nine_agents_aif_beliefs_ep*_step*_seed${SEED_IDX}_*.jsonl "${DEST_BASE}/" 2>/dev/null || echo "Warning: AIF belief JSONL file not found"
+# Configs JSON (2026-08-24): the exact button-position sequence used for this seed,
+# needed to run an additional agent later against the identical map sequence -- would
+# otherwise be lost with the rest of SLURM_TMPDIR once this job ends.
+cp logs/nine_agents_configs_ep*_step*_seed${SEED_IDX}_*.json "${DEST_BASE}/" 2>/dev/null || echo "Warning: configs JSON file not found"
 
 echo "Copy done"
 echo "---- Nine Agents Seed Index ${SEED_IDX} complete ----"

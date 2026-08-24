@@ -1,0 +1,36 @@
+{
+  "paradigm": "opsrl",
+  "n_seeds": 1,
+  "n_episodes_per_seed": 100,
+  "episodes_per_config": 20,
+  "max_steps": 50,
+  "opsrl_hyperparams": {
+    "gamma": 0.95,
+    "horizon": 50,
+    "thompson_samples": 1,
+    "bernoullized_reward": true,
+    "scale_prior_reward": 1.0,
+    "prior_transition": "uniform",
+    "stage_dependent": false,
+    "reward_free": false
+  },
+  "total_episodes": 100,
+  "total_successes": 27,
+  "success_rate": 27.0,
+  "mean_reward": -0.46,
+  "std_reward": 0.8879189152169246,
+  "mean_steps": 29.35,
+  "std_steps": 17.467326641475506,
+  "seed_summaries": [
+    {
+      "seed": 23,
+      "successes": 27,
+      "total": 100,
+      "success_rate": 27.0,
+      "avg_reward": -0.46,
+      "avg_steps": 29.35,
+      "first_half_wins": 15,
+      "second_half_wins": 12
+    }
+  ]
+}

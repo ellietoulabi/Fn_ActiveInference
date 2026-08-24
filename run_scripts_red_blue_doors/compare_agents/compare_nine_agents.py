@@ -43,6 +43,7 @@ from agents.QLearning.dynaq_agent import DynaQAgent as VanillaDynaQ
 from agents.QLearning.dynaq_agent_with_recency_bias import DynaQAgent as RecencyDynaQ
 from agents.QLearning.dynaq_agent_trajectory_sampling import DynaQAgent as TrajectorySamplingDynaQ
 from agents.OPSRL import OPSRLAgent
+from run_scripts_red_blue_doors.compare_agents.pretrain_common import generate_random_config_np
 
 
 def grid_to_string(grid):
@@ -135,7 +136,8 @@ def run_aif_episode(env, agent, agent_name, episode_num, max_steps=50, csv_write
                 'action': action,
                 'action_name': action_names[action],
                 'map': map_str,
-                'reward': reward
+                'reward': reward,
+                'agent_pos': env_utils.xy_to_index(*env.agent_position, width=3),
             })
 
         # Log AIF belief/policy state (state beliefs, policy posterior, entropy)
@@ -205,9 +207,10 @@ def run_episode(env, agent, agent_name, episode_num, max_steps=50, csv_writer=No
                 'action': action,
                 'action_name': action_names[action],
                 'map': map_str,
-                'reward': reward
+                'reward': reward,
+                'agent_pos': env_utils.xy_to_index(*env.agent_position, width=3),
             })
-        
+
         # Convert to model observation format
         next_obs_dict = env_utils.env_obs_to_model_obs(env_obs)
         next_state = agent.get_state(next_obs_dict) if not done else None
@@ -278,12 +281,15 @@ def run_opsrl_episode(env, agent, agent_name, episode_num, max_steps=50, csv_wri
     # Sample transitions from Dirichlet (via Gamma)
     P_samples = agent.rng.gamma(N_sasb)
     P_samples = P_samples + 1e-10  # Add small epsilon to avoid zeros
-    if agent.stage_dependent:
-        sums = P_samples.sum(-2, keepdims=True)
-        P_samples = P_samples / sums
-    else:
-        sums = P_samples.sum(-1, keepdims=True)
-        P_samples = P_samples / sums
+    # Normalize over the "next state" axis, which is always second-to-last
+    # regardless of stage_dependent -- the Thompson-sample axis B was
+    # appended last by np.repeat(..., axis=-1) above. The former
+    # stage_dependent=False branch used sum(-1) (the B axis, size 1 here),
+    # a no-op division (P_samples / P_samples == 1.0 everywhere) rather than
+    # real normalization -- see ai/02-debug.md, 2026-08-22 OPSRL entry, and
+    # the identical fix in agents/OPSRL/{agent,ma_agent}.py.
+    sums = P_samples.sum(-2, keepdims=True)
+    P_samples = P_samples / sums
     
     # Denormalize rewards back to [-1, 1] range
     R_samples = 2.0 * R_samples - 1.0
@@ -360,7 +366,8 @@ def run_opsrl_episode(env, agent, agent_name, episode_num, max_steps=50, csv_wri
                 'action': action,
                 'action_name': action_names[action],
                 'map': map_str,
-                'reward': reward
+                'reward': reward,
+                'agent_pos': env_utils.xy_to_index(*env.agent_position, width=3),
             })
         
         # STEP 3: Update agent's posterior during episode
@@ -399,6 +406,23 @@ def main():
                         help='Number of top policies to include per step in the AIF belief JSONL log (default: 5).')
     parser.add_argument('--max-steps', type=int, default=50,
                         help='Max steps per episode, applied identically to all 9 agents (default: 50).')
+    parser.add_argument('--episodes', type=int, default=200,
+                        help='Total episodes per seed (default: 200).')
+    parser.add_argument('--episodes-per-config', type=int, default=25,
+                        help='Episodes per button-position config, i.e. relocation interval (default: 25).')
+    parser.add_argument('--log-dir', type=Path, default=None,
+                        help='Directory to write CSV/Q-table/JSONL logs to (default: <project_root>/logs). '
+                             'Use a distinct --log-dir per (episodes, episodes-per-config, max-steps) setup '
+                             'so parallel sweeps at different protocols cannot collide.')
+    parser.add_argument('--configs-file', type=Path, default=None,
+                        help='Path to a JSON file of button-position configs for this seed. If the file '
+                             'already exists, configs are LOADED from it (byte-identical map sequence) '
+                             'instead of being regenerated from the RNG -- use this to run an additional '
+                             'agent later against the exact same map/seed sequence as an earlier run. If '
+                             'the file does not exist (or this flag is omitted), configs are generated as '
+                             'usual and always saved -- to this path if given, otherwise to an auto-named '
+                             'file next to the CSV log -- so every run\'s map sequence is recoverable even '
+                             'if --configs-file was not passed the first time.')
     args = parser.parse_args()
 
     seed_idx = args.seed_idx
@@ -410,9 +434,20 @@ def main():
     print("="*80)
     
     # Parameters
-    NUM_EPISODES = 200  # Changed to 100 episodes
-    EPISODES_PER_CONFIG = 25  # Change button positions every 20 episodes
+    NUM_EPISODES = args.episodes
+    EPISODES_PER_CONFIG = args.episodes_per_config
     MAX_STEPS = args.max_steps
+    # config_idx = (episode-1)//EPISODES_PER_CONFIG must never exceed
+    # num_configs-1 = NUM_EPISODES//EPISODES_PER_CONFIG - 1, which silently
+    # requires exact divisibility (e.g. 105/20 leaves episodes 101-105
+    # indexing a config that was never generated -> IndexError at episode
+    # 101). --episodes/--episodes-per-config only became CLI-overridable
+    # (2026-08-23) rather than hardcoded 200/25, so this is newly reachable;
+    # fail loudly here rather than let it surface as a mid-run crash.
+    assert NUM_EPISODES % EPISODES_PER_CONFIG == 0, (
+        f"--episodes ({NUM_EPISODES}) must be evenly divisible by "
+        f"--episodes-per-config ({EPISODES_PER_CONFIG})."
+    )
     PLANNING_STEPS = 2
     RECENCY_DECAYS = [0.99, 0.95, 0.90, 0.85]  # Different recency bias levels
     BASE_SEED = 42  # Base seed for reproducibility
@@ -422,10 +457,14 @@ def main():
     np.random.seed(current_seed)
 
     # Setup CSV logging (will include seed column)
-    log_dir = project_root / "logs"
-    log_dir.mkdir(exist_ok=True)
+    log_dir = args.log_dir if args.log_dir is not None else (project_root / "logs")
+    log_dir.mkdir(exist_ok=True, parents=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_filename = f"nine_agents_comparison_ep{NUM_EPISODES}_step{MAX_STEPS}_seed{seed_idx}_{timestamp}.csv"
+    # cfg{EPISODES_PER_CONFIG} included alongside ep/step so filenames stay
+    # self-describing and non-colliding even if --log-dir is ever shared
+    # across two runs with the same (episodes, max_steps) but a different
+    # relocation interval -- defense-in-depth on top of --log-dir itself.
+    csv_filename = f"nine_agents_comparison_ep{NUM_EPISODES}_cfg{EPISODES_PER_CONFIG}_step{MAX_STEPS}_seed{seed_idx}_{timestamp}.csv"
     csv_path = log_dir / csv_filename
     
     # Base filename for Q-tables (without extension)
@@ -433,12 +472,15 @@ def main():
     
     csv_file = open(csv_path, 'w', newline='')
     csv_writer = csv.DictWriter(csv_file,
-                                fieldnames=['seed', 'agent', 'episode', 'step', 'action', 'action_name', 'map', 'reward'])
+                                fieldnames=['seed', 'agent', 'episode', 'step', 'action', 'action_name',
+                                            'map', 'reward', 'agent_pos'])
+    # agent_pos (flat grid index, 0-8) added 2026-08-23, purely additive -- lets stuck/cycling
+    # trajectories be detected directly from position rather than reconstructed from the action
+    # sequence by hand. See ai/02-debug.md, "cycle-deadlock in pretrained RL baselines" entry.
     csv_writer.writeheader()
 
-    # Show relative path for portability
-    csv_path_relative = csv_path.relative_to(project_root)
-    print(f"\nLogging to: logs/{csv_path_relative.name}")
+    # Show filename (kept simple/robust to --log-dir living outside project_root)
+    print(f"\nLogging to: {csv_path.name}")
     print(f"  Full path: {csv_path}")
 
     # Optional: AIF state-belief / policy-posterior JSONL log
@@ -447,7 +489,7 @@ def main():
         aif_belief_filename = csv_filename.replace("_comparison_", "_aif_beliefs_").replace(".csv", ".jsonl")
         aif_belief_path = log_dir / aif_belief_filename
         aif_belief_fh = open(aif_belief_path, 'w')
-        print(f"  AIF belief JSONL: logs/{aif_belief_path.relative_to(project_root).name}")
+        print(f"  AIF belief JSONL: {aif_belief_path.name}")
     
     # Agent names (consistent across all seeds) - 9 agents total
     agent_names = ['AIF', 'QLearning', 'Vanilla', 'Recency0.99', 'Recency0.95', 'Recency0.9', 'Recency0.85', 'TrajSampling', 'OPSRL']
@@ -575,7 +617,7 @@ def main():
         horizon=MAX_STEPS,
         bernoullized_reward=True,
         scale_prior_reward=1.0,
-        thompson_samples=1,
+        thompson_samples=10,  # was 1; see ai/02-debug.md 2026-08-23 entry
         prior_transition='uniform',
         reward_free=False,
         stage_dependent=False,
@@ -586,31 +628,63 @@ def main():
     
     print(f"\n✓ All {len(agents)} agents initialized for seed {current_seed}")
     
-    # Pre-generate all environment configurations for this seed
-    print("\nGenerating environment configurations...")
-    
+    # Pre-generate (or load) all environment configurations for this seed.
+    # Loading from a previously-saved --configs-file guarantees a byte-identical
+    # map sequence for a new agent added later, independent of anything about the
+    # RNG state that generating the sequence normally depends on (agent construction
+    # order, how many agents there are, etc.) -- see ai/02-debug.md, 2026-08-24 entry.
     num_configs = NUM_EPISODES // EPISODES_PER_CONFIG
-    configs = []
-    
-    for config_idx in range(num_configs):
-        # Generate random button positions (avoid agent start position 0)
-        available_positions = list(range(1, 9))
-        np.random.shuffle(available_positions)
-        red_pos_idx = available_positions[0]
-        blue_pos_idx = available_positions[1]
-        
-        # Convert to (y, x) for environment (row, col)
-        red_pos = (red_pos_idx // 3, red_pos_idx % 3)
-        blue_pos = (blue_pos_idx // 3, blue_pos_idx % 3)
-        
-        configs.append({
-            'red_pos': red_pos,
-            'blue_pos': blue_pos,
-            'red_idx': red_pos_idx,
-            'blue_idx': blue_pos_idx
-        })
-    
-    print(f"✓ Generated {num_configs} configurations")
+    configs_path = args.configs_file if args.configs_file is not None else (
+        log_dir / csv_filename.replace("_comparison_", "_configs_").replace(".csv", ".json")
+    )
+
+    if args.configs_file is not None and args.configs_file.exists():
+        print(f"\nLoading environment configurations from: {configs_path}")
+        with open(configs_path, 'r') as f:
+            loaded = json.load(f)
+        configs = [
+            {'red_pos': tuple(c['red_pos']), 'blue_pos': tuple(c['blue_pos']),
+             'red_idx': c['red_idx'], 'blue_idx': c['blue_idx']}
+            for c in loaded
+        ]
+        assert len(configs) == num_configs, (
+            f"Loaded {len(configs)} configs from {configs_path}, but this run needs "
+            f"{num_configs} (episodes={NUM_EPISODES}, episodes_per_config={EPISODES_PER_CONFIG})."
+        )
+        print(f"✓ Loaded {len(configs)} configurations (RNG-based generation skipped)")
+    else:
+        print("\nGenerating environment configurations...")
+        # Uses generate_random_config_np on an independent np.random.default_rng
+        # (Generator/PCG64), NOT the legacy global np.random.shuffle (RandomState/
+        # MT19937) this loop used before 2026-08-24 -- the two algorithms give
+        # different output for the same integer seed, which meant this script and
+        # compare_nine_agents_pretrained.py's own np.random.default_rng(current_seed)
+        # based generation produced DIFFERENT map sequences at the same seed_idx
+        # despite that script's docstring claiming a shared convention. Switched to
+        # match exactly, so seed_idx N now draws the identical config sequence in
+        # both scripts, enabling a genuinely paired cold-start-vs-pretrained
+        # comparison. Also decouples config generation from the global np.random
+        # stream that QLearning-family exploration draws from, which is a real
+        # (harmless, since nothing had been run yet) behavioral change -- see
+        # ai/02-debug.md, 2026-08-24 entry.
+        config_rng = np.random.default_rng(current_seed)
+        configs = []
+        for config_idx in range(num_configs):
+            c = generate_random_config_np(config_rng)
+            red_pos, blue_pos = c['red_pos'], c['blue_pos']
+            configs.append({
+                'red_pos': red_pos,
+                'blue_pos': blue_pos,
+                'red_idx': red_pos[0] * 3 + red_pos[1],
+                'blue_idx': blue_pos[0] * 3 + blue_pos[1],
+            })
+        print(f"✓ Generated {num_configs} configurations")
+
+        # Always persist the sequence that was actually used, so it's recoverable
+        # even if --configs-file wasn't passed on this run.
+        with open(configs_path, 'w') as f:
+            json.dump(configs, f, indent=2)
+        print(f"✓ Saved configurations to: {configs_path}")
     
     # Run experiments for this seed
     print(f"\nRunning {NUM_EPISODES} episodes...")
@@ -690,14 +764,13 @@ def main():
     
     # Close CSV file
     csv_file.close()
-    csv_path_relative = csv_path.relative_to(project_root)
     print(f"\n✓ Seed {current_seed} (index {seed_idx}) completed")
-    print(f"✓ Log saved to: logs/{csv_path_relative.name}")
+    print(f"✓ Log saved to: {csv_path.name}")
     print(f"  Full path: {csv_path}")
 
     if aif_belief_fh is not None:
         aif_belief_fh.close()
-        print(f"✓ AIF belief JSONL saved to: logs/{aif_belief_path.relative_to(project_root).name}")
+        print(f"✓ AIF belief JSONL saved to: {aif_belief_path.name}")
     
     # Print summary statistics for this seed
     print("\n" + "="*80)

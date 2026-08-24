@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import sys
 import warnings
 from pathlib import Path
 
@@ -31,61 +32,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
 
-# =============================================================================
-# Basic utilities
-# =============================================================================
-
-
-def ensure_dir(path: Path | str) -> Path:
-    path = Path(path)
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def ci95(x) -> float:
-    """
-    95% confidence interval half-width across independent seeds.
-    Use after reducing to one value per brain_seed.
-    """
-    x = pd.Series(x).dropna()
-    n = len(x)
-
-    if n <= 1:
-        return np.nan
-
-    tcrit_table = {
-        2: 12.706,
-        3: 4.303,
-        4: 3.182,
-        5: 2.776,
-        6: 2.571,
-        7: 2.447,
-        8: 2.365,
-        9: 2.306,
-        10: 2.262,
-        11: 2.228,
-        12: 2.201,
-        13: 2.179,
-        14: 2.160,
-        15: 2.145,
-        16: 2.131,
-        17: 2.120,
-        18: 2.110,
-        19: 2.101,
-        20: 2.093,
-    }
-
-    tcrit = tcrit_table.get(n, 1.96)
-    return tcrit * x.std(ddof=1) / np.sqrt(n)
-
-
-def savefig(path: Path | str) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(path, dpi=300, bbox_inches="tight")
-    plt.close()
+# Shared across every thesis plotting script (Stage 1/2/3) -- see
+# thesis_style.py's own docstring for why ci95 and bootstrap-style CIs are kept
+# as separate tools rather than unified into one. ensure_dir/ci95/savefig used
+# to be defined locally in this file; relocated, not redesigned (same values,
+# same formulas) -- see ai/02-debug.md for the extraction record.
+from thesis_style import ci95, ensure_dir, savefig  # noqa: E402,F401
 
 
 def short_metric_name(metric: str) -> str:

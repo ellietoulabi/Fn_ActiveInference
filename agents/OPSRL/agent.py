@@ -39,8 +39,20 @@ class OPSRLAgent:
     scale_prior_reward : double, default: 1.0
         scale of the Beta (uniform) prior,
         i.e prior is Beta(scale_prior_reward*(1,1))
-    thompson_samples: int, default: 1
-        number of thompson samples
+    thompson_samples: int, default: 10
+        Number of Thompson samples to average (via the mean-reduction in
+        backward_induction_in_place/_sd) before running backward induction.
+        Was 1 everywhere in this codebase until 2026-08-23: on this task
+        (long-ish horizon, sparse terminal-only reward, a single posterior
+        draw governs an entire episode's trajectory since resampling happens
+        once per episode, not once per step) that left enough per-episode
+        variance that a single bad draw at any one intermediate (thinly-
+        visited) state could misdirect a whole trajectory, even once the
+        underlying learned model was already correct -- confirmed directly:
+        thompson_samples=1 plateaus at ~5-10% success indefinitely (flat
+        through 5000 real episodes on a fixed config), while
+        thompson_samples=10 reaches ~99-100% by episode 250-500 on the
+        identical setup. See ai/02-debug.md, 2026-08-23 entry.
     prior_transition : string, default: 'uniform'
         type of Dirichlet prior in {'optimistic', 'uniform'}.
     bernoullized_reward: bool, default: True
@@ -68,7 +80,7 @@ class OPSRLAgent:
         horizon=100,
         bernoullized_reward=True,
         scale_prior_reward=1.0,
-        thompson_samples=1,
+        thompson_samples=10,
         prior_transition='uniform',
         scale_prior_transition=None,
         reward_free=False,
@@ -303,13 +315,26 @@ class OPSRLAgent:
         self.P_samples = self.rng.gamma(N_sasb)
         # Add small epsilon to avoid zeros
         self.P_samples = self.P_samples + 1e-10
-        # Normalize to get probabilities
-        if self.stage_dependent:
-            sums = self.P_samples.sum(-2, keepdims=True)
-            self.P_samples = self.P_samples / sums
-        else:
-            sums = self.P_samples.sum(-1, keepdims=True)
-            self.P_samples = self.P_samples / sums
+        # Normalize to get probabilities. P_samples has shape (S,A,S,B) here
+        # (stage_dependent=False) or (H,S,A,S,B) (stage_dependent=True) -- the
+        # Thompson-sample axis B was appended last by np.repeat(..., axis=-1)
+        # above, so in BOTH cases the "next state" axis to normalize over is
+        # the second-to-last one, not literally the last one. The former
+        # non-stage-dependent branch used sum(-1), which summed over the
+        # size-B axis instead: with the B=1 used everywhere in this codebase,
+        # summing a single element and dividing by itself makes every entry
+        # of P_samples exactly 1.0 -- not a probability distribution at all
+        # (real per-(s,a) rows summed to n_states, not 1). Backward induction's
+        # `gamma * dot(P[s,a,:], V[hh+1,:])` term then summed ALL states'
+        # values instead of averaging them, growing V by a factor of roughly
+        # n_states*gamma at every one of the `horizon` backward steps --
+        # confirmed by direct reproduction to blow up to ~1e104 within one
+        # episode's backward induction, at which point every Q[hh,s,:] becomes
+        # numerically identical, and _get_action's "all values equal -> pick
+        # randomly" fallback makes action selection effectively uniform-random
+        # for the rest of the run. See ai/02-debug.md, 2026-08-22 OPSRL entry.
+        sums = self.P_samples.sum(-2, keepdims=True)
+        self.P_samples = self.P_samples / sums
         
         # Denormalize rewards back to [-1, 1] range
         self.R_samples = 2.0 * self.R_samples - 1.0

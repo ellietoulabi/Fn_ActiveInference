@@ -21,10 +21,20 @@ from typing import Optional
 
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+# DPI and AGG_COLOR sourced from the shared thesis style (same #2E86AB value
+# this file already used; DPI raised 150->300, a pure resolution increase,
+# same content/layout -- see thesis_style.py and ai/02-debug.md).
+from thesis_style import DPI, PARADIGM_COLORS  # noqa: E402
+
+AGG_COLOR = PARADIGM_COLORS["ic"]
 
 PARADIGM_PATTERNS = {
     "fc": "sal_fc_*.csv",
@@ -46,8 +56,7 @@ W_STABLE = 50
 THETA = 0.8
 BOOTSTRAP_N = 1000
 CI_PERCENT = 95
-AGG_COLOR = "#2E86AB"
-DPI = 150
+# AGG_COLOR, DPI: imported from thesis_style above (same values as before).
 
 
 def detect_paradigm(logs_dir: Path) -> str:

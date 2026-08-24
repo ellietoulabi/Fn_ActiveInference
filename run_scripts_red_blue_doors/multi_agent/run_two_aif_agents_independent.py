@@ -536,8 +536,20 @@ def run_seed_experiment(seed, num_episodes, episodes_per_config, max_steps,
                 max_steps=max_steps,
             )
             _validate_sa_model(env)
-            agent1 = create_aif_agent(1, env, action_selection=action_selection)
-            agent2 = create_aif_agent(2, env, action_selection=action_selection)
+            # Construct the agents ONCE per seed, not on every config change. A new
+            # config only ever changes button positions, and run_episode() already
+            # calls reset_agent_beliefs() unconditionally every episode (which resets
+            # pose/pressed-state but preserves red_button_pos/blue_button_pos belief,
+            # see below) -- rebuilding the Agent from scratch here would silently wipe
+            # that belief back to a fresh uniform prior on every relocation, handing
+            # AIF a privileged "the environment just changed" cue no RL baseline gets
+            # (see ai/02-debug.md, MA Red-Blue-Button: "MA OPSRL audited against
+            # Independent AIF's real observation channel" -- explicit decision to make
+            # non-stationarity adaptation genuine here rather than reset-assisted,
+            # consistent with Stage 1's convention and with OPSRL's own behavior).
+            if agent1 is None:
+                agent1 = create_aif_agent(1, env, action_selection=action_selection)
+                agent2 = create_aif_agent(2, env, action_selection=action_selection)
             if verbose:
                 print(f"\n{'='*80}")
                 print(f"SEED {seed} - CONFIG {config_idx + 1}")

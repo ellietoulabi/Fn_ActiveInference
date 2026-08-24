@@ -539,8 +539,15 @@ def run_seed_experiment(seed, num_episodes, episodes_per_config, max_steps,
                 max_steps=max_steps,
             )
             _validate_ma_model(env)
-            agent1 = create_aif_agent(1, env)
-            agent2 = create_aif_agent(2, env)
+            # Construct the agents ONCE per seed, not on every config change -- see the
+            # matching comment in run_two_aif_agents_independent.py. run_episode()
+            # already calls reset_agent_beliefs() unconditionally every episode
+            # (preserving red_button_pos/blue_button_pos belief, resetting pose/pressed
+            # state); rebuilding the Agent here would silently wipe that belief on every
+            # relocation instead of letting the agent adapt from a now-stale belief.
+            if agent1 is None:
+                agent1 = create_aif_agent(1, env)
+                agent2 = create_aif_agent(2, env)
             if verbose:
                 print(f"\n{'='*80}")
                 print(f"SEED {seed} - CONFIG {config_idx + 1}")

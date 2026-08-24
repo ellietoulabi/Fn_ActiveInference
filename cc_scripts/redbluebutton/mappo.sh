@@ -20,10 +20,15 @@
 #
 # Override episode length / training budget at submit time, e.g.:
 #   MAX_STEPS=30 sbatch cc_scripts/redbluebutton/mappo.sh
+#   TRAIN_STEPS_BUDGET=2000 sbatch cc_scripts/redbluebutton/mappo.sh   # quick smoke test;
+#     empirically undertrained (~15-30% success, see ai/02-debug.md) -- do not use for real
+#     numbers. Default (unset) uses --mode's own budget formula, ~100k steps at --episodes 100,
+#     which empirically converges to 90-100% success on both seeds tested.
 set -uo pipefail                      # no -e: we still copy logs on failure
 
 MAX_STEPS=${MAX_STEPS:-50}
 MODE=${MODE:-pretrained}
+TRAIN_STEPS_BUDGET=${TRAIN_STEPS_BUDGET:-}
 
 module purge
 module load python/3.11.4 scipy-stack
@@ -103,9 +108,21 @@ echo "---- Starting seed index ${SEED_IDX} (mode=${MODE} max_steps=${MAX_STEPS})
 
 export PYTHONHASHSEED=0
 
-DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_mappo_redbluebutton_step${MAX_STEPS}_30seed"}
+# Budget suffix keeps a smoke-test submission (TRAIN_STEPS_BUDGET set) from ever landing
+# in the same folder as a real production run (TRAIN_STEPS_BUDGET unset) -- same
+# don't-silently-collide principle as the step${MAX_STEPS} tag.
+BUDGET_SUFFIX=""
+if [ -n "${TRAIN_STEPS_BUDGET}" ]; then
+    BUDGET_SUFFIX="_budget${TRAIN_STEPS_BUDGET}"
+fi
+DEST_BASE=${DEST_BASE_OVERRIDE:-"/home/toulabin/projects/aip-jrwright/toulabin/logs/ma_mappo_redbluebutton_step${MAX_STEPS}${BUDGET_SUFFIX}_30seed"}
 mkdir -p "${DEST_BASE}"
 LOG_FILE="$SLURM_TMPDIR/ma_mappo_seed${SEED_IDX}.log"
+
+EXTRA_ARGS=()
+if [ -n "${TRAIN_STEPS_BUDGET}" ]; then
+    EXTRA_ARGS+=(--train-steps-budget "${TRAIN_STEPS_BUDGET}")
+fi
 
 python -u run_scripts_red_blue_doors/multi_agent/run_two_ppo_agents.py \
   --seed ${SEED_IDX} \
@@ -113,6 +130,7 @@ python -u run_scripts_red_blue_doors/multi_agent/run_two_ppo_agents.py \
   --episodes-per-config 20 \
   --max-steps ${MAX_STEPS} \
   --mode ${MODE} \
+  ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
   --stats-output "logs/ma_mappo_seed${SEED_IDX}_stats.json" > "$LOG_FILE" 2>&1
 
 EXIT_CODE=$?

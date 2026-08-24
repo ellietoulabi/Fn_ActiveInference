@@ -15,10 +15,16 @@ rather than compared against it as in Stage 1.
 
 Like the Stage-1 nine-agent OPSRL baseline (compare_nine_agents.py), each
 agent's posterior accumulates across the *entire* seed run, including every
-button relocation -- OPSRL has no belief-retention/reset mechanism the way
-AIF does; it must re-learn stale (state, action) -> outcome statistics after
-each relocation from scratch via continued interaction, which is exactly
-the H1 comparison point.
+button relocation -- there is no privileged "the environment just changed"
+reset, so a relocation leaves the posterior confidently reflecting the OLD
+button location until enough new evidence corrects it. This now matches
+what the MA AIF paradigm scripts do too (as of 2026-08-20, per
+ai/02-debug.md's "Config-boundary posterior/belief persistence made
+consistent" entry): they used to recreate a fresh Agent with a uniform
+belief on every relocation, handing AIF a free clean slate no RL baseline
+gets; they now retain button-position belief across relocations exactly
+like OPSRL retains its posterior, so this is a genuinely matched-protocol
+comparison, not an asymmetry.
 
 Runs the same evaluation protocol (seeds, episodes, episodes_per_config,
 configs, CSV/stats schema) as the AIF and PPO two-agent scripts so results
@@ -107,7 +113,7 @@ def env_obs_to_log_obs(env_obs, width=3):
 # =============================================================================
 
 def create_opsrl_agent(seed, width=3, height=3, max_steps=50, gamma=0.95,
-                        horizon=None, thompson_samples=1,
+                        horizon=None, thompson_samples=10,
                         bernoullized_reward=True, scale_prior_reward=1.0,
                         prior_transition="uniform", stage_dependent=False,
                         reward_free=False):
@@ -345,7 +351,10 @@ def main():
     # stage_dependent=False, prior_transition='uniform').
     parser.add_argument("--gamma", type=float, default=0.95)
     parser.add_argument("--horizon", type=int, default=None, help="Defaults to --max-steps if not given")
-    parser.add_argument("--thompson-samples", type=int, default=1)
+    parser.add_argument("--thompson-samples", type=int, default=10,
+                         help="Was 1 by default until 2026-08-23; averaging more posterior draws "
+                              "before backward induction sharply reduces per-episode variance -- "
+                              "see ai/02-debug.md 2026-08-23 entry.")
     parser.add_argument("--scale-prior-reward", type=float, default=1.0)
     parser.add_argument("--prior-transition", type=str, choices=["uniform", "optimistic"], default="uniform")
     parser.add_argument("--stage-dependent", action="store_true")

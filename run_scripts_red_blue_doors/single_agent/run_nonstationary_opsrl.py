@@ -168,7 +168,7 @@ def main():
     
     # OPSRL parameters
     GAMMA = 0.95
-    THOMPSON_SAMPLES = 1
+    THOMPSON_SAMPLES = 10  # was 1; see ai/02-debug.md 2026-08-23 entry
     BERNOULLIZED_REWARD = True
     SCALE_PRIOR_REWARD = 1.0
     PRIOR_TRANSITION = 'uniform'

@@ -40,23 +40,17 @@ from plot_sal_semantic_action_level import (  # noqa: E402
     load_seed_csvs,
     rolling_mean,
 )
+# DPI, ci95: shared with every other thesis plotting script (see thesis_style.py).
+# ci95 was previously redefined locally here with a truncated t-critical table
+# (only up to n=10 seeds, falling back to the normal approximation early); the
+# shared version's table goes to n=20, a strict precision improvement for any
+# comparison run with 11-20 seeds, not just a relocation.
+# COLORS: (ic, ind) in that order, matching thesis_style's Stage 2/3 paradigm
+# palette exactly -- same hex values this file already used.
+from thesis_style import DPI, ci95, PARADIGM_COLORS  # noqa: E402
 
 DELIVERY_REWARD = 20.0
-DPI = 150
-COLORS = ("#2E86AB", "#E67E22")
-
-
-def ci95(x):
-    x = pd.Series(x).dropna()
-    n = len(x)
-    if n <= 1:
-        return np.nan
-    tcrit_table = {
-        2: 12.706, 3: 4.303, 4: 3.182, 5: 2.776, 6: 2.571,
-        7: 2.447, 8: 2.365, 9: 2.306, 10: 2.262,
-    }
-    tcrit = tcrit_table.get(n, 1.96)
-    return tcrit * x.std(ddof=1) / np.sqrt(n)
+COLORS = (PARADIGM_COLORS["ic"], PARADIGM_COLORS["ind"])
 
 
 def prepare_team_rewards(df: pd.DataFrame) -> pd.DataFrame:

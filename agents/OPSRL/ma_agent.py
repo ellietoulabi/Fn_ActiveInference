@@ -59,6 +59,14 @@ def _vectorized_backward_induction(Q, V, R, P, horizon, gamma):
     if P.ndim == 4:
         P = np.mean(P, axis=3)
 
+    # Terminal-stage Q was previously never assigned here (only V was, via
+    # np.max(R, axis=1) directly) -- see the identical fix and comment in
+    # agents/OPSRL/utils.py::backward_induction_in_place, ai/02-debug.md
+    # 2026-08-22 OPSRL entry. This file's own docstring claim of being
+    # "numerically identical... verified to ~1e-15" against that shared
+    # utility was true as far as it went -- both left Q[horizon-1] at zero
+    # identically, so a diff-based check could never have caught this.
+    Q[horizon - 1] = R
     V[horizon - 1, :] = np.max(R, axis=1)
     for hh in reversed(range(horizon - 1)):
         Q[hh] = R + gamma * (P.reshape(S * A, S) @ V[hh + 1]).reshape(S, A)
@@ -74,6 +82,8 @@ def _vectorized_backward_induction_sd(Q, V, R, P, gamma):
     if P.ndim == 5:
         P = np.mean(P, axis=4)
 
+    # See the identical fix and comment in _vectorized_backward_induction above.
+    Q[H - 1] = R[H - 1, :, :]
     V[H - 1, :] = np.max(R[H - 1, :, :], axis=1)
     for hh in reversed(range(H - 1)):
         Q[hh] = R[hh] + gamma * (P[hh].reshape(S * A, S) @ V[hh + 1]).reshape(S, A)
@@ -175,10 +185,14 @@ class MAOPSRLAgent(OPSRLAgent):
         # Sample transitions from Dirichlet (via Gamma)
         P_samples = self.rng.gamma(N_sasb)
         P_samples = P_samples + 1e-10  # avoid exact zeros
-        if self.stage_dependent:
-            sums = P_samples.sum(-2, keepdims=True)
-        else:
-            sums = P_samples.sum(-1, keepdims=True)
+        # Normalize over the "next state" axis, which is always second-to-last
+        # regardless of stage_dependent -- the Thompson-sample axis B was
+        # appended last by np.repeat(..., axis=-1) above. The former
+        # stage_dependent=False branch used sum(-1) (the B axis, size 1 here),
+        # which is a no-op division (P_samples / P_samples == 1.0 everywhere)
+        # rather than real normalization -- see ai/02-debug.md, 2026-08-22
+        # OPSRL entry, and the identical fix in agents/OPSRL/agent.py.
+        sums = P_samples.sum(-2, keepdims=True)
         P_samples = P_samples / sums
 
         # Denormalize rewards back to [-1, 1] range

@@ -125,3 +125,22 @@ Budget=150000: still 0 deliveries at eval, 368 episodes completed. This matches 
 
 MAX_TRAIN_STEPS=200000 sbatch cc_scripts/overcooked/mappo_semantic_action_level.sh
 MAX_TRAIN_STEPS=250000 sbatch cc_scripts/overcooked/mappo_semantic_action_level.sh
+
+
+
+
+# --- Setup 1: 400 episodes / relocate every 50 / max_steps 30 ---
+EPISODES=400 EPISODES_PER_CONFIG=50 MAX_STEPS=30 sbatch cc_scripts/redbluebutton/nine.sh
+EPISODES=400 EPISODES_PER_CONFIG=50 MAX_STEPS=30 sbatch cc_scripts/redbluebutton/nine_pretrained.sh
+
+# --- Setup 2: 400 episodes / relocate every 50 / max_steps 50 ---
+EPISODES=400 EPISODES_PER_CONFIG=50 MAX_STEPS=50 sbatch cc_scripts/redbluebutton/nine.sh
+EPISODES=400 EPISODES_PER_CONFIG=50 MAX_STEPS=50 sbatch cc_scripts/redbluebutton/nine_pretrained.sh
+
+# --- Setup 3: 200 episodes / relocate every 25 / max_steps 30 ---
+EPISODES=200 EPISODES_PER_CONFIG=25 MAX_STEPS=30 sbatch cc_scripts/redbluebutton/nine.sh
+EPISODES=200 EPISODES_PER_CONFIG=25 MAX_STEPS=30 sbatch cc_scripts/redbluebutton/nine_pretrained.sh
+
+# --- Setup 4: 200 episodes / relocate every 25 / max_steps 50 ---
+EPISODES=200 EPISODES_PER_CONFIG=25 MAX_STEPS=50 sbatch cc_scripts/redbluebutton/nine.sh
+EPISODES=200 EPISODES_PER_CONFIG=25 MAX_STEPS=50 sbatch cc_scripts/redbluebutton/nine_pretrained.sh
