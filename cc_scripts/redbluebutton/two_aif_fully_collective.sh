@@ -4,7 +4,7 @@
 #SBATCH --array=0-29                  # 30 seeds (0..29), one per array task
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=8G
-#SBATCH --time=0-10:00
+#SBATCH --time=1-00:00
 #SBATCH --output=ma_fc_%A_%a.out
 
 # Runs the FullyCollective paradigm (centralized joint model).

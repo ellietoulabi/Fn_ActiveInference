@@ -4,7 +4,7 @@
 #SBATCH --array=0-29                   # 30 seeds (0..29), one per array task
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=8G
-#SBATCH --time=0-5:00
+#SBATCH --time=1-00:00
 #SBATCH --output=ma_ind_%A_%a.out
 
 # This script runs the Independent paradigm (SA model) for two AIF agents.

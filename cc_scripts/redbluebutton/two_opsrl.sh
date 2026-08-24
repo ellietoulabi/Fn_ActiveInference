@@ -7,7 +7,7 @@
                                         # so seed N gives the same map here as in those scripts).
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --time=0-2:00
+#SBATCH --time=1-00:00
 #SBATCH --output=ma_opsrl_%A_%a.out
 
 # This script runs two independent OPSRL agents (agents/OPSRL/ma_agent.py::MAOPSRLAgent)
