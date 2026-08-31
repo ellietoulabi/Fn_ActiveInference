@@ -139,6 +139,86 @@ def build_summary(label: str, ep: pd.DataFrame, episodes_per_config: int) -> dic
     }
 
 
+def build_event_aligned(ep: pd.DataFrame, episodes_per_config: int, pre_window: int) -> pd.DataFrame:
+    """
+    Re-index episodes onto a single continuous "time relative to relocation"
+    axis that includes the tail of the OLD configuration as negative
+    positions, so a plot can show stable-before -> the relocation -> recovery
+    -after as one line instead of only ever starting the clock at the event.
+
+    For each (seed, block>0) relocation event: takes that block's own
+    episodes as event_position = 0..episodes_per_config-1 (the "after"), and
+    the PRECEDING block's last `pre_window` episodes as
+    event_position = -pre_window..-1 (the "before", i.e. that prior
+    configuration's own steady state, since it's the tail end of a block that
+    already had many episodes to settle).
+    """
+    frames = []
+    for seed, g in ep.groupby("seed"):
+        blocks = sorted(g["block"].unique())
+        for block in blocks:
+            if block == 0:
+                continue  # no preceding configuration to compare against
+            prev_tail = g[(g["block"] == block - 1) & (g["position"] >= episodes_per_config - pre_window)].copy()
+            prev_tail["event_position"] = prev_tail["position"] - episodes_per_config
+            curr = g[g["block"] == block].copy()
+            curr["event_position"] = curr["position"]
+            combo = pd.concat([prev_tail, curr], ignore_index=True)
+            combo["event_id"] = f"{seed}_{block}"
+            frames.append(combo)
+    return pd.concat(frames, ignore_index=True) if frames else ep.iloc[0:0]
+
+
+def plot_event_aligned(
+    loaded: Dict[str, pd.DataFrame], episodes_per_config: int, pre_window: int, out_dir: Path,
+) -> Path:
+    ensure_dir(out_dir)
+    import matplotlib.pyplot as plt
+
+    MIN_WINS_PER_BUCKET = 10
+    x_range = list(range(-pre_window, episodes_per_config))
+    order = [PARADIGM_LABELS[k] for k in PARADIGM_ORDER if PARADIGM_LABELS[k] in loaded]
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+
+    for label in order:
+        ep = loaded[label]
+        aligned = build_event_aligned(ep, episodes_per_config, pre_window)
+        wins_only = aligned[aligned["success"] == 1]
+        color = AGENT_COLORS.get(label, "#888888")
+
+        by_pos = aligned.groupby("event_position")["success"].mean().reindex(x_range)
+        axes[0].plot(x_range, by_pos, color=color, lw=2.2, label=label)
+
+        by_pos_wins = wins_only.groupby("event_position")["episode_length"].mean().reindex(x_range)
+        wins_per_bucket = wins_only.groupby("event_position").size().reindex(x_range, fill_value=0)
+        if wins_per_bucket.mean() >= MIN_WINS_PER_BUCKET:
+            axes[1].plot(x_range, by_pos_wins, color=color, lw=2.2, label=label)
+
+    axes[0].set_ylabel("Mean success rate")
+    axes[0].set_title("Before vs. after a relocation: success rate")
+    axes[0].set_ylim(-0.03, 1.03)
+
+    axes[1].set_ylabel("Mean episode length (wins only)")
+    axes[1].set_title("Before vs. after a relocation: episode length (wins only)")
+
+    for ax in axes:
+        ax.axvline(-0.5, color="black", linestyle=":", linewidth=1.3, alpha=0.7)
+        ax.text(-0.5, 0.97, "relocation", transform=ax.get_xaxis_transform(),
+                fontsize=8, color="#333333", ha="center", va="top",
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.85))
+        ax.set_xlabel("Episode, relative to relocation (negative = before, in the OLD configuration)")
+        ax.grid(True, axis="y", alpha=0.25)
+
+    handles, labels_ = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels_, loc="center left", fontsize=9, bbox_to_anchor=(1.0, 0.5))
+
+    fig.suptitle("MA Red-Blue-Button: performance across a relocation event", y=1.03)
+    out_path = out_dir / "event_aligned_recovery.png"
+    savefig(out_path, fig)
+    return out_path
+
+
 def plot_recovery(loaded: Dict[str, pd.DataFrame], episodes_per_config: int, out_dir: Path) -> Path:
     """
     Three panels, deliberately kept separate rather than collapsed into one
@@ -155,9 +235,20 @@ def plot_recovery(loaded: Dict[str, pd.DataFrame], episodes_per_config: int, out
          belief has reconverged, exactly the classic recovery shape. This
          was always in the data; it was just averaged together with panel 2's
          timeout inflation before.
+
+    Panel 3 excludes any paradigm whose average wins-per-position-bucket is
+    below MIN_WINS_PER_BUCKET: a "mean" over a handful of wins (or fewer) is
+    not a real curve, just sampling noise, and no amount of experiment
+    redesign fixes that short of an impractically large seed count for a
+    paradigm that rarely wins in the first place (confirmed directly: cold-
+    start OPSRL averages ~2 wins per bucket here, vs 60-85 for the AIF
+    paradigms) -- its near-zero flat line in panel 1 is already the correct,
+    meaningful characterization of its behavior.
     """
     ensure_dir(out_dir)
     import matplotlib.pyplot as plt
+
+    MIN_WINS_PER_BUCKET = 10
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 5.5))
     order = [PARADIGM_LABELS[k] for k in PARADIGM_ORDER if PARADIGM_LABELS[k] in loaded]
@@ -172,10 +263,20 @@ def plot_recovery(loaded: Dict[str, pd.DataFrame], episodes_per_config: int, out
             length=("episode_length", "mean"), success=("success", "mean")
         ).reindex(range(episodes_per_config))
         by_pos_wins = wins_only.groupby("position")["episode_length"].mean().reindex(range(episodes_per_config))
+        wins_per_bucket = wins_only.groupby("position").size().reindex(range(episodes_per_config), fill_value=0)
 
         axes[0].plot(by_pos_all.index, by_pos_all["success"], color=color, lw=2.2, label=label)
         axes[1].plot(by_pos_all.index, by_pos_all["length"], color=color, lw=2.2, label=label)
-        axes[2].plot(by_pos_wins.index, by_pos_wins, color=color, lw=2.2, label=label)
+        if wins_per_bucket.mean() >= MIN_WINS_PER_BUCKET:
+            axes[2].plot(by_pos_wins.index, by_pos_wins, color=color, lw=2.2, label=label)
+        else:
+            print(f"  {label}: excluded from win-only panel (avg {wins_per_bucket.mean():.1f} "
+                  f"wins/bucket < {MIN_WINS_PER_BUCKET} -- not enough wins for a meaningful mean)")
+
+    excluded = [
+        label for label in order
+        if not any(line.get_label() == label for line in axes[2].get_lines())
+    ]
 
     axes[0].set_xlabel("Episodes since relocation")
     axes[0].set_ylabel("Mean success rate")
@@ -192,7 +293,16 @@ def plot_recovery(loaded: Dict[str, pd.DataFrame], episodes_per_config: int, out
     axes[2].set_ylabel("Mean episode length (wins only)")
     axes[2].set_title("Length among WINS only\n(the real recovery signal)")
     axes[2].grid(True, axis="y", alpha=0.25)
-    axes[2].legend(loc="center left", fontsize=9, bbox_to_anchor=(1.02, 0.5))
+    if excluded:
+        axes[2].text(
+            0.5, -0.24, f"excluded (too few wins to average): {', '.join(excluded)}",
+            transform=axes[2].transAxes, ha="center", fontsize=8.5, color="#666666",
+        )
+
+    # Full-paradigm legend (from panel 0, which always has every paradigm)
+    # placed once for the whole figure rather than per-panel.
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="center left", fontsize=9, bbox_to_anchor=(1.0, 0.5))
 
     fig.suptitle(f"MA Red-Blue-Button: recovery after button relocation "
                  f"(episodes_per_config={episodes_per_config})", y=1.02)
@@ -210,6 +320,9 @@ def main() -> None:
     parser.add_argument("--opsrl-pretrained", type=Path, default=None)
     parser.add_argument("--episodes-per-config", type=int, default=MA_EPISODES_PER_CONFIG_DEFAULT)
     parser.add_argument("--match-seeds", action="store_true")
+    parser.add_argument("--pre-window", type=int, default=10,
+                         help="How many episodes of the OLD configuration's tail to show before "
+                              "the relocation in the before/after plot (default 10)")
     parser.add_argument("-o", "--out", type=Path, required=True)
     args = parser.parse_args()
 
@@ -234,6 +347,9 @@ def main() -> None:
 
     plot_path = plot_recovery(loaded, args.episodes_per_config, out_dir)
     print(f"\nSaved plot: {plot_path}")
+
+    event_plot_path = plot_event_aligned(loaded, args.episodes_per_config, args.pre_window, out_dir)
+    print(f"Saved plot: {event_plot_path}")
     print(f"Saved table: {out_dir / 'recovery_summary.csv'}")
 
 

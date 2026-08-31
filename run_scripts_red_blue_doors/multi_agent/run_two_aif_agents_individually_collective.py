@@ -244,7 +244,13 @@ def create_aif_agent(agent_id, env):
         # ego-relabeled belief, instead of always trusting whichever label
         # currently says "agent1". See FullyCollective/B.py's docstrings and
         # ai/02-debug.md, MA Red-Blue-Button "backwards beliefs about turn order".
-        env_params={'width': 3, 'height': 3, 'ego_agent_index': agent_id},
+        # B_NOISE_LEVEL=0.05: small movement-outcome noise that breaks exact
+        # policy ties once belief is fully certain and the target is
+        # unreachable within the 2-step lookahead -- see B_fn's docstring in
+        # FullyCollective/B.py (IC imports that same B_fn unmodified) for the
+        # full investigation. Not reward shaping -- C_fn stays sparse
+        # (game_result only).
+        env_params={'width': 3, 'height': 3, 'ego_agent_index': agent_id, 'B_NOISE_LEVEL': 0.05},
         observation_state_dependencies=model_init.observation_state_dependencies,
         actions=joint_actions,
         policy_len=2,  # 36x36=1296 two-step joint policies (36 joint actions per step, not 36 policies)

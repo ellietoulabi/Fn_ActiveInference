@@ -219,7 +219,14 @@ def create_centralized_agent(env, action_selection="deterministic"):
         state_factors=state_factors,
         state_sizes=state_sizes,
         observation_labels=model_init.observations,
-        env_params={'width': 3, 'height': 3},
+        # B_NOISE_LEVEL=0.05: small movement-outcome noise that breaks exact
+        # policy ties once belief is fully certain and the target is
+        # unreachable within the 2-step lookahead -- see B_fn's docstring in
+        # FullyCollective/B.py for the full investigation (a real frozen
+        # episode had 1008/1296 policies exactly tied; this noise collapses
+        # that to a single decisive winner without changing already-correct
+        # decisions). Not reward shaping -- C_fn stays sparse (game_result only).
+        env_params={'width': 3, 'height': 3, 'B_NOISE_LEVEL': 0.05},
         observation_state_dependencies=model_init.observation_state_dependencies,
         actions=joint_actions,
         policy_len=2,  # 36x36=1296 two-step joint policies (36 joint actions per step, not 36 policies)

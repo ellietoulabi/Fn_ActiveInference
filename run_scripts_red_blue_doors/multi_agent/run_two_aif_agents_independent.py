@@ -320,7 +320,15 @@ def create_aif_agent(agent_id, env, action_selection="deterministic"):
         state_factors=state_factors,
         state_sizes=state_sizes,
         observation_labels=model_init.observations,
-        env_params={'width': 3, 'height': 3},
+        # B_NOISE_LEVEL=0.05: small movement-outcome noise that breaks exact
+        # policy ties once belief is fully certain and the target is
+        # unreachable within the 2-step lookahead (confirmed directly: this
+        # collapses a real 1008-of-1296-policy exact tie down to a single
+        # decisive winner, while leaving already-correct decisions unchanged
+        # -- see generative_models/MA_ActiveInference/RedBlueButton/
+        # FullyCollective/B.py::B_fn's docstring for the full investigation).
+        # Not reward shaping -- C_fn stays sparse (game_result only).
+        env_params={'width': 3, 'height': 3, 'B_NOISE_LEVEL': 0.05},
         observation_state_dependencies=model_init.observation_state_dependencies,
         actions=list(range(6)),  # UP, DOWN, LEFT, RIGHT, PRESS, NOOP
         policy_len=2,  # Two-step lookahead (fair comparison with FC/IC paradigms); 6x6=36 policies

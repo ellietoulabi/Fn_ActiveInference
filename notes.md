@@ -150,3 +150,9 @@ EPISODES=200 EPISODES_PER_CONFIG=25 MAX_STEPS=50 sbatch cc_scripts/redbluebutton
 BUDGETS="0 25000 75000 100000 150000 200000 250000 300000 350000 400000 500000" sbatch cc_scripts/overcooked/mappo_checkpoint_curve.sh
 
 sbatch cc_scripts/redbluebutton/mappo_checkpoint_curve.sh               
+
+
+
+
+
+bash cc_scripts/redbluebutton/submit_all_ma.sh

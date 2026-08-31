@@ -315,8 +315,24 @@ def B_fn(qs, action, width=3, height=3, B_NOISE_LEVEL=0.0, ego_agent_index=1):
     """
     JOINT transition. `action` is the JOINT action index in [0, 35].
 
-    Note: We set movement noise to 0.0 by default for the collective planner to
-    better match the deterministic environment.
+    B_NOISE_LEVEL: small movement-outcome noise blended into the deterministic
+    joint position transition via B_static_with_noise (the same helper already
+    used for button positions), NOT generic exploration noise and NOT reward
+    shaping -- C_fn stays sparse (game_result only; see C.py). Purpose: once
+    belief is fully certain and the target isn't reachable within the 2-step
+    lookahead, expected free energy goes EXACTLY flat across large blocks of
+    the 1296-policy joint space (confirmed directly: up to 1008/1296 policies
+    tied to float precision on a real frozen episode), and a deterministic
+    argmax over an exact tie has no way to ever pick anything else -- this is
+    the root cause of the period-2/period-3 position oscillations and full
+    stalls documented in ai/02-debug.md. A small blend of uniform noise into
+    the predicted next-position distribution breaks these exact ties (tested
+    directly: 0.01 collapses a 1008-way tie to a single winner) while leaving
+    already-decisive, correct decisions unchanged (verified against three
+    independent unambiguous scenarios -- pressing a button one is standing on,
+    moving toward an adjacent button, pressing to win -- all picked the exact
+    same action with and without this noise). Left at 0.0 by default so this
+    is opt-in per run script, not silently different from prior behavior.
 
     `ego_agent_index=1` (default) preserves the original behavior exactly --
     correct for FullyCollective (single brain, physical labels always) and
@@ -339,6 +355,9 @@ def B_fn(qs, action, width=3, height=3, B_NOISE_LEVEL=0.0, ego_agent_index=1):
         height,
         ego_agent_index=ego_agent_index,
     )
+    if B_NOISE_LEVEL > 0.0:
+        q1_next = B_static_with_noise({"agent1_pos": q1_next}, "agent1_pos", B_NOISE_LEVEL)
+        q2_next = B_static_with_noise({"agent2_pos": q2_next}, "agent2_pos", B_NOISE_LEVEL)
     new_qs["agent1_pos"] = q1_next
     new_qs["agent2_pos"] = q2_next
 
