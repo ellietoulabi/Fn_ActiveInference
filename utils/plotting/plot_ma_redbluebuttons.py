@@ -67,22 +67,40 @@ from plot_sa_redbluebuttons_nine import (  # noqa: E402
 AGENT_COLORS.update({k: v for k, v in PARADIGM_COLORS.items() if k in (
     "Independent", "IndividuallyCollective", "FullyCollective", "OPSRL",
 )})
+# thesis_style.py has no entry for the pretrained-fair OPSRL variant (new as
+# of this dataset) -- a distinct, darker shade of OPSRL's own orange-red so
+# it's clearly related but not confused with cold-start OPSRL.
+AGENT_COLORS.setdefault("OPSRL_pretrained", "#B34E27")
 
 # MA Red-Blue-Button's default protocol (run_two_aif_agents_*.sh /
 # two_opsrl.sh): 100 episodes, config changes every 20 episodes.
 MA_EPISODES_PER_CONFIG_DEFAULT = 20
+
+# Stage 1's learning-curve smoothing (W_CURVE, imported below) defaults to a
+# 50-episode rolling window -- fine there, where configs run for 25-50
+# episodes, but MA Red-Blue-Button relocates every 20 episodes by default, so
+# a 50-episode window blends 2-3 full relocation cycles into one smoothed
+# point and visibly erases the relocation-recovery pattern (confirmed
+# directly: the default-smoothed success-rate curve is within a few points
+# of dead flat across every relocation boundary). A window smaller than the
+# relocation interval is required for these curves to show anything real;
+# see plot_ma_redbluebutton_recovery.py for the smoothing-free alternative
+# that aligns episodes to time-since-relocation instead.
+MA_SMOOTHING_WINDOW_DEFAULT = 5
 
 PARADIGM_LABELS = {
     "independent": "Independent",
     "fc": "FullyCollective",
     "ic": "IndividuallyCollective",
     "opsrl": "OPSRL",
+    "opsrl_pretrained": "OPSRL_pretrained",
 }
 
-# Plot order: floor -> ceiling -> contribution -> RL baseline, matching the
+# Plot order: floor -> ceiling -> contribution -> RL baselines, matching the
 # thesis's own H2 framing (Independent floor, FullyCollective ceiling,
-# IndividuallyCollective the contribution) with OPSRL last as the RL baseline.
-PARADIGM_ORDER = ["independent", "fc", "ic", "opsrl"]
+# IndividuallyCollective the contribution) with OPSRL variants last as the
+# RL baselines.
+PARADIGM_ORDER = ["independent", "fc", "ic", "opsrl", "opsrl_pretrained"]
 
 
 def load_ma_redbluebutton_dir(logs_dir: Path, label: str) -> pd.DataFrame:
@@ -118,8 +136,21 @@ def load_ma_redbluebutton_dir(logs_dir: Path, label: str) -> pd.DataFrame:
     return ep
 
 
-def load_all_paradigms(dirs: Dict[str, Path]) -> pd.DataFrame:
-    parts = []
+def load_all_paradigms(dirs: Dict[str, Path], match_seeds: bool = False) -> pd.DataFrame:
+    """
+    Load every paradigm's per-seed CSVs. When match_seeds=True, every
+    paradigm is restricted to the intersection of seeds present across ALL
+    loaded paradigms before any curve/statistic is computed -- not just
+    flagged for incomplete coverage (the pre-existing behavior, still used
+    when match_seeds=False), but actually dropped, so every paradigm's
+    number comes from the exact same set of seeds. This avoids the
+    survivorship-bias risk plot_mean_success_bar's own docstring already
+    warns about: an under-sampled paradigm's available seeds are not a
+    random subset (they're disproportionately whichever finished fastest
+    within a walltime budget), so comparing it against a differently-biased
+    full 30-seed paradigm is not an apples-to-apples comparison.
+    """
+    loaded = {}
     for key, path in dirs.items():
         if path is None:
             continue
@@ -130,8 +161,25 @@ def load_all_paradigms(dirs: Dict[str, Path]) -> pd.DataFrame:
         n_eps = ep["episode"].nunique()
         print(f"  {n_seeds} seeds, {n_eps} distinct episode indices, "
               f"{len(ep)} (seed,episode) rows")
-        parts.append(ep)
-    return pd.concat(parts, ignore_index=True)
+        loaded[label] = ep
+
+    if match_seeds:
+        common = None
+        for ep in loaded.values():
+            seeds = set(ep["seed"].unique())
+            common = seeds if common is None else (common & seeds)
+        common = sorted(common)
+        print(f"\nmatch_seeds=True: restricting every paradigm to the "
+              f"{len(common)} seeds common to all of them: {common}")
+        for label, ep in loaded.items():
+            before = ep["seed"].nunique()
+            loaded[label] = ep[ep["seed"].isin(common)]
+            after = loaded[label]["seed"].nunique()
+            if after < before:
+                print(f"  {label}: dropped {before - after} seed(s) not in the common set "
+                      f"({before} -> {after})")
+
+    return pd.concat(list(loaded.values()), ignore_index=True)
 
 
 def plot_mean_success_bar(episode_df: pd.DataFrame, agent_names: List[str], output_path: Path) -> None:
@@ -231,13 +279,19 @@ def run_ma_redbluebutton_plots(
     dirs: Dict[str, Path],
     output_dir: Path,
     episodes_per_config: int = MA_EPISODES_PER_CONFIG_DEFAULT,
+    match_seeds: bool = False,
+    smoothing_window: int = MA_SMOOTHING_WINDOW_DEFAULT,
 ) -> None:
     output_dir = ensure_dir(output_dir)
-    episode_df = load_all_paradigms(dirs)
+    episode_df = load_all_paradigms(dirs, match_seeds=match_seeds)
 
     agent_names = np.array([PARADIGM_LABELS[k] for k in PARADIGM_ORDER if k in dirs and dirs[k] is not None])
     episodes = np.sort(episode_df["episode"].unique())
     print(f"\nEpisodes 1-{episodes.max()}, paradigms: {list(agent_names)}")
+    if smoothing_window >= episodes_per_config:
+        print(f"  WARNING: smoothing_window={smoothing_window} >= episodes_per_config={episodes_per_config} "
+              f"-- curves will blend across relocation boundaries and hide the recovery pattern. "
+              f"Use plot_ma_redbluebutton_recovery.py instead for a smoothing-free view.")
 
     returns_per_agent, success_per_agent, length_per_agent = build_curves_per_seed(
         episode_df, agent_names, episodes
@@ -247,17 +301,17 @@ def run_ma_redbluebutton_plots(
     save_all_learning_curve_variants(
         success_per_agent, agent_names, episodes, output_dir,
         stem="success_rate", ylabel="Success rate", title_base="Mean success rate vs episode",
-        episodes_per_config=episodes_per_config, ylim=(-0.05, 1.05),
+        episodes_per_config=episodes_per_config, ylim=(-0.05, 1.05), smoothing_window=smoothing_window,
     )
     save_all_learning_curve_variants(
         returns_per_agent, agent_names, episodes, output_dir,
         stem="episode_return", ylabel="Episode return", title_base="Mean episode return vs episode",
-        episodes_per_config=episodes_per_config,
+        episodes_per_config=episodes_per_config, smoothing_window=smoothing_window,
     )
     save_all_learning_curve_variants(
         length_per_agent, agent_names, episodes, output_dir,
         stem="episode_length", ylabel="Episode length (steps)", title_base="Mean episode length vs episode",
-        episodes_per_config=episodes_per_config,
+        episodes_per_config=episodes_per_config, smoothing_window=smoothing_window,
     )
 
     print("\nCreating ECDF plots...")
@@ -284,10 +338,23 @@ def main() -> None:
     parser.add_argument("--fc", type=Path, default=None, help="FullyCollective AIF logs directory")
     parser.add_argument("--ic", type=Path, default=None, help="IndividuallyCollective AIF logs directory")
     parser.add_argument("--opsrl", type=Path, default=None, help="Cold-start OPSRL logs directory")
+    parser.add_argument("--opsrl-pretrained", type=Path, default=None, help="Pretrained-fair OPSRL logs directory")
     parser.add_argument("--out", "-o", type=Path, required=True, help="Output directory")
     parser.add_argument(
         "--episodes-per-config", type=int, default=MA_EPISODES_PER_CONFIG_DEFAULT,
         help="CI/vertical-line spacing for config-relocation boundaries (default 20)",
+    )
+    parser.add_argument(
+        "--match-seeds", action="store_true",
+        help="Restrict every paradigm to the intersection of seeds present across all of "
+             "them, rather than each paradigm using its own full (possibly incomplete, "
+             "possibly survivorship-biased) seed set.",
+    )
+    parser.add_argument(
+        "--smoothing-window", type=int, default=MA_SMOOTHING_WINDOW_DEFAULT,
+        help=f"Rolling window for learning-curve smoothing (default {MA_SMOOTHING_WINDOW_DEFAULT}, "
+             f"deliberately smaller than the default 20-episode relocation interval -- Stage 1's "
+             f"50-episode default would blend multiple relocation cycles together).",
     )
     args = parser.parse_args()
 
@@ -296,12 +363,16 @@ def main() -> None:
         "fc": args.fc,
         "ic": args.ic,
         "opsrl": args.opsrl,
+        "opsrl_pretrained": args.opsrl_pretrained,
     }
     dirs = {k: v for k, v in dirs.items() if v is not None}
     if not dirs:
-        parser.error("Provide at least one of --independent/--fc/--ic/--opsrl")
+        parser.error("Provide at least one of --independent/--fc/--ic/--opsrl/--opsrl-pretrained")
 
-    run_ma_redbluebutton_plots(dirs, args.out, args.episodes_per_config)
+    run_ma_redbluebutton_plots(
+        dirs, args.out, args.episodes_per_config,
+        match_seeds=args.match_seeds, smoothing_window=args.smoothing_window,
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,137 @@
+{
+  "mode": "pretrained",
+  "budgets": {
+    "0": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 24.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": -0.52,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 28.95,
+      "per_train_seed_success_rate": [
+        24.0
+      ]
+    },
+    "2000": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 27.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": -0.46,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 31.04,
+      "per_train_seed_success_rate": [
+        27.0
+      ]
+    },
+    "4000": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 31.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": -0.38,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 28.95,
+      "per_train_seed_success_rate": [
+        31.0
+      ]
+    },
+    "6000": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 19.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": -0.62,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 27.77,
+      "per_train_seed_success_rate": [
+        19.0
+      ]
+    },
+    "10000": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 27.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": -0.46,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 29.08,
+      "per_train_seed_success_rate": [
+        27.0
+      ]
+    },
+    "15000": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 37.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": -0.26,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 27.05,
+      "per_train_seed_success_rate": [
+        37.0
+      ]
+    },
+    "20000": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 43.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": -0.14,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 29.45,
+      "per_train_seed_success_rate": [
+        43.0
+      ]
+    },
+    "30000": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 52.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": 0.04,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 30.42,
+      "per_train_seed_success_rate": [
+        52.0
+      ]
+    },
+    "40000": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 75.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": 0.5,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 26.07,
+      "per_train_seed_success_rate": [
+        75.0
+      ]
+    },
+    "50000": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 93.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": 0.86,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 20.14,
+      "per_train_seed_success_rate": [
+        93.0
+      ]
+    },
+    "75000": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 93.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": 0.86,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 18.99,
+      "per_train_seed_success_rate": [
+        93.0
+      ]
+    },
+    "100000": {
+      "n_train_seeds": 1,
+      "mean_success_rate_across_train_seeds": 98.0,
+      "std_success_rate_across_train_seeds": 0.0,
+      "mean_reward_across_train_seeds": 0.96,
+      "std_reward_across_train_seeds": 0.0,
+      "mean_steps_across_train_seeds": 15.67,
+      "per_train_seed_success_rate": [
+        98.0
+      ]
+    }
+  }
+}

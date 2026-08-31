@@ -1,0 +1,140 @@
+{
+  "train_seed": 26,
+  "mode": "pretrained",
+  "budgets_completed": [
+    0,
+    2000,
+    4000,
+    6000,
+    10000,
+    15000,
+    20000,
+    30000,
+    40000,
+    50000,
+    75000,
+    100000
+  ],
+  "results_by_budget": {
+    "0": {
+      "actual_steps": 0,
+      "n_episodes": 100,
+      "success_rate": 31.0,
+      "mean_reward": -0.38,
+      "std_reward": 0.924986486387774,
+      "mean_steps": 27.35,
+      "std_steps": 17.996319068076115,
+      "eval_wall_seconds": 0.9675989151000977
+    },
+    "2000": {
+      "actual_steps": 2001,
+      "n_episodes": 100,
+      "success_rate": 30.0,
+      "mean_reward": -0.4,
+      "std_reward": 0.9165151389911679,
+      "mean_steps": 28.29,
+      "std_steps": 17.22979686473407,
+      "eval_wall_seconds": 1.0036592483520508
+    },
+    "4000": {
+      "actual_steps": 4002,
+      "n_episodes": 100,
+      "success_rate": 31.0,
+      "mean_reward": -0.38,
+      "std_reward": 0.924986486387774,
+      "mean_steps": 28.08,
+      "std_steps": 17.79363931296799,
+      "eval_wall_seconds": 0.9966568946838379
+    },
+    "6000": {
+      "actual_steps": 6004,
+      "n_episodes": 100,
+      "success_rate": 35.0,
+      "mean_reward": -0.3,
+      "std_reward": 0.9539392014169455,
+      "mean_steps": 32.06,
+      "std_steps": 16.691806373188015,
+      "eval_wall_seconds": 1.1340043544769287
+    },
+    "10000": {
+      "actual_steps": 10009,
+      "n_episodes": 100,
+      "success_rate": 49.0,
+      "mean_reward": -0.02,
+      "std_reward": 0.999799979995999,
+      "mean_steps": 28.82,
+      "std_steps": 15.935733431505437,
+      "eval_wall_seconds": 1.0247700214385986
+    },
+    "15000": {
+      "actual_steps": 16016,
+      "n_episodes": 100,
+      "success_rate": 57.99999999999999,
+      "mean_reward": 0.16,
+      "std_reward": 0.9871170143402453,
+      "mean_steps": 25.52,
+      "std_steps": 15.477389960842881,
+      "eval_wall_seconds": 0.9189467430114746
+    },
+    "20000": {
+      "actual_steps": 20025,
+      "n_episodes": 100,
+      "success_rate": 67.0,
+      "mean_reward": 0.34,
+      "std_reward": 0.9404254356406997,
+      "mean_steps": 22.88,
+      "std_steps": 14.786669672377212,
+      "eval_wall_seconds": 0.813450813293457
+    },
+    "30000": {
+      "actual_steps": 30042,
+      "n_episodes": 100,
+      "success_rate": 68.0,
+      "mean_reward": 0.36,
+      "std_reward": 0.9329523031752479,
+      "mean_steps": 26.1,
+      "std_steps": 15.794619336976753,
+      "eval_wall_seconds": 0.9330999851226807
+    },
+    "40000": {
+      "actual_steps": 40047,
+      "n_episodes": 100,
+      "success_rate": 90.0,
+      "mean_reward": 0.8,
+      "std_reward": 0.6,
+      "mean_steps": 22.35,
+      "std_steps": 13.424138706077196,
+      "eval_wall_seconds": 0.7902233600616455
+    },
+    "50000": {
+      "actual_steps": 50059,
+      "n_episodes": 100,
+      "success_rate": 93.0,
+      "mean_reward": 0.86,
+      "std_reward": 0.5102940328869229,
+      "mean_steps": 17.3,
+      "std_steps": 12.12559276901546,
+      "eval_wall_seconds": 0.6205856800079346
+    },
+    "75000": {
+      "actual_steps": 76094,
+      "n_episodes": 100,
+      "success_rate": 97.0,
+      "mean_reward": 0.94,
+      "std_reward": 0.34117444218463966,
+      "mean_steps": 14.98,
+      "std_steps": 11.067953740416518,
+      "eval_wall_seconds": 0.5399160385131836
+    },
+    "100000": {
+      "actual_steps": 100131,
+      "n_episodes": 100,
+      "success_rate": 98.0,
+      "mean_reward": 0.96,
+      "std_reward": 0.27999999999999997,
+      "mean_steps": 14.51,
+      "std_steps": 10.772645914537433,
+      "eval_wall_seconds": 0.5217812061309814
+    }
+  }
+}

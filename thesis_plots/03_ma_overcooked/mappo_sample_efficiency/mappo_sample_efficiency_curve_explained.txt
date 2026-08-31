@@ -1,0 +1,74 @@
+mappo_sample_efficiency_curve.png -- what it shows and how to read it
+========================================================================
+
+THE QUESTION THIS PLOT ANSWERS
+How much training does MAPPO need before it matches each Active
+Inference (AIF) paradigm, which needs zero training at all?
+
+THE THREE HORIZONTAL LINES (Independent / Individually Collective /
+Fully Collective)
+Each is one AIF paradigm's average soups delivered in a single ~1500-
+step Overcooked episode, averaged over 30 independent seeds. AIF does
+not train via gradient descent -- it acts by inference from a fixed,
+hand-specified model from the very first step of the very first
+episode, so there is no 'number of training steps' for it. The line
+is drawn horizontally only so its one number can be compared against
+MAPPO's curve at every x-position -- it is the same value everywhere,
+not a function of the x-axis.
+
+THE SHADED BAND AROUND EACH LINE
+95% confidence interval computed from the spread across those 30
+seeds -- i.e. how much that paradigm's average would plausibly shift
+if you re-ran with a different batch of 30 seeds. A narrow band means
+the seeds mostly agree; a wide band means they don't. Where two
+paradigms' bands overlap a lot, their means are not reliably
+distinguishable from this sample size, even if one number is nominally
+higher.
+
+  Independent                mean=3.33  95% CI=+/-0.78  (n=30 seeds)
+  Individually Collective    mean=5.17  95% CI=+/-0.84  (n=30 seeds)
+  Fully Collective           mean=4.73  95% CI=+/-1.03  (n=30 seeds)
+
+THE PURPLE MAPPO CURVE AND ITS BAND
+Each point is the mean soups-delivered over 30 independently-trained
+MAPPO policies (different training seeds), evaluated at that many
+cumulative training steps. Its shaded band is also a 95% CI across
+those 30 training seeds, computed the same way as the AIF bands so the
+two are visually comparable.
+
+WHY THE CURVE IS JAGGED, NOT SMOOTH
+Each checkpoint is scored on only 1 held-out evaluation episode
+per training seed -- not averaged over many eval runs. So every point is
+a genuinely noisy single (or few-episode) estimate, not a smoothed
+learning curve. This is also why the band widens rather than narrows at
+higher budgets: later checkpoints happen to have higher-variance
+single-episode outcomes across training seeds, not more uncertainty in
+a statistical-estimation sense.
+
+THE LEFTMOST POINT ('0' on the x-axis)
+This is the untrained / randomly-initialized policy, evaluated before
+any training step. The x-axis uses a symlog scale specifically so this
+point can sit at its true value of exactly 0, rather than being faked
+onto a nonzero position the way a plain log-scale axis would require.
+
+CROSSOVER POINTS (first plotted budget where MAPPO's mean reaches a
+given AIF paradigm's zero-shot mean -- not interpolated, so the true
+crossover may be anywhere between this budget and the previous one)
+  Independent                reached by 250,000 training steps
+  Individually Collective    reached by 400,000 training steps
+  Fully Collective           reached by 300,000 training steps
+
+RAW MAPPO CURVE VALUES
+  budget=       0  mean=1.87  95%CI=+/-0.77  (n_train_seeds=30)
+  budget=  25,000  mean=1.87  95%CI=+/-0.83  (n_train_seeds=30)
+  budget=  75,000  mean=2.93  95%CI=+/-1.25  (n_train_seeds=30)
+  budget= 100,000  mean=2.20  95%CI=+/-0.86  (n_train_seeds=30)
+  budget= 150,000  mean=2.57  95%CI=+/-0.96  (n_train_seeds=30)
+  budget= 200,000  mean=2.97  95%CI=+/-0.99  (n_train_seeds=30)
+  budget= 250,000  mean=4.03  95%CI=+/-1.65  (n_train_seeds=30)
+  budget= 300,000  mean=4.77  95%CI=+/-1.69  (n_train_seeds=30)
+  budget= 350,000  mean=4.97  95%CI=+/-1.99  (n_train_seeds=30)
+  budget= 400,000  mean=6.77  95%CI=+/-2.57  (n_train_seeds=30)
+  budget= 500,000  mean=7.20  95%CI=+/-5.04  (n_train_seeds=30)
+
+Full numeric data also in comparison_summary.json in this same folder.

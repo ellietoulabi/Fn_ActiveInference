@@ -1,0 +1,183 @@
+{
+  "train_seed": 76,
+  "budgets_completed": [
+    0,
+    25000,
+    75000,
+    100000,
+    150000,
+    200000,
+    250000,
+    300000,
+    350000,
+    400000,
+    500000
+  ],
+  "results_by_budget": {
+    "0": {
+      "actual_steps": 0,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 0.0,
+          "deliveries": 0.0
+        }
+      ],
+      "mean_deliveries": 0.0,
+      "std_deliveries": 0.0,
+      "mean_return": 0.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.6321325302124023
+    },
+    "25000": {
+      "actual_steps": 28000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 0.0,
+          "deliveries": 0.0
+        }
+      ],
+      "mean_deliveries": 0.0,
+      "std_deliveries": 0.0,
+      "mean_return": 0.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.7111616134643555
+    },
+    "75000": {
+      "actual_steps": 76000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 20.0,
+          "deliveries": 1.0
+        }
+      ],
+      "mean_deliveries": 1.0,
+      "std_deliveries": 0.0,
+      "mean_return": 20.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.6199166774749756
+    },
+    "100000": {
+      "actual_steps": 100000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 0.0,
+          "deliveries": 0.0
+        }
+      ],
+      "mean_deliveries": 0.0,
+      "std_deliveries": 0.0,
+      "mean_return": 0.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.6011953353881836
+    },
+    "150000": {
+      "actual_steps": 152000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 0.0,
+          "deliveries": 0.0
+        }
+      ],
+      "mean_deliveries": 0.0,
+      "std_deliveries": 0.0,
+      "mean_return": 0.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.5973081588745117
+    },
+    "200000": {
+      "actual_steps": 200000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 80.0,
+          "deliveries": 4.0
+        }
+      ],
+      "mean_deliveries": 4.0,
+      "std_deliveries": 0.0,
+      "mean_return": 80.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.599738597869873
+    },
+    "250000": {
+      "actual_steps": 252000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 460.0,
+          "deliveries": 23.0
+        }
+      ],
+      "mean_deliveries": 23.0,
+      "std_deliveries": 0.0,
+      "mean_return": 460.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.719778537750244
+    },
+    "300000": {
+      "actual_steps": 300000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 40.0,
+          "deliveries": 2.0
+        }
+      ],
+      "mean_deliveries": 2.0,
+      "std_deliveries": 0.0,
+      "mean_return": 40.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.597414970397949
+    },
+    "350000": {
+      "actual_steps": 352000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 0.0,
+          "deliveries": 0.0
+        }
+      ],
+      "mean_deliveries": 0.0,
+      "std_deliveries": 0.0,
+      "mean_return": 0.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.581604242324829
+    },
+    "400000": {
+      "actual_steps": 400000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 100.0,
+          "deliveries": 5.0
+        }
+      ],
+      "mean_deliveries": 5.0,
+      "std_deliveries": 0.0,
+      "mean_return": 100.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.585069417953491
+    },
+    "500000": {
+      "actual_steps": 500000,
+      "episodes": [
+        {
+          "episode_seed": 76,
+          "return": 0.0,
+          "deliveries": 0.0
+        }
+      ],
+      "mean_deliveries": 0.0,
+      "std_deliveries": 0.0,
+      "mean_return": 0.0,
+      "std_return": 0.0,
+      "eval_wall_seconds": 2.6315488815307617
+    }
+  }
+}

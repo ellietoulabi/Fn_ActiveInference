@@ -1,0 +1,114 @@
+{
+  "budgets": {
+    "0": {
+      "n_train_seeds": 1,
+      "mean_deliveries_across_train_seeds": 0.0,
+      "std_deliveries_across_train_seeds": 0.0,
+      "mean_return_across_train_seeds": 0.0,
+      "std_return_across_train_seeds": 0.0,
+      "per_train_seed_mean_deliveries": [
+        0.0
+      ]
+    },
+    "25000": {
+      "n_train_seeds": 1,
+      "mean_deliveries_across_train_seeds": 0.0,
+      "std_deliveries_across_train_seeds": 0.0,
+      "mean_return_across_train_seeds": 0.0,
+      "std_return_across_train_seeds": 0.0,
+      "per_train_seed_mean_deliveries": [
+        0.0
+      ]
+    },
+    "75000": {
+      "n_train_seeds": 1,
+      "mean_deliveries_across_train_seeds": 1.0,
+      "std_deliveries_across_train_seeds": 0.0,
+      "mean_return_across_train_seeds": 20.0,
+      "std_return_across_train_seeds": 0.0,
+      "per_train_seed_mean_deliveries": [
+        1.0
+      ]
+    },
+    "100000": {
+      "n_train_seeds": 1,
+      "mean_deliveries_across_train_seeds": 0.0,
+      "std_deliveries_across_train_seeds": 0.0,
+      "mean_return_across_train_seeds": 0.0,
+      "std_return_across_train_seeds": 0.0,
+      "per_train_seed_mean_deliveries": [
+        0.0
+      ]
+    },
+    "150000": {
+      "n_train_seeds": 1,
+      "mean_deliveries_across_train_seeds": 0.0,
+      "std_deliveries_across_train_seeds": 0.0,
+      "mean_return_across_train_seeds": 0.0,
+      "std_return_across_train_seeds": 0.0,
+      "per_train_seed_mean_deliveries": [
+        0.0
+      ]
+    },
+    "200000": {
+      "n_train_seeds": 1,
+      "mean_deliveries_across_train_seeds": 4.0,
+      "std_deliveries_across_train_seeds": 0.0,
+      "mean_return_across_train_seeds": 80.0,
+      "std_return_across_train_seeds": 0.0,
+      "per_train_seed_mean_deliveries": [
+        4.0
+      ]
+    },
+    "250000": {
+      "n_train_seeds": 1,
+      "mean_deliveries_across_train_seeds": 23.0,
+      "std_deliveries_across_train_seeds": 0.0,
+      "mean_return_across_train_seeds": 460.0,
+      "std_return_across_train_seeds": 0.0,
+      "per_train_seed_mean_deliveries": [
+        23.0
+      ]
+    },
+    "300000": {
+      "n_train_seeds": 1,
+      "mean_deliveries_across_train_seeds": 2.0,
+      "std_deliveries_across_train_seeds": 0.0,
+      "mean_return_across_train_seeds": 40.0,
+      "std_return_across_train_seeds": 0.0,
+      "per_train_seed_mean_deliveries": [
+        2.0
+      ]
+    },
+    "350000": {
+      "n_train_seeds": 1,
+      "mean_deliveries_across_train_seeds": 0.0,
+      "std_deliveries_across_train_seeds": 0.0,
+      "mean_return_across_train_seeds": 0.0,
+      "std_return_across_train_seeds": 0.0,
+      "per_train_seed_mean_deliveries": [
+        0.0
+      ]
+    },
+    "400000": {
+      "n_train_seeds": 1,
+      "mean_deliveries_across_train_seeds": 5.0,
+      "std_deliveries_across_train_seeds": 0.0,
+      "mean_return_across_train_seeds": 100.0,
+      "std_return_across_train_seeds": 0.0,
+      "per_train_seed_mean_deliveries": [
+        5.0
+      ]
+    },
+    "500000": {
+      "n_train_seeds": 1,
+      "mean_deliveries_across_train_seeds": 0.0,
+      "std_deliveries_across_train_seeds": 0.0,
+      "mean_return_across_train_seeds": 0.0,
+      "std_return_across_train_seeds": 0.0,
+      "per_train_seed_mean_deliveries": [
+        0.0
+      ]
+    }
+  }
+}

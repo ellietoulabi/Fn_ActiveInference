@@ -1,0 +1,50 @@
+{
+  "paradigm": "opsrl_pretrained_convergence",
+  "n_seeds": 1,
+  "n_episodes_per_seed": 100,
+  "episodes_per_config": 20,
+  "max_steps": 50,
+  "opsrl_hyperparams": {
+    "gamma": 0.95,
+    "horizon": 50,
+    "thompson_samples": 10,
+    "bernoullized_reward": true,
+    "scale_prior_reward": 1.0,
+    "prior_transition": "uniform",
+    "stage_dependent": false,
+    "reward_free": false
+  },
+  "pretrain_hyperparams": {
+    "window": 50,
+    "patience": 3,
+    "min_delta": 0.02,
+    "max_episodes": 3000,
+    "min_episodes": 200
+  },
+  "total_episodes": 100,
+  "total_successes": 58,
+  "success_rate": 58.0,
+  "mean_reward": 0.16,
+  "std_reward": 0.9871170143402452,
+  "mean_steps": 26.91,
+  "std_steps": 20.236153290583662,
+  "mean_pretrain_episodes": 3000.0,
+  "mean_pretrain_env_steps": 106604.0,
+  "pretrain_convergence_rate": 0.0,
+  "seed_summaries": [
+    {
+      "seed": 17,
+      "successes": 58,
+      "total": 100,
+      "success_rate": 58.0,
+      "avg_reward": 0.16,
+      "avg_steps": 26.91,
+      "first_half_wins": 32,
+      "second_half_wins": 26,
+      "pretrain_n_episodes": 3000,
+      "pretrain_n_env_steps": 106604,
+      "pretrain_converged": false,
+      "pretrain_final_windowed_win_rate": 0.52
+    }
+  ]
+}

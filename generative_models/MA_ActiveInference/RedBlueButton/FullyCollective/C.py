@@ -12,7 +12,7 @@ Independent comes from this shaping term vs. other structural differences
 original, previously-reported behavior exactly.
 """
 
-USE_INTERMEDIATE_REWARD = True
+USE_INTERMEDIATE_REWARD = False
 
 
 def C_fn(observation_indices):

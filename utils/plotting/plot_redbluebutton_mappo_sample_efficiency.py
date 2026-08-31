@@ -142,7 +142,7 @@ def load_mappo_curve(curve_dir: Path) -> dict:
     return {"rows": rows, "source": "partial"}
 
 
-def plot_sample_efficiency(references: dict, mappo_curve: dict, out_dir: Path) -> Path:
+def plot_sample_efficiency(references: dict, mappo_curve: dict, out_dir: Path, using_override: bool) -> Path:
     ensure_dir(out_dir)
     fig, ax = plt.subplots(figsize=(9, 6))
 
@@ -173,7 +173,11 @@ def plot_sample_efficiency(references: dict, mappo_curve: dict, out_dir: Path) -
     ax.legend(loc="upper left", fontsize=9, framealpha=0.9)
     ax.grid(True, which="both", alpha=0.2)
 
-    note = "Reference n is currently small (5-seed sanity check, not yet a full 30-seed re-run on current code) -- see script docstring for why."
+    if using_override:
+        note = (f"Reference sources: --ind-stats-glob/--opsrl-stats-glob override "
+                 f"(n={references['independent']['n_seeds']}/{references['opsrl']['n_seeds']} seeds each, current-code data).")
+    else:
+        note = "Reference n is currently small (5-seed sanity check, not yet a full 30-seed re-run on current code) -- see script docstring for why."
     fig.text(0.5, 0.01, note, ha="center", fontsize=8, color="#555555")
 
     out_path = out_dir / "mappo_sample_efficiency_curve.png"
@@ -219,7 +223,8 @@ def main() -> None:
     for r in mappo_curve["rows"]:
         print(f"    budget={r['budget']:>8}  success_rate={r['mean']:.1f}% +/- {r['std']:.1f}  (n_train_seeds={r['n_train_seeds']})")
 
-    out_path = plot_sample_efficiency(references, mappo_curve, out_dir)
+    using_override = bool(args.ind_stats_glob or args.opsrl_stats_glob)
+    out_path = plot_sample_efficiency(references, mappo_curve, out_dir, using_override)
     print(f"\nWrote figure: {out_path}")
 
     summary = {"references": references, "mappo_curve": mappo_curve}
